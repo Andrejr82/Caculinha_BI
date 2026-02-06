@@ -1,0 +1,45 @@
+fastapi
+uvicorn[standard]
+gunicorn
+sqlalchemy
+aioodbc
+duckdb>=1.1.0
+python-jose[cryptography]
+bcrypt
+structlog
+python-multipart
+pydantic-settings
+slowapi
+jinja2
+httpx
+# google-generativeai  # DEPRECATED - Support ended Nov 30, 2025
+google-genai>=1.60.0  # Official SDK (2026)
+groq
+psutil
+pyarrow
+sentence-transformers
+faiss-cpu
+rank-bm25
+
+# DuckDB Migration (2025-12-31) - Polars/Dask commented out (now using DuckDB)
+polars
+# dask[dataframe]  # DEPRECATED - Not needed (DuckDB handles all file sizes)
+
+aiosqlite
+email-validator
+pandas  # KEPT - Still used by Plotly and DuckDB DataFrame conversions
+passlib
+supabase
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+plotly
+python-dotenv
+numpy
+pydantic>=2.0
+orjson
+langgraph
+pyodbc
+alembic
+statsmodels  # Time series forecasting (CodeGenAgent)

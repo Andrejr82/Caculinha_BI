@@ -1,0 +1,137 @@
+[
+  {
+    "query": "quais produtos do segmento tecidos estão com ruptura une scr",
+    "session_id": "eb176a5a-a4e6-4766-b5c1-0b98a1a13cfb",
+    "timestamp": "2025-11-09T11:35:27.266101",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.031311
+  },
+  {
+    "query": "qual dispoviel destes produtos no cd?",
+    "session_id": "eb176a5a-a4e6-4766-b5c1-0b98a1a13cfb",
+    "timestamp": "2025-11-09T11:38:11.759097",
+    "success": false,
+    "results_count": 0,
+    "error": "⏰ **Tempo Limite Excedido**\n\nO processamento da sua consulta demorou muito tempo (>75s).\n\n**Sugestões:**\n- Tente uma consulta mais específica\n- Simplifique a pergunta\n- Verifique sua conexão de internet",
+    "processing_time": 0.0
+  },
+  {
+    "query": "quais produtos do segmento tecidos estão com ruptura une scr,me de com o estoque no cd tambem",
+    "session_id": "eb176a5a-a4e6-4766-b5c1-0b98a1a13cfb",
+    "timestamp": "2025-11-09T12:20:02.015884",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.031429
+  },
+  {
+    "query": "qual disponivel no estoque_cd dos produtos do segmento tecidos em ruptura na une 261",
+    "session_id": "eb176a5a-a4e6-4766-b5c1-0b98a1a13cfb",
+    "timestamp": "2025-11-09T13:36:09.430873",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.0347
+  },
+  {
+    "query": "quais segmentos na une cfr estão com ruptura",
+    "session_id": "521f742f-b1c7-45bb-9e53-5fc493e7058a",
+    "timestamp": "2025-11-09T15:41:50.848299",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.115533
+  },
+  {
+    "query": "quais produtos estão com ruptura na une rdo",
+    "session_id": "521f742f-b1c7-45bb-9e53-5fc493e7058a",
+    "timestamp": "2025-11-09T15:42:31.396190",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.050626
+  },
+  {
+    "query": "quais produtos estão com ruptura na une pet",
+    "session_id": "0b96626f-05a9-4ae4-ba8b-43d3fa77020d",
+    "timestamp": "2025-11-09T16:02:11.539645",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.096669
+  },
+  {
+    "query": "gere um relatório de todos os produtos da kit sem vendas nas unes com a quantidade de embalagem master ou multiplo",
+    "session_id": "0b96626f-05a9-4ae4-ba8b-43d3fa77020d",
+    "timestamp": "2025-11-09T16:38:03.634443",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.047031
+  },
+  {
+    "query": "quais produtosdo sementos tecidos estão com ruptura na une scr",
+    "session_id": "6612a105-86af-4e37-93d6-1e526e107b81",
+    "timestamp": "2025-11-09T19:35:06.609157",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.042507
+  },
+  {
+    "query": "gere um gráfico de evolução dos segmentos na une bar",
+    "session_id": "6612a105-86af-4e37-93d6-1e526e107b81",
+    "timestamp": "2025-11-09T19:38:09.158532",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.071482
+  },
+  {
+    "query": "gráfico evolução une 261",
+    "session_id": "6612a105-86af-4e37-93d6-1e526e107b81",
+    "timestamp": "2025-11-09T19:39:32.895995",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.067853
+  },
+  {
+    "query": "gere gráfico de evolução segmentos une 261",
+    "session_id": "aa6ccf99-7144-4c10-8813-7e0ca62c4fab",
+    "timestamp": "2025-11-09T21:05:55.345163",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.053908
+  },
+  {
+    "query": "gere um gráfico de pareto do segmento tecidos na une bar",
+    "session_id": "aa6ccf99-7144-4c10-8813-7e0ca62c4fab",
+    "timestamp": "2025-11-09T21:08:32.250675",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.02072
+  },
+  {
+    "query": "gere um gráfico de comparação do segmento tecidos entre todas as unes",
+    "session_id": "aa6ccf99-7144-4c10-8813-7e0ca62c4fab",
+    "timestamp": "2025-11-09T21:15:05.421240",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.023015
+  },
+  {
+    "query": "gere um gráfico pictório das unes",
+    "session_id": "aa6ccf99-7144-4c10-8813-7e0ca62c4fab",
+    "timestamp": "2025-11-09T21:17:23.937687",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.033299
+  }
+]

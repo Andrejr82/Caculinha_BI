@@ -1,0 +1,84 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "me de uma analise compelta do produto 59294 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: cannot access local variable 'json' where it is not associated with a value"
+    },
+    {
+      "role": "user",
+      "content": "me de uma analise compelta do produto 59294 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: cannot access local variable 'json' where it is not associated with a value"
+    },
+    {
+      "role": "user",
+      "content": "me de uma analise compelta do produto 59294 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: cannot access local variable 'json' where it is not associated with a value"
+    },
+    {
+      "role": "user",
+      "content": "ola boa noite tudo bem"
+    },
+    {
+      "role": "assistant",
+      "content": "Olá! Boa noite, tudo ótimo por aqui. Como posso te ajudar hoje?\n\nSe precisar de alguma análise de vendas, consulta de estoque ou quiser gerar algum gráfico, estou à disposição!"
+    },
+    {
+      "role": "user",
+      "content": "me de um relatorio de vendas do produto 59294 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Maximum conversation turns exceeded."
+    },
+    {
+      "role": "user",
+      "content": "realize uma analise de vendas do produto 369947 em todas as lojas. me respondam com um resumo do desempenho,rupturas e excessos"
+    },
+    {
+      "role": "assistant",
+      "content": "Encontrei 20 resultados (mostrando os top 3 abaixo):\n\n| id | UNE | PRODUTO | TIPO |\n|---|---|---|---|\n| 1 | 2586 | 704559 | 2 |\n| 2 | 2586 | 704563 | 2 |\n| 3 | 2586 | 704564 | 2 |\n\n*(...e mais 17 resultados visualizáveis na tabela)*"
+    },
+    {
+      "role": "user",
+      "content": "qual é o estoque do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Encontrei 20 resultados (mostrando os top 3 abaixo):\n\n| UNE_NOME | ESTOQUE_UNE | NOME |\n|---|---|---|\n| NIG | 0E-16 | ALCA BOLSA 7337 DIAM.105M |\n| NIG | 1.0000000000000000 | ALCA BOLSA 7708 DIAM.100M |\n| NIG | 1.0000000000000000 | ALCA BOLSA 7708 DIAM.100M |\n\n*(...e mais 17 resultados visualizáveis na tabela)*"
+    },
+    {
+      "role": "user",
+      "content": "gere um relatório de vendas do produto 25 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Encontrei 20 resultados (mostrando os top 3 abaixo):\n\n| UNE | UNE_NOME | valor |\n|---|---|---|\n| 1685 | 261 | 311492.8361999999 |\n| 2365 | BAR | 271045.3292000005 |\n| 1 | SCR | 206161.63110000032 |\n\n*(...e mais 17 resultados visualizáveis na tabela)*"
+    },
+    {
+      "role": "user",
+      "content": "Gere um relatório de vendas do produto 25"
+    },
+    {
+      "role": "assistant",
+      "content": "Encontrei 20 resultados (mostrando os top 3 abaixo):\n\n| UNE_NOME | VENDA_30DD | ESTOQUE_UNE |\n|---|---|---|\n| ALC | 4915.0 | 2532.0000000000000000 |\n| ALC | 4343.0 | 1321.0000000000000000 |\n| SCR | 4334.0 | 2902.0000000000000000 |\n\n*(...e mais 17 resultados visualizáveis na tabela)*"
+    },
+    {
+      "role": "user",
+      "content": "realize uma analise do produto 25 e me de um relatorio de vendas em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Dados enviados"
+    }
+  ]
+}

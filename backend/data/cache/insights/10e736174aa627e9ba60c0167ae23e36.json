@@ -1,0 +1,34 @@
+{
+  "insights": [
+    {
+      "title": "RUPTURA CRÍTICA: Perda de Vendas Iminente em Produtos de Alto Giro",
+      "description": "Estamos vendendo produtos sem estoque físico, resultando em perda de vendas imediata. O item 'PAPEL 40KG 96X66 120G/M BRANCO' (PRODUTO: 639705) teve uma venda de 909 unidades e possui apenas 1 unidade em estoque (PERC_ABAST: 0.13%). Similarmente, a 'BOBINA TERMICA 80MM' (PRODUTO: 722258) vendeu 1044 unidades e tem um abastecimento de apenas 20.84%.",
+      "category": "alert",
+      "severity": "high",
+      "recommendation": "AÇÃO IMEDIATA: Contatar fornecedores ('DIVERSOS' e 'MAXPRINT') para reposição de emergência ou avaliar transferência de estoque entre filiais hoje para não perder mais vendas."
+    },
+    {
+      "title": "ALERTA: Risco de Ruptura no Produto Campeão de Vendas",
+      "description": "O 'PAPEL CHAMEX A4 75GRS 500FLS' (PRODUTO: 59294) é o item mais vendido, com 4.915 unidades nos últimos 30 dias. No entanto, o estoque atual é de apenas 2.532 unidades. Considerando a média de vendas, a cobertura de estoque é criticamente baixa, arriscando uma ruptura em breve.",
+      "category": "alert",
+      "severity": "medium",
+      "recommendation": "AÇÃO PREVENTIVA: Antecipar o pedido de compra do 'PAPEL CHAMEX A4' e revisar o ponto de ressuprimento para evitar a falta do principal produto da loja."
+    },
+    {
+      "title": "CAPITAL PARADO: Estoque de Alto Volume com Venda Zero",
+      "description": "Produtos com alto volume de estoque não registraram NENHUMA venda nos últimos 30 dias, imobilizando capital. O destaque é o 'ESTOJO RETANGULAR JUVENIL N HYPER' (PRODUTO: 717190) com 403 unidades paradas, representando R$ 1.021,28 em custo (403 un x R$ 2,5342). A 'TESOURA ESCOLAR GF-2026' (PRODUTO: 245645) também está parada com 462 unidades.",
+      "category": "alert",
+      "severity": "medium",
+      "recommendation": "AÇÃO DE GIRO: Criar uma promoção agressiva (ex: 'Leve 2 Pague 1'), montar kits com produtos de alta venda ou posicionar os itens em pontos de maior visibilidade na loja para liberar fluxo de caixa e espaço."
+    },
+    {
+      "title": "OPORTUNIDADE: Concentração de Vendas em Papelaria",
+      "description": "O segmento de 'PAPELARIA' domina completamente as vendas. Apenas os dois produtos principais, 'PAPEL CHAMEX A4' (PRODUTO: 59294) e 'PAPEL 40KG BRANCO' (PRODUTO: 639705), representam a esmagadora maioria das vendas em volume. O 'PAPEL CHAMEX A4' sozinho gerou uma receita de aproximadamente R$ 256.601,80 (8.582 unidades vendidas x R$ 29,90), correspondendo a mais de 30% do faturamento total da loja (R$ 778.095,54).",
+      "category": "alert",
+      "severity": "low",
+      "recommendation": "AÇÃO ESTRATÉGICA: Capitalizar sobre a alta demanda. Criar campanhas de cross-sell oferecendo canetas, pastas e cartuchos de tinta na compra de papel. Expandir o portfólio com variações de papéis (cores, gramaturas) para aumentar o ticket médio desses clientes."
+    }
+  ],
+  "generated_at": "2026-01-28T20:55:51.216110",
+  "cache_key": "10e736174aa627e9ba60c0167ae23e36"
+}

@@ -1,0 +1,21 @@
+{
+  "user_id": "80865f1e-6fb8-4c11-a343-318748b1f099",
+  "history": [
+    {
+      "role": "user",
+      "content": "gere um comparativo de vendas do segmento tecidos entre as unes 3 e 1 com detalhes"
+    },
+    {
+      "role": "user",
+      "content": "preciso de insights ára melhorar as vendas dos tecidos oxford de todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "🚨 **Análise Interrompida**\n\nO sistema detectou um loop persistente mesmo após o aviso de correção. A execução foi parada para evitar consumo excessivo.\n\nPor favor, tente refazer sua pergunta de forma mais específica."
+    },
+    {
+      "role": "user",
+      "content": "quero uma analise do produto 369947 em todas as lojas"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "text",
+  "result": {
+    "mensagem": "Análise de vendas do produto **PAPEL CHAMEX A4 75GRS 500FLS (SKU 59294)**. O produto gerou um total de **R$ 45.048,00** em vendas, com um preço médio de R$ 29,90.\n\nO produto **PAPEL CHAMEX A4 75GRS 500FLS (SKU 59294)** foi o único item ativo na análise, sendo o responsável por todo o faturamento de **R$ 45.048,00**. O preço médio de **R$ 29,90** foi mantido consistentemente em todas as transações. O segmento de **PAPELARIA** foi o único contribuinte para este resultado, demonstrando a forte concentração de vendas neste item específico.\n\n**Insights:**\n- [V] Desempenho robusto do SKU 59294, representando 100% do faturamento analisado.\n- [V] Preço médio de R$ 29,90 estável, indicando consistência na precificação.\n- [!] Alta concentração de vendas em um único produto (SKU 59294) e segmento (PAPELARIA) pode indicar risco de dependência.\n\n**Recomendações:**\n- Monitorar a performance contínua do SKU 59294 para garantir a sustentabilidade das vendas.\n- Avaliar a possibilidade de diversificar o mix de produtos no segmento de PAPELARIA para mitigar riscos de dependência.\n- Investigar se a alta concentração de vendas no SKU 59294 é uma tendência sazonal ou uma oportunidade de expansão para outros produtos similares."
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "user_id": "b71ad1a4-9b2e-4227-927d-209ba7f5a1f2",
+  "history": [
+    {
+      "role": "user",
+      "content": "gere um gráfico de ranking de vendas dos segmentos na une 1"
+    },
+    {
+      "role": "assistant",
+      "content": "Aqui está o gráfico solicitado."
+    }
+  ]
+}

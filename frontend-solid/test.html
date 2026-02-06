@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent BI - Teste de Renderização</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+        background: #1a1a1a;
+        color: white;
+      }
+      .test-box {
+        background: #2a2a2a;
+        border: 2px solid #38bdf8;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      h1 { color: #38bdf8; }
+      .success { color: #4ade80; }
+      .error { color: #ef4444; }
+    </style>
+  </head>
+  <body>
+    <h1>🔍 Teste de Renderização - Agent BI</h1>
+    
+    <div class="test-box">
+      <h2>✅ HTML Básico Funcionando</h2>
+      <p>Se você está vendo isto, o servidor Vite está servindo arquivos HTML corretamente.</p>
+    </div>
+
+    <div class="test-box">
+      <h2>🔍 Testes de JavaScript</h2>
+      <div id="js-test">❌ JavaScript não executado</div>
+    </div>
+
+    <div class="test-box">
+      <h2>🔍 Teste de Módulo ES6</h2>
+      <div id="module-test">❌ Módulo não carregado</div>
+    </div>
+
+    <div class="test-box">
+      <h2>📋 Console do Navegador</h2>
+      <p>Abra o console do navegador (F12) para ver logs detalhados.</p>
+    </div>
+
+    <script>
+      console.log('✅ JavaScript inline funcionando');
+      document.getElementById('js-test').innerHTML = '✅ JavaScript executado com sucesso';
+      document.getElementById('js-test').className = 'success';
+    </script>
+
+    <script type="module">
+      console.log('✅ Módulo ES6 funcionando');
+      document.getElementById('module-test').innerHTML = '✅ Módulo ES6 carregado com sucesso';
+      document.getElementById('module-test').className = 'success';
+      
+      // Testar se conseguimos importar SolidJS
+      try {
+        const solidTest = await import('solid-js/web');
+        console.log('✅ SolidJS importado:', solidTest);
+        
+        const testDiv = document.createElement('div');
+        testDiv.className = 'test-box';
+        testDiv.innerHTML = '<h2 class="success">✅ SolidJS Disponível</h2><p>O SolidJS foi importado com sucesso!</p>';
+        document.body.appendChild(testDiv);
+      } catch (error) {
+        console.error('❌ Erro ao importar SolidJS:', error);
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'test-box';
+        errorDiv.innerHTML = `<h2 class="error">❌ Erro ao Importar SolidJS</h2><pre>${error.message}</pre>`;
+        document.body.appendChild(errorDiv);
+      }
+    </script>
+  </body>
+</html>

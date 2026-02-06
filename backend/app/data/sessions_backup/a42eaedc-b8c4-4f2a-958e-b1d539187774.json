@@ -1,0 +1,53 @@
+{
+  "user_id": "80865f1e-6fb8-4c11-a343-318748b1f099",
+  "history": [
+    {
+      "role": "user",
+      "content": "realize uma analise do produto 369947 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Não foi possível realizar a análise de vendas para o produto 369947 em todas as Unidades de Negócio (UNEs). O sistema retornou um erro indicando que não foi possível processar a agregação de quantidade, possivelmente devido a um problema de tipo de dado na coluna `QUANTIDADE` ou `ESTOQUE_UNE`.\n\nPara prosseguir, seria necessário investigar e corrigir a estrutura dos dados ou a forma como a consulta está sendo realizada."
+    },
+    {
+      "role": "user",
+      "content": "boa noite. gere um gráfico ranking de vendas dos segmentos na une 135"
+    },
+    {
+      "role": "user",
+      "content": "boa noite. realize uma analise do produto 369947 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Error code: 400 - {'error': {'message': \"tool call validation failed: attempted to call tool 'gerar_grafico_universal_v2' which was not in request.tools\", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '<function=gerar_grafico_universal_v2>{\"descricao\":\"vendas por segmento na une 135\",\"tipo_grafico\":\"barra\",\"filtro_une\":135}</function>'}}"
+    },
+    {
+      "role": "user",
+      "content": "realize uma analise do produto 369947 e me aponte onde estou perdendo dinheiro"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Erro: 400 API key expired. Please renew the API key. [reason: \"API_KEY_INVALID\"\ndomain: \"googleapis.com\"\nmetadata {\n  key: \"service\"\n  value: \"generativelanguage.googleapis.com\"\n}\n, locale: \"en-US\"\nmessage: \"API key expired. Please renew the API key.\"\n]"
+    },
+    {
+      "role": "user",
+      "content": "bom dia. qual a previsão de vendas do produto 59294 na une 2365 para os próximos 30 dias ?"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Error code: 400 - {'error': {'message': 'tool call validation failed: parameters for tool gerar_grafico_universal_v2 did not match schema: errors: [`/filtro_produto`: expected string, but got number, `/filtro_une`: expected string, but got number]', 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '<function=gerar_grafico_universal_v2>{\"descricao\":\"previsao de vendas do produto 59294 na une 2365\",\"filtro_une\":2365,\"filtro_produto\":59294,\"limite\":\"30\",\"tipo_grafico\":\"line\"}</function>'}}"
+    },
+    {
+      "role": "user",
+      "content": "qual é o preço do produto 59294"
+    },
+    {
+      "role": "assistant",
+      "content": "Consultando os dados locais...\n\n{\"total_resultados\": 5, \"resultados\": [{\"NOME\": \"PAPEL CHAMEX A4 75GRS 500FLS\", \"ESTOQUE_UNE\": 1041.0, \"PRODUTO\": 59294, \"LIQUIDO_38\": 29.9}, {\"NOME\": \"PAPEL CHAMEX A4 75GRS 500FLS\", \"ESTOQUE_UNE\": 459.0, \"PRODUTO\": 59294, \"LIQUIDO_38\": 29.9}, {\"NOME\": \"PAPEL CHAMEX A4 75GRS 500FLS\", \"ESTOQUE_UNE\": 340.0, \"PRODUTO\": 59294, \"LIQUIDO_38\": 29.9}, {\"NOME\": \"PAPEL CHAMEX A4 75GRS 500FLS\", \"ESTOQUE_UNE\": 732.0, \"PRODUTO\": 59294, \"LIQUIDO_38\": 29.9}, {\"NOME\": \"PAPEL CHAMEX A4 75GRS 500FLS\", \"ESTOQUE_UNE\": 114.0, \"PRODUTO\": 59294, \"LIQUIDO_38\": 29.9}], \"mensagem\": \"Encontrei 5 resultados (mostrando os top 3 abaixo):\\n\\n| NOME | ESTOQUE_UNE | PRODUTO | LIQUIDO_38 |\\n|---|---|---|---|\\n| PAPEL CHAMEX A4 75GRS 500 | 1041.0 | 59294 | 29.9 |\\n| PAPEL CHAMEX A4 75GRS 500 | 459.0 | 59294 | 29.9 |\\n| PAPEL CHAMEX A4 75GRS 500 | 340.0 | 59294 | 29.9 |\\n\\n*(...e mais 2 resultados visualizáveis na tabela)*\"}\n\n*(Gerado via Arquitetura Local - Sem LLM)*"
+    },
+    {
+      "role": "user",
+      "content": "gere um gráfico de vendas do produto 369947 em todas as lojas"
+    }
+  ]
+}

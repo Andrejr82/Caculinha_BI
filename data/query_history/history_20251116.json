@@ -1,0 +1,20 @@
+[
+  {
+    "query": "quais sao os produtos do fabricante kit com ruptura na une scr",
+    "session_id": "3f74e7f9-351d-4eb0-9aa0-fbbd18d9a44e",
+    "timestamp": "2025-11-16T22:38:01.059460",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.227716
+  },
+  {
+    "query": "qual é o seu nome",
+    "session_id": "3f74e7f9-351d-4eb0-9aa0-fbbd18d9a44e",
+    "timestamp": "2025-11-16T22:40:14.075258",
+    "success": false,
+    "results_count": 0,
+    "error": "⏰ **Tempo Limite Excedido**\n\nO processamento da sua consulta demorou muito tempo (>45s).\n\n**Sugestões:**\n- Tente uma consulta mais específica\n- Simplifique a pergunta\n- Verifique sua conexão de internet",
+    "processing_time": 0.0
+  }
+]

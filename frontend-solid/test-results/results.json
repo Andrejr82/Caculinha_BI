@@ -1,0 +1,1394 @@
+{
+  "config": {
+    "configFile": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\playwright.config.ts",
+    "rootDir": "C:/Agente_BI/BI_Solution/frontend-solid/tests/integration",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "test-results/html-report",
+          "open": "never"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "C:/Agente_BI/BI_Solution/frontend-solid/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/Agente_BI/BI_Solution/frontend-solid/tests/integration",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.57.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "auth.spec.ts",
+      "file": "auth.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Autenticação",
+          "file": "auth.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Login com credenciais válidas",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12631,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/.*dashboard/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:3000/login\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    14 × unexpected value \"http://localhost:3000/login\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/.*dashboard/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:3000/login\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    14 × unexpected value \"http://localhost:3000/login\"\u001b[22m\n\n    at C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\auth.spec.ts:23:28",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\auth.spec.ts",
+                          "column": 28,
+                          "line": 23
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 21 |\u001b[39m\n \u001b[90m 22 |\u001b[39m         \u001b[90m// Deve redirecionar para dashboard\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 23 |\u001b[39m         \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[35m/.*dashboard/\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                            \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 24 |\u001b[39m\n \u001b[90m 25 |\u001b[39m         \u001b[90m// Screenshot de sucesso\u001b[39m\n \u001b[90m 26 |\u001b[39m         \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mscreenshot({\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\auth.spec.ts",
+                            "column": 28,
+                            "line": 23
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/.*dashboard/\u001b[39m\nReceived string:  \u001b[31m\"http://localhost:3000/login\"\u001b[39m\nTimeout: 10000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 10000ms\u001b[22m\n\u001b[2m    14 × unexpected value \"http://localhost:3000/login\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 21 |\u001b[39m\n \u001b[90m 22 |\u001b[39m         \u001b[90m// Deve redirecionar para dashboard\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 23 |\u001b[39m         \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[35m/.*dashboard/\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                            \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 24 |\u001b[39m\n \u001b[90m 25 |\u001b[39m         \u001b[90m// Screenshot de sucesso\u001b[39m\n \u001b[90m 26 |\u001b[39m         \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mscreenshot({\u001b[0m\n\u001b[2m    at C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\auth.spec.ts:23:28\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:06:47.033Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\auth-Autenticação-Login-com-credenciais-válidas-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\auth-Autenticação-Login-com-credenciais-válidas-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\auth-Autenticação-Login-com-credenciais-válidas-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\auth.spec.ts",
+                        "column": 28,
+                        "line": 23
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-691269a1d2390fab8252",
+              "file": "auth.spec.ts",
+              "line": 9,
+              "column": 9
+            },
+            {
+              "title": "Login com credenciais inválidas",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4354,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:07:02.077Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-3426e0c32d57e8d7a7fa",
+              "file": "auth.spec.ts",
+              "line": 32,
+              "column": 9
+            },
+            {
+              "title": "Logout funciona",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12071,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:07:06.586Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\auth-Autenticação-Logout-funciona-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\auth-Autenticação-Logout-funciona-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\auth-Autenticação-Logout-funciona-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-e641148d978b94f05920",
+              "file": "auth.spec.ts",
+              "line": 57,
+              "column": 9
+            },
+            {
+              "title": "Redirecionamento quando não autenticado",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2331,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:07:19.876Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "d748ac400d08b85935ef-c5257cac5a608cfecf91",
+              "file": "auth.spec.ts",
+              "line": 79,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "pages.spec.ts",
+      "file": "pages.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Páginas - Usuário Comum",
+          "file": "pages.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Dashboard carrega corretamente",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12017,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:07:22.349Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Dashboard-carrega-corretamente-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Dashboard-carrega-corretamente-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Dashboard-carrega-corretamente-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-c4703ae3abbac4ab2666",
+              "file": "pages.spec.ts",
+              "line": 9,
+              "column": 9
+            },
+            {
+              "title": "Chat carrega",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12027,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:07:35.582Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Chat-carrega-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Chat-carrega-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Chat-carrega-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-a11e71bfb6cc14d82bd7",
+              "file": "pages.spec.ts",
+              "line": 25,
+              "column": 9
+            },
+            {
+              "title": "Rupturas carrega",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11953,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:07:48.671Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Rupturas-carrega-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Rupturas-carrega-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Rupturas-carrega-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-8abec1a844562ce7bf45",
+              "file": "pages.spec.ts",
+              "line": 39,
+              "column": 9
+            },
+            {
+              "title": "Transfers carrega",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11998,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:08:01.679Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Transfers-carrega-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Transfers-carrega-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Transfers-carrega-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-fd2de483d0530ecf6d41",
+              "file": "pages.spec.ts",
+              "line": 52,
+              "column": 9
+            },
+            {
+              "title": "Profile carrega",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11992,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:08:14.740Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Profile-carrega-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Profile-carrega-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Profile-carrega-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-1635f832d596eb2c0727",
+              "file": "pages.spec.ts",
+              "line": 62,
+              "column": 9
+            },
+            {
+              "title": "Help carrega",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12260,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:08:27.788Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Help-carrega-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Help-carrega-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-Help-carrega-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-92b4de3ab0556758921e",
+              "file": "pages.spec.ts",
+              "line": 72,
+              "column": 9
+            },
+            {
+              "title": "About carrega",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12206,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:08:41.114Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-About-carrega-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-About-carrega-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Usuário-Comum-About-carrega-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-0047c4924ee956113f65",
+              "file": "pages.spec.ts",
+              "line": 82,
+              "column": 9
+            }
+          ]
+        },
+        {
+          "title": "Páginas - Admin Only",
+          "file": "pages.spec.ts",
+          "line": 93,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Metrics (Analytics) carrega para admin",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12044,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:08:54.365Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-d6eab-nalytics-carrega-para-admin-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-d6eab-nalytics-carrega-para-admin-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-d6eab-nalytics-carrega-para-admin-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-69c5175fdb548aa129d8",
+              "file": "pages.spec.ts",
+              "line": 94,
+              "column": 9
+            },
+            {
+              "title": "Reports carrega para admin",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12502,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:09:08.088Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Reports-carrega-para-admin-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Reports-carrega-para-admin-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Reports-carrega-para-admin-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-9d8f65770683c9099bcb",
+              "file": "pages.spec.ts",
+              "line": 104,
+              "column": 9
+            },
+            {
+              "title": "Admin carrega para admin",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11983,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:09:21.716Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Admin-carrega-para-admin-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Admin-carrega-para-admin-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Admin-carrega-para-admin-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-0ce3b519410e9eaab8a0",
+              "file": "pages.spec.ts",
+              "line": 114,
+              "column": 9
+            },
+            {
+              "title": "Diagnostics carrega para admin",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12003,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.adminPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:59:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:09:34.763Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Diagnostics-carrega-para-admin-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Diagnostics-carrega-para-admin-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\pages-Páginas---Admin-Only-Diagnostics-carrega-para-admin-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "9bb6bb2ed574bebb3c58-ec5a22baf9d2d50feee8",
+              "file": "pages.spec.ts",
+              "line": 124,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "performance.spec.ts",
+      "file": "performance.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Performance",
+          "file": "performance.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Dashboard carrega em menos de 5s",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12126,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:09:48.306Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Dashboard-carrega-em-menos-de-5s-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Dashboard-carrega-em-menos-de-5s-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Dashboard-carrega-em-menos-de-5s-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "b15d6361b2fc38288977-235c167990bc30c94cec",
+              "file": "performance.spec.ts",
+              "line": 9,
+              "column": 9
+            },
+            {
+              "title": "Chat carrega em menos de 3s",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 11918,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:10:01.523Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Chat-carrega-em-menos-de-3s-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Chat-carrega-em-menos-de-3s-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Chat-carrega-em-menos-de-3s-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "b15d6361b2fc38288977-6e3ff3c632efdbb5c983",
+              "file": "performance.spec.ts",
+              "line": 23,
+              "column": 9
+            },
+            {
+              "title": "Sem erros críticos no console",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 15,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 12337,
+                      "error": {
+                        "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================",
+                        "stack": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\n    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)",
+                        "location": {
+                          "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                          "column": 16,
+                          "line": 44
+                        },
+                        "snippet": "\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                            "column": 16,
+                            "line": 44
+                          },
+                          "message": "TimeoutError: page.waitForURL: Timeout 10000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/dashboard\" until \"load\"\n============================================================\n\n\u001b[90m   at \u001b[39msetup.ts:44\n\n\u001b[0m \u001b[90m 42 |\u001b[39m\n \u001b[90m 43 |\u001b[39m     \u001b[90m// Aguardar redirecionamento\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 44 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForURL(\u001b[32m'**/dashboard'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m10000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 45 |\u001b[39m }\n \u001b[90m 46 |\u001b[39m\n \u001b[90m 47 |\u001b[39m \u001b[90m/**\u001b[39m\u001b[0m\n\u001b[2m    at login (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:44:16)\u001b[22m\n\u001b[2m    at Object.authenticatedPage (C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts:53:9)\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-17T18:10:14.500Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Sem-erros-críticos-no-console-chromium\\test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Sem-erros-críticos-no-console-chromium\\video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\test-results\\performance-Performance-Sem-erros-críticos-no-console-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Agente_BI\\BI_Solution\\frontend-solid\\tests\\integration\\setup.ts",
+                        "column": 16,
+                        "line": 44
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "b15d6361b2fc38288977-a62aa36bce2897216761",
+              "file": "performance.spec.ts",
+              "line": 36,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-17T18:06:45.707Z",
+    "duration": 221357.384,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 16,
+    "flaky": 0
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "Analise detalhadamente o desempenho de vendas do produto \"TNT 40GRS 100%O LG 1.40 029 AZUL ROYAL\" (SKU: 369944)"
+    },
+    {
+      "role": "assistant",
+      "content": "O produto \"TNT 40GRS 100%O LG 1.40 029 AZUL ROYAL\" (SKU: 369944) teve um total de 3 vendas nos últimos 30 dias."
+    },
+    {
+      "role": "user",
+      "content": "Analise detalhadamente o desempenho de vendas do produto \"PAPEL CHAMEX A4 75GRS 500FLS\" (SKU: 59294)"
+    },
+    {
+      "role": "assistant",
+      "content": "O produto \"PAPEL CHAMEX A4 75GRS 500FLS\" (SKU: 59294) teve um total de 27 vendas nos últimos 30 dias."
+    },
+    {
+      "role": "user",
+      "content": "Quais produtos são do NOMEFABRICANTE igual a NESTLE?"
+    },
+    {
+      "role": "assistant",
+      "content": "Encontrei 20 produtos do fabricante NESTLE. Quer que eu liste todos?"
+    }
+  ]
+}

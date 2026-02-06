@@ -1,0 +1,90 @@
+[tool.poetry]
+name = "agent-bi-backend"
+version = "1.0.0"
+description = "Backend FastAPI para Agent Solution BI"
+authors = ["André <andre@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+pydantic = "^2.11.0"
+pydantic-settings = "^2.10.0"
+python-dotenv = "^1.1.0"
+python-jose = {extras = ["cryptography"], version = "^3.5.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+python-multipart = "^0.0.20"
+sqlalchemy = "^2.0.43"
+alembic = "^1.16.4"
+aioodbc = "^0.5.0"
+pyodbc = "^5.2.0"
+redis = "^5.2.0"
+pandas = "^2.2.2"
+numpy = "^1.26.4"
+structlog = "^25.5.0"
+sentry-sdk = {extras = ["fastapi"], version = "^2.35.0"}
+prometheus-client = "^0.22.0"
+slowapi = "^0.1.9"
+httpx = "^0.28.0"
+email-validator = "^2.0.0"
+polars = "^1.35.2"
+dask = {extras = ["dataframe"], version = "^2025.11.0"}
+jinja2 = "^3.1.6"
+pyarrow-hotfix = "^0.7"
+langchain-google-genai = "^2.0.5"
+langgraph = "^0.2.55"
+aiosqlite = "^0.21.0"
+langchain = "^0.3.13"
+langchain-community = "^0.3.13"
+google-generativeai = "^0.8.5"
+plotly = "^6.5.0"
+kaleido = "^1.2.0"
+matplotlib = "^3.10.7"
+seaborn = "^0.13.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+pytest-asyncio = "^0.25.0"
+pytest-cov = "^6.2.0"
+faker = "^33.1.0"
+factory-boy = "^3.3.0"
+ruff = "^0.9.0"
+black = "^25.1.0"
+mypy = "^1.14.0"
+pre-commit = "^4.0.0"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=app --cov-report=term-missing --cov-report=html"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+    "ignore:.*pydantic.*:DeprecationWarning"
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

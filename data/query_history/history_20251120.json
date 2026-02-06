@@ -1,0 +1,263 @@
+[
+  {
+    "query": "olá tudo bem",
+    "session_id": "a85e09e4-3975-4da5-923f-2aca05297a74",
+    "timestamp": "2025-11-20T01:33:36.815391",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.064612
+  },
+  {
+    "query": "ola",
+    "session_id": "a85e09e4-3975-4da5-923f-2aca05297a74",
+    "timestamp": "2025-11-20T01:36:03.979230",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.072707
+  },
+  {
+    "query": "ola tudo bem",
+    "session_id": "df7d49d3-d0af-49c3-97e2-2f3b3ed1e7cc",
+    "timestamp": "2025-11-20T01:36:42.334072",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.049539
+  },
+  {
+    "query": "e aí tudo bem",
+    "session_id": "4e553715-9570-4342-bebb-b421527da3bf",
+    "timestamp": "2025-11-20T01:54:04.314354",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.037029
+  },
+  {
+    "query": "preciso de um gráfico de vendas totais de todas as unes",
+    "session_id": "4e553715-9570-4342-bebb-b421527da3bf",
+    "timestamp": "2025-11-20T01:54:53.455501",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.031066
+  },
+  {
+    "query": "quero um gráfico de barras, do ano todo",
+    "session_id": "4e553715-9570-4342-bebb-b421527da3bf",
+    "timestamp": "2025-11-20T01:55:30.783671",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.035723
+  },
+  {
+    "query": "gere um gráfico de vendas de todas as unes do ano todo",
+    "session_id": "f7010296-6701-4f6e-91da-ed615e62e149",
+    "timestamp": "2025-11-20T02:03:10.806142",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.032428
+  },
+  {
+    "query": "do ano de 2025",
+    "session_id": "f7010296-6701-4f6e-91da-ed615e62e149",
+    "timestamp": "2025-11-20T02:03:51.353899",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.035143
+  },
+  {
+    "query": "quero que gere um gráfico de vendas totail de barra ",
+    "session_id": "f7010296-6701-4f6e-91da-ed615e62e149",
+    "timestamp": "2025-11-20T02:04:22.151610",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.033295
+  },
+  {
+    "query": "vamos direto ao ponto vc gera pu nao o gráfico ",
+    "session_id": "f7010296-6701-4f6e-91da-ed615e62e149",
+    "timestamp": "2025-11-20T02:04:58.840476",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.040503
+  },
+  {
+    "query": "gere gráfico de vendas totais de todas as unes",
+    "session_id": "f7010296-6701-4f6e-91da-ed615e62e149",
+    "timestamp": "2025-11-20T02:05:34.737626",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.033972
+  },
+  {
+    "query": "ola boa noite, me chamo andre e preciso que gere um gráfico de barras de vendas na une scr",
+    "session_id": "9d8d3f2a-9e3b-4662-9211-967cf3dcdedb",
+    "timestamp": "2025-11-20T02:24:01.079187",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 14.057792
+  },
+  {
+    "query": "e ai tudo bem",
+    "session_id": "9d8d3f2a-9e3b-4662-9211-967cf3dcdedb",
+    "timestamp": "2025-11-20T02:24:55.867766",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.048382
+  },
+  {
+    "query": "tudo bem tambem. estou precisando de umgráfico de barras de todos os segmentos da une scr",
+    "session_id": "9d8d3f2a-9e3b-4662-9211-967cf3dcdedb",
+    "timestamp": "2025-11-20T02:25:40.448196",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.054767
+  },
+  {
+    "query": "utilize as melhores métricas e me gere este gráfico",
+    "session_id": "9d8d3f2a-9e3b-4662-9211-967cf3dcdedb",
+    "timestamp": "2025-11-20T02:26:28.325750",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 14.051202
+  },
+  {
+    "query": "ola bom dia tudo bem",
+    "session_id": "d648c221-11dd-4253-947a-2b4f611eef15",
+    "timestamp": "2025-11-20T10:04:07.834453",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.093842
+  },
+  {
+    "query": "gráfico de barras de todos os segmentos da une scr",
+    "session_id": "d648c221-11dd-4253-947a-2b4f611eef15",
+    "timestamp": "2025-11-20T10:10:17.702963",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 49.967594
+  },
+  {
+    "query": "bom dia, tudo bem.",
+    "session_id": "d648c221-11dd-4253-947a-2b4f611eef15",
+    "timestamp": "2025-11-20T10:54:48.936954",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.028597
+  },
+  {
+    "query": "estou bem, mas preocupado com as vendas de chamex nas unes, preciso da sua ajuda. gere um gráfico que eu cnsiga comparar as vendaas em todas  as unes",
+    "session_id": "d648c221-11dd-4253-947a-2b4f611eef15",
+    "timestamp": "2025-11-20T10:56:05.463249",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 38.046552
+  },
+  {
+    "query": "gere esse gráfico em outro modelo",
+    "session_id": "d648c221-11dd-4253-947a-2b4f611eef15",
+    "timestamp": "2025-11-20T11:04:25.498773",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 38.04771
+  },
+  {
+    "query": "ola bom dia",
+    "session_id": "a8f8703d-dbd5-44b5-9168-9554369eb90a",
+    "timestamp": "2025-11-20T11:18:44.024050",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 14.050697
+  },
+  {
+    "query": "olá bom dia tudo bem",
+    "session_id": "f7312053-2e4b-443b-b000-41f874f00f00",
+    "timestamp": "2025-11-20T11:52:39.372040",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.034534
+  },
+  {
+    "query": "boa tadre. estou preocupado com o abstecimento dos TNTs nas lojas",
+    "session_id": "539582f9-7201-4e56-837e-544615b15588",
+    "timestamp": "2025-11-20T12:48:17.956952",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.088801
+  },
+  {
+    "query": "quero saber se as entregas nas lojas do tnt branco e preto está ok, sem ruptura",
+    "session_id": "539582f9-7201-4e56-837e-544615b15588",
+    "timestamp": "2025-11-20T12:49:16.239102",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.066366
+  },
+  {
+    "query": "quero das lojas bar,261 e scr",
+    "session_id": "539582f9-7201-4e56-837e-544615b15588",
+    "timestamp": "2025-11-20T12:51:35.338051",
+    "success": false,
+    "results_count": 0,
+    "error": "'list' object has no attribute 'get'",
+    "processing_time": 20.186687
+  },
+  {
+    "query": "quero das lojas bar,261 e scr",
+    "session_id": "539582f9-7201-4e56-837e-544615b15588",
+    "timestamp": "2025-11-20T12:51:59.068948",
+    "success": false,
+    "results_count": 0,
+    "error": "'list' object has no attribute 'get'",
+    "processing_time": 0.006522
+  },
+  {
+    "query": "quero das lojas bar,261 e scr",
+    "session_id": "539582f9-7201-4e56-837e-544615b15588",
+    "timestamp": "2025-11-20T12:52:58.090502",
+    "success": false,
+    "results_count": 0,
+    "error": "⏰ **Tempo Limite Excedido**\n\nO processamento da sua consulta demorou muito tempo (>45s).\n\n**Sugestões:**\n- Tente uma consulta mais específica\n- Simplifique a pergunta\n- Verifique sua conexão de internet",
+    "processing_time": 0.0
+  },
+  {
+    "query": "podemos continuar sobre os tnts?",
+    "session_id": "539582f9-7201-4e56-837e-544615b15588",
+    "timestamp": "2025-11-20T12:57:21.094280",
+    "success": false,
+    "results_count": 0,
+    "error": "'list' object has no attribute 'get'",
+    "processing_time": 28.049975
+  },
+  {
+    "query": "Análise de sazonalidade: quais meses vendem mais no segmento FESTAS?",
+    "session_id": "cb1a6cd3-e22e-4a48-a24b-e274b3149f5a",
+    "timestamp": "2025-11-20T13:02:24.616556",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 43.305741
+  }
+]

@@ -1,0 +1,62 @@
+C:\Users\AndrÚ\AppData\Roaming\Python\Python311\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+[OK] Tool 'gerar_grafico_universal_v2' importada com sucesso.
+[OK] Service 'QueryInterpreter' importada com sucesso.
+[START] Iniciando VerificaþÒo de Ferramentas (Intenþ§es)...
+Session ID gerado: c175a0a2-f6e5-47b1-a574-c98fe19e5e56
+
+--- Testando: VENDAS ---
+Query: 'Quanto vendemos ontem?'
+Intent Detectado: IntentType.VENDAS (Conf: 0.95)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+
+--- Testando: ESTOQUE ---
+Query: 'Qual o estoque de tecidos?'
+Intent Detectado: IntentType.ESTOQUE (Conf: 0.85)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+
+--- Testando: RUPTURA ---
+Query: 'Quais produtos estÒo em ruptura crÝtica?'
+Intent Detectado: IntentType.RUPTURA (Conf: 0.9)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+
+--- Testando: COMPARACAO ---
+Query: 'Compare vendas entre loja 1685 e 2365'
+Intent Detectado: IntentType.VENDAS (Conf: 0.9)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+
+--- Testando: METADADOS ---
+Query: 'Quais colunas tem no banco?'
+Intent Detectado: IntentType.VENDAS (Conf: 0.95)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+
+--- Testando: GRAFICO ---
+Query: 'Gere um grßfico de vendas por segmento'
+Intent Detectado: IntentType.VENDAS (Conf: 0.9)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+Testando geraþÒo de grßfico...
+[OK] ChartGenerator acionado (Te¾rico)
+
+--- Testando: VISUALIZACAO_EXPLICITA ---
+Query: 'Ver painel de vendas'
+Intent Detectado: IntentType.VENDAS (Conf: 0.9)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+Testando geraþÒo de grßfico...
+[OK] ChartGenerator acionado (Te¾rico)
+
+[END] VerificaþÒo ConcluÝda.

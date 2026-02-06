@@ -1,0 +1,166 @@
+{
+  "timestamp": "2025-11-08T16:30:27.528735",
+  "usuario": "admin",
+  "modo": "1",
+  "unes_origem": [
+    1
+  ],
+  "unes_destino": [
+    35,
+    520,
+    1685,
+    2137
+  ],
+  "produtos": {
+    "699832_UNE1": {
+      "produto": {
+        "codigo": 699832,
+        "nome_produto": "PONTEIRA METAL SINO ASPIRAL J207 14.5MM NIQUEL",
+        "estoque_atual": "38.0000000000000000",
+        "venda_30_d": 0.0,
+        "preco_38_percent": "7.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 1,
+      "distribuicao": {
+        "11": 37
+      },
+      "total": 37,
+      "preco": "7.4900",
+      "valor_total_item": 277.13,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 37
+      }
+    },
+    "699832_UNE3": {
+      "produto": {
+        "codigo": 699832,
+        "nome_produto": "PONTEIRA METAL SINO ASPIRAL J207 14.5MM NIQUEL",
+        "estoque_atual": "14.0000000000000000",
+        "venda_30_d": 2.0,
+        "preco_38_percent": "7.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 3,
+      "distribuicao": {
+        "11": 13
+      },
+      "total": 13,
+      "preco": "7.4900",
+      "valor_total_item": 97.37,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 13
+      }
+    },
+    "699832_UNE35": {
+      "produto": {
+        "codigo": 699832,
+        "nome_produto": "PONTEIRA METAL SINO ASPIRAL J207 14.5MM NIQUEL",
+        "estoque_atual": "4.0000000000000000",
+        "venda_30_d": 1.0,
+        "preco_38_percent": "7.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 35,
+      "distribuicao": {
+        "11": 2
+      },
+      "total": 2,
+      "preco": "7.4900",
+      "valor_total_item": 14.98,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 2
+      }
+    },
+    "699832_UNE81": {
+      "produto": {
+        "codigo": 699832,
+        "nome_produto": "PONTEIRA METAL SINO ASPIRAL J207 14.5MM NIQUEL",
+        "estoque_atual": "14.0000000000000000",
+        "venda_30_d": 1.0,
+        "preco_38_percent": "7.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 81,
+      "distribuicao": {
+        "11": 10
+      },
+      "total": 10,
+      "preco": "7.4900",
+      "valor_total_item": 74.9,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 10
+      }
+    },
+    "699832_UNE135": {
+      "produto": {
+        "codigo": 699832,
+        "nome_produto": "PONTEIRA METAL SINO ASPIRAL J207 14.5MM NIQUEL",
+        "estoque_atual": "6.0000000000000000",
+        "venda_30_d": 3.0,
+        "preco_38_percent": "7.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 135,
+      "distribuicao": {
+        "11": 4
+      },
+      "total": 4,
+      "preco": "7.4900",
+      "valor_total_item": 29.96,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 4
+      }
+    },
+    "117722_UNE3578": {
+      "produto": {
+        "codigo": 117722,
+        "nome_produto": "FITA CETIM  10MTS N.02 11MM  39 PRETO",
+        "estoque_atual": "12.0000000000000000",
+        "venda_30_d": 18.0,
+        "preco_38_percent": "2.6500",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 3578,
+      "distribuicao": {
+        "11": 6
+      },
+      "total": 6,
+      "preco": "2.6500",
+      "valor_total_item": 15.899999999999999,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 6
+      }
+    }
+  },
+  "total_produtos": 6,
+  "total_itens": 72,
+  "total_valor": 510.23999999999995,
+  "prioridade": "Normal",
+  "observacoes": "Atenção a embalagens para envio",
+  "status": "PENDENTE"
+}

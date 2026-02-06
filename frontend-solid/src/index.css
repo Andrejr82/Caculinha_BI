@@ -1,0 +1,285 @@
+/* src/index.css */
+/* Import migrated globals from React frontend */
+@import "./migrated-components/globals.css";
+
+:root {
+  /* ===== LOJAS CAÇULA - LIGHT MODE ===== */
+  /* 40 anos de tradição, design limpo e profissional */
+
+  /* Backgrounds - Light Mode */
+  --background: #FAFAFA; /* Cinza muito claro, quase branco */
+  --foreground: #2D2D2D; /* Cinza escuro quente (textos principais) */
+
+  /* Cards e Popovers */
+  --card: #FFFFFF; /* Branco puro para cards */
+  --card-foreground: #2D2D2D; /* Cinza escuro quente */
+  --popover: #FFFFFF; /* Branco puro */
+  --popover-foreground: #2D2D2D; /* Cinza escuro quente */
+
+  /* Primary (Verde Caçula - Identidade Visual) */
+  --primary: #78B928; /* Verde vibrante da marca */
+  --primary-foreground: #FFFFFF; /* Branco para contraste */
+
+  /* Secondary */
+  --secondary: #F5F5F5; /* Cinza claro para backgrounds secundários */
+  --secondary-foreground: #2D2D2D; /* Cinza escuro quente */
+
+  /* Muted (Elementos desativados/secundários) */
+  --muted: #F5F5F5; /* Cinza claro */
+  --muted-foreground: #6B6B6B; /* Cinza médio para textos secundários */
+
+  /* Accent (Dourado/Bronze - 40 anos) */
+  --accent: #C9A961; /* Dourado/Bronze (tradição) */
+  --accent-foreground: #2D2D2D; /* Cinza escuro quente */
+
+  /* Destructive (Vermelho terroso) */
+  --destructive: #B94343; /* Vermelho terroso, menos saturado */
+  --destructive-foreground: #FFFFFF; /* Branco */
+
+  /* Status/Feedback Colors */
+  --success: #2D7A3E; /* Verde oliva escuro para success */
+  --success-foreground: #FFFFFF; /* Branco */
+  --warning: #CC8B3C; /* Laranja terroso para warnings */
+  --warning-foreground: #2D2D2D; /* Cinza escuro */
+  --info: #5B7B9A; /* Azul acinzentado para informações */
+  --info-foreground: #FFFFFF; /* Branco */
+
+  /* Borders e Inputs */
+  --border: #E5E5E5; /* Cinza claro para bordas */
+  --input: #FFFFFF; /* Branco para inputs (com border) */
+  --ring: #78B928; /* Verde Caçula para focus ring */
+
+  /* Sidebar (levemente diferente do background) */
+  --sidebar-background: #F8F8F8; /* Cinza muito claro */
+  --sidebar-foreground: #2D2D2D; /* Cinza escuro quente */
+  --sidebar-primary: #78B928; /* Verde Caçula */
+  --sidebar-accent: #F5F5F5; /* Cinza claro */
+
+  /* Charts (Paleta Pétalas Caçula) */
+  --chart-1: #78B928; /* Verde Caçula (A) */
+  --chart-2: #00AEEF; /* Azul Ciano (B) */
+  --chart-3: #662D91; /* Roxo (C) */
+  --chart-4: #ED1C24; /* Vermelho (D) */
+  --chart-5: #F7941E; /* Laranja (E) */
+
+  /* Radius (mantém 8px) */
+  --radius: 0.5rem;
+}
+
+/* ===== GLOBAL SCROLLBAR CUSTOMIZATION ===== */
+/* Modern thin scrollbar for Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px; /* Critical for horizontal scrollbar visibility */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #E0E0E0; /* Light gray for subtle appearance */
+  border-radius: 20px;
+  border: 2px solid transparent; /* Creates padding effect */
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--primary); /* Highlight on hover */
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #E0E0E0 transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Utility Classes (Minimal Tailwind replacement) */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+.p-8 { padding: 2rem; }
+.w-full { width: 100%; }
+.h-screen { height: 100vh; }
+.h-full { height: 100%; }
+.min-h-full { min-height: 100%; }
+.text-center { text-align: center; }
+.font-bold { font-weight: 700; }
+.text-sm { font-size: 0.875rem; }
+.text-lg { font-size: 1.125rem; }
+.text-xl { font-size: 1.25rem; }
+.text-muted { color: var(--muted-foreground); }
+.text-primary { color: var(--primary); }
+.text-destructive { color: var(--destructive); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-info { color: var(--info); }
+.text-accent { color: var(--accent); }
+.bg-card { background-color: var(--card); }
+.bg-background { background-color: var(--background); }
+.border { border: 1px solid var(--border); }
+.rounded { border-radius: var(--radius); }
+.shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1); }
+
+/* Components */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: none;
+  transition: background 0.2s;
+  outline: none;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary {
+  background-color: var(--primary); /* Marrom Caçula */
+  color: var(--primary-foreground); /* Branco */
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: #5A8D1E; /* Primary Dark - hover (Verde Escuro) */
+}
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+.btn-outline:hover:not(:disabled) {
+  background-color: var(--accent); /* Dourado */
+  border-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.input {
+  display: flex;
+  height: 2.5rem;
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--input); /* Darker bg for input */
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  outline: none;
+}
+.input:focus { border-color: var(--ring); }
+
+.label { font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; display: block; }
+
+/* Layout - LIGHT MODE CAÇULA */
+.app-layout { display: grid; height: 100vh; }
+.sidebar {
+  background-color: var(--sidebar-background); /* Light gray */
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Ensure it fills the grid cell */
+  white-space: nowrap; /* Prevent text wrapping during transition */
+}
+
+/* Custom Scrollbar Utilities */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+}
+.nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  color: var(--muted-foreground); text-decoration: none;
+  margin: 4px 12px; border-radius: var(--radius);
+  transition: all 0.2s;
+}
+.nav-item:hover, .nav-item.active {
+  background-color: var(--sidebar-accent);
+  color: var(--sidebar-primary); /* Marrom Caçula */
+}
+.header {
+  height: 60px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 2rem;
+  background: rgba(250,250,250,0.95); /* Light background with transparency */
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05); /* Subtle shadow */
+}
+.content-scroll { flex: 1; overflow-y: auto; padding: 2rem; }
+
+/* Additional Utility Classes for Login */
+.min-h-screen { min-height: 100vh; }
+.max-w-md { max-width: 28rem; }
+.space-y-2 > * + * { margin-top: 0.5rem; }
+.space-y-4 > * + * { margin-top: 1rem; }
+.space-y-6 > * + * { margin-top: 1.5rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-xs { font-size: 0.75rem; line-height: 1rem; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.rounded-lg { border-radius: 0.5rem; }
+.rounded-2xl { border-radius: 1rem; }
+.shadow-lg { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
+.shadow-2xl { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25); }
+.backdrop-blur-xl { backdrop-filter: blur(24px); }
+.bg-clip-text { -webkit-background-clip: text; background-clip: text; }
+.text-transparent { color: transparent; }
+.animate-spin { animation: spin 1s linear infinite; }
+.animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+.duration-200 { transition-duration: 200ms; }
+.cursor-not-allowed { cursor: not-allowed; }
+.pointer-events-none { pointer-events: none; }
+.overflow-hidden { overflow: hidden; }
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+.absolute { position: absolute; }
+.relative { position: relative; }
+.inline-flex { display: inline-flex; }
+.flex-shrink-0 { flex-shrink: 0; }
+.flex-1 { flex: 1 1 0%; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

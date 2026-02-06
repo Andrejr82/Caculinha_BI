@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-12-27T15:26:04.013930",
+  "query": "Vendas da UNE 999",
+  "response": {
+    "type": "error",
+    "content": "UNE nao encontrada"
+  },
+  "feedback_type": "negative",
+  "user_comment": "UNE nao existe no sistema",
+  "confidence_score": 0.45,
+  "review_status": "pending",
+  "priority": "high"
+}

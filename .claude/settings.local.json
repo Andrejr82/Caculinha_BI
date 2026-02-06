@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python kill_port.py:*)",
+      "mcp__context7__resolve-library-id",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker exec:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(C:Agente_BIBI_Solutionbackend.venvScriptspython.exe:*)",
+      "Bash(npm run dev:backend:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0MjkxYjc5ZC1kNDNkLTRhMDktYTg4YS1jNTFkMmNiZmZjN2YiLCJ1c2VybmFtZSI6ImFkbWluIiwicm9sZSI6ImFkbWluIiwiYWxsb3dlZF9zZWdtZW50cyI6W10sImV4cCI6MTc2NjIzNjI1OSwidHlwZSI6ImFjY2VzcyJ9.rlDnxK0Pj5wL6SjgSp59HR3gjrCOZzyRrErK4rNIP6I\")",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

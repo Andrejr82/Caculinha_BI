@@ -1,0 +1,75 @@
+{
+    "examples": [
+        {
+            "category": "vendas_analise",
+            "user": "Quais categorias venderam mais no último mês?",
+            "assistant_reasoning": "Usuário quer ranking de categorias por faturamento. Vou consultar vendas dos últimos 30 dias agrupando por NOMESEGMENTO.",
+            "tool_calls": [
+                {
+                    "tool": "consultar_dados_flexivel",
+                    "parameters": {
+                        "agregacao": "SUM",
+                        "coluna_agregacao": "VENDA_30DD",
+                        "agrupar_por": "[\"NOMESEGMENTO\"]",
+                        "ordenar_por": "valor",
+                        "limite": "10"
+                    }
+                }
+            ],
+            "assistant_response": "📊 **TOP 5 CATEGORIAS (Últimos 30 dias)**\n\n| Categoria | Faturamento | Mix SKUs |\n|-----------|-------------|----------|\n| Papelaria | R$ 1.247.890 | 234 |\n| Tecidos | R$ 892.450 | 156 |\n| Utilidades | R$ 673.200 | 189 |\n| Brinquedos | R$ 456.100 | 98 |\n| Eletrônicos | R$ 321.800 | 67 |\n\n🟡 **INSIGHT:** Papelaria e Tecidos representam 58% do faturamento. Recomendo análise de ruptura prioritária nesses segmentos."
+        },
+        {
+            "category": "ruptura_identificacao",
+            "user": "Temos produtos em risco de ruptura?",
+            "assistant_reasoning": "Identificar SKUs com cobertura crítica usando ferramenta especializada.",
+            "tool_calls": [
+                {
+                    "tool": "encontrar_rupturas_criticas"
+                }
+            ],
+            "assistant_response": "🔴 **ALERTA: 47 SKUs em Ruptura Iminente**\n\n**CRÍTICOS (< 3 dias) - AÇÃO IMEDIATA:**\n1. SKU 12345 - Caderno 200 Fls (Loja 5)\n   - Cobertura: 2.1 dias | Estoque: 120un | CD: 800un\n   - 💡 Transferir 280un HOJE\n\n2. SKU 67890 - Caneta Azul (Loja 3)\n   - Cobertura: 1.8 dias | Estoque: 45un | CD: 2.000un\n   - 💡 Transferir 500un HOJE\n\n**MONITORAR (3-7 dias):**\n- 8 SKUs em Papelaria\n- 5 SKUs em Tecidos\n\n✅ **PRÓXIMOS PASSOS:** Execute transferências prioritárias para evitar perda de vendas."
+        },
+        {
+            "category": "grafico",
+            "user": "Mostre um gráfico das vendas por segmento",
+            "assistant_reasoning": "Usuário quer visualização. Usar gerar_grafico_universal_v2 para criar gráfico de barras.",
+            "tool_calls": [
+                {
+                    "tool": "gerar_grafico_universal_v2",
+                    "parameters": {
+                        "tipo_grafico": "barras",
+                        "titulo": "Vendas por Segmento",
+                        "eixo_x": "NOMESEGMENTO",
+                        "eixo_y": "VENDA_30DD"
+                    }
+                }
+            ],
+            "assistant_response": "📈 Gerei o gráfico de vendas por segmento. Papelaria lidera com R$ 1.2M, seguido por Tecidos com R$ 890K."
+        },
+        {
+            "category": "produto_especifico",
+            "user": "Analise o produto 369947 em todas as lojas",
+            "assistant_reasoning": "Usuário quer análise multi-loja de um SKU específico. Usar analisar_produto_todas_lojas.",
+            "tool_calls": [
+                {
+                    "tool": "analisar_produto_todas_lojas",
+                    "parameters": {
+                        "codigo_produto": "369947"
+                    }
+                }
+            ],
+            "assistant_response": "📊 **ANÁLISE PRODUTO 369947 - CADERNO TILIBRA 200 FLS**\n\n| Loja | Estoque | Venda 30d | Cobertura | Status |\n|------|---------|-----------|-----------|--------|\n| Loja 1 | 45 | 120 | 11 dias | 🟢 Saudável |\n| Loja 3 | 12 | 89 | 4 dias | 🟡 Alerta |\n| Loja 5 | 0 | 67 | 0 dias | 🔴 Ruptura |\n\n**Recomendação:** Transferir 200un do CD para Loja 5 URGENTE."
+        },
+        {
+            "category": "schema_discovery",
+            "user": "Quais colunas estão disponíveis para análise?",
+            "assistant_reasoning": "Usuário quer conhecer o schema de dados. Usar consultar_dicionario_dados.",
+            "tool_calls": [
+                {
+                    "tool": "consultar_dicionario_dados"
+                }
+            ],
+            "assistant_response": "📋 **COLUNAS DISPONÍVEIS (admmat.parquet)**\n\n**Identificação:**\n- CODIGO: Código do produto (SKU)\n- NOME: Descrição do produto\n- UNE: Código da loja\n\n**Categorização:**\n- NOMESEGMENTO: Segmento (Papelaria, Tecidos, etc)\n- NOMEGRUPO: Grupo de produtos\n\n**Métricas:**\n- VENDA_30DD: Vendas últimos 30 dias\n- ESTOQUE: Quantidade em estoque\n- LIQUIDO_38: Preço de venda\n\nPosso fazer análises combinando qualquer uma dessas colunas."
+        }
+    ]
+}
