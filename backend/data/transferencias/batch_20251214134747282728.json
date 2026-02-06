@@ -1,0 +1,30 @@
+{
+    "batch_id": "batch_20251214134747282728",
+    "modo": "UNE - UNE",
+    "solicitante_id": "admin",
+    "timestamp": "2025-12-14T13:47:47.282728",
+    "total_transferencias": 3,
+    "transferencias": [
+        {
+            "produto_id": 187331,
+            "une_origem": 3,
+            "une_destino": 1685,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 711648,
+            "une_origem": 3,
+            "une_destino": 1685,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 198167,
+            "une_origem": 3,
+            "une_destino": 1685,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        }
+    ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "agent-bi-solution",
+  "version": "1.0.0",
+  "description": "Agent Solution BI - Unified Development Environment",
+  "private": true,
+  "scripts": {
+    "dev": "npm run clean:ports && concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && .venv\\Scripts\\python.exe -m uvicorn main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:frontend": "cd frontend-solid && pnpm dev",
+    "clean:ports": "kill-port 8000 3000",
+    "install": "npm run install:backend && npm run install:frontend",
+    "install:backend": "cd backend && python -m pip install -r requirements.txt",
+    "install:frontend": "cd frontend-solid && pnpm install",
+    "validate:env": "node -e \"require('fs').existsSync('backend/.env') ? console.log('✓ backend/.env exists') : (console.error('✗ backend/.env missing'), process.exit(1))\"",
+    "test:backend": "cd backend && .venv\\Scripts\\python.exe -m pytest",
+    "lint:backend": "cd backend && .venv\\Scripts\\python.exe -m ruff check app/",
+    "format:backend": "cd backend && .venv\\Scripts\\python.exe -m black app/"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "kill-port": "^2.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "dependencies": {
+    "marked": "^17.0.1"
+  }
+}

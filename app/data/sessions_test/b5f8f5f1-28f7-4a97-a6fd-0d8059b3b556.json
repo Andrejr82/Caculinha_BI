@@ -1,0 +1,13 @@
+{
+  "user_id": "tester_admin",
+  "history": [
+    {
+      "role": "user",
+      "content": "Qual o total de vendas nos últimos 30 dias?"
+    },
+    {
+      "role": "assistant",
+      "content": "```json\n{\n  \"filtros_mencionados\": [\"Período = 30d\", \"periodo = 30d\"],\n  \"resumo_executivo\": \"Análise geral de vendas da rede nos últimos 30 dias, com faturamento total de R$ 3,74 milhões e preço médio de R$ 18,05.\",\n  \"analise_detalhada\": \"Nos últimos 30 dias, a rede alcançou um faturamento total de **R$ 3.739.971,97**, com um preço médio de **R$ 18,05**. A base de produtos ativos é expressiva, totalizando **57.608 SKUs**, o que indica um mix de produtos diversificado. Os dados analisados abrangem 498.801 registros, com um tempo de consulta eficiente de 113ms.\",\n  \"insights\": [\n    \"✅ Faturamento robusto de R$ 3,74 milhões em 30 dias.\",\n    \"✅ Mix de produtos amplo com 57.608 SKUs ativos.\",\n    \"⚠️ Concentração de vendas em poucos produtos: Os 10 itens listados representam uma parcela significativa do faturamento, com destaque para o 'PAPEL CHAMEX A4 75GRS 500FLS' e 'PAPEL 40KG 96X66 120G/M BRANC'.\",\n    \"⚠️ Preço médio de R$ 18,05 pode indicar oportunidade de explorar produtos de maior valor agregado ou estratégias de bundling.\"\n  ],\n  \"recomendacoes\": [\n    \"🎯 Investigar a fundo os motivos da alta concentração de vendas nos produtos listados. Avaliar se há oportunidades de otimizar o estoque ou promoções.\",\n    \"🎯 Analisar a performance dos demais 57.600 produtos ativos para identificar aqueles com baixo desempenho e potencial de descontinuação ou reposicionamento.\",\n    \"🎯 Desenvolver estratégias para aumentar o ticket médio, como ofertas de kits, produtos complementares ou programas de fidelidade.\"\n  ],\n  \"dados_citados\": true\n}\n```"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+    "batch_id": "batch_20251208221533042604",
+    "modo": "1→1",
+    "solicitante_id": "admin",
+    "timestamp": "2025-12-08T22:15:33.046743",
+    "total_transferencias": 6,
+    "transferencias": [
+        {
+            "produto_id": 753662,
+            "une_origem": 1,
+            "une_destino": 2365,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 745289,
+            "une_origem": 1,
+            "une_destino": 2365,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 759305,
+            "une_origem": 1,
+            "une_destino": 2365,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 746456,
+            "une_origem": 1,
+            "une_destino": 2365,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 757610,
+            "une_origem": 1,
+            "une_destino": 2365,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        },
+        {
+            "produto_id": 493670,
+            "une_origem": 1,
+            "une_destino": 2365,
+            "quantidade": 25,
+            "solicitante_id": "admin"
+        }
+    ]
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "query": "opa boa noite tudo bem",
+    "session_id": "20dbdb6f-67b0-4648-ad01-679165bd899f",
+    "timestamp": "2025-11-21T00:34:17.496486",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.04033
+  },
+  {
+    "query": "estou precisando saber qual ranking de vendas de todas as unes",
+    "session_id": "20dbdb6f-67b0-4648-ad01-679165bd899f",
+    "timestamp": "2025-11-21T00:37:12.464765",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 18.053387
+  },
+  {
+    "query": "opa boa noite rudo bem",
+    "session_id": "28705ebd-4f66-4f39-950b-2b0f53b5308d",
+    "timestamp": "2025-11-21T01:12:27.524103",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.114868
+  },
+  {
+    "query": "gere um gráfico de vendas de todas as unes",
+    "session_id": "28705ebd-4f66-4f39-950b-2b0f53b5308d",
+    "timestamp": "2025-11-21T01:15:14.044513",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 16.122516
+  },
+  {
+    "query": "e aí tudo bem",
+    "session_id": "02d57abc-3b31-481a-a668-512ddde5905f",
+    "timestamp": "2025-11-21T01:37:34.716640",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.044601
+  },
+  {
+    "query": "gere um gráfico de vendas de todas as unes",
+    "session_id": "02d57abc-3b31-481a-a668-512ddde5905f",
+    "timestamp": "2025-11-21T01:38:23.806012",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.063492
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "user_id": "debug-user",
+  "history": [
+    {
+      "role": "user",
+      "content": "Gráfico de vendas do produto 369947 em todas as lojas"
+    }
+  ]
+}

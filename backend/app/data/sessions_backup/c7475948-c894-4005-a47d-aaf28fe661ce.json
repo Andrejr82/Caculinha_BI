@@ -1,0 +1,13 @@
+{
+  "user_id": "80865f1e-6fb8-4c11-a343-318748b1f099",
+  "history": [
+    {
+      "role": "user",
+      "content": "realize uma analise de vendaas do produto 59294 em todas as unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Não foi possível realizar a análise de vendas para o produto 369947 em todas as Unidades de Negócio (UNEs). O sistema retornou um erro indicando que não foi possível processar a agregação de quantidade, possivelmente devido a um problema de tipo de dado na coluna `QUANTIDADE` ou `ESTOQUE_UNE`.\n\nPara prosseguir, seria necessário investigar e corrigir a estrutura dos dados ou a forma como a consulta está sendo realizada."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-12-27T15:26:04.018362",
+  "query": "Como calcular o giro de estoque?",
+  "response": {
+    "type": "text",
+    "content": "Talvez voce possa..."
+  },
+  "feedback_type": null,
+  "user_comment": null,
+  "confidence_score": 0.55,
+  "review_status": "pending",
+  "priority": "medium"
+}

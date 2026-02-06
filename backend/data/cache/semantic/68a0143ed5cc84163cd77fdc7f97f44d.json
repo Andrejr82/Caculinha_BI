@@ -1,0 +1,6 @@
+{
+  "type": "text",
+  "result": {
+    "mensagem": "Não consegui gerar o gráfico para \"Tecido Oxford\" porque não encontrei nenhuma categoria com o nome \"OXFORD\" no sistema.\n\nÉ provável que o nome esteja um pouco diferente. Para te ajudar, listei abaixo todas as categorias que encontrei dentro do segmento de **TECIDOS**:\n\n*   CETIM\n*   TULE\n*   TRICOLINE\n*   FELTRO\n*   MALHA\n*   MOLETOM\n*   CHIFFON\n*   TNT\n*   JACQUARD\n*   VISCOSE\n\nPor favor, me diga qual dessas categorias você gostaria de analisar, ou se o nome que você procura é outro. Assim que me confirmar, eu gero o gráfico para você"
+  }
+}

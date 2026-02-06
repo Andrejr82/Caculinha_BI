@@ -1,0 +1,317 @@
+[
+  {
+    "query": "qual a mc do produto 59294 na une cgr",
+    "session_id": "7594b7a0-c64e-4101-acc1-f221d7b57a80",
+    "timestamp": "2025-11-08T08:23:11.924536",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.026775
+  },
+  {
+    "query": "gere um gráfico de barras ranking segmentos une scr",
+    "session_id": "7594b7a0-c64e-4101-acc1-f221d7b57a80",
+    "timestamp": "2025-11-08T08:24:05.785011",
+    "success": false,
+    "results_count": 0,
+    "error": "generate_plotly_spec() missing 1 required positional argument: 'llm_adapter'",
+    "processing_time": 2.047176
+  },
+  {
+    "query": "gere um gráfico de barras ranking segmentos une scr",
+    "session_id": "22efc622-ea47-4d14-8954-0db9829853b5",
+    "timestamp": "2025-11-08T08:27:04.215013",
+    "success": false,
+    "results_count": 0,
+    "error": "generate_plotly_spec() missing 1 required positional argument: 'llm_adapter'",
+    "processing_time": 0.034958
+  },
+  {
+    "query": "gere um gráfico de barras ranking segmentos une scr",
+    "session_id": "e84bec4c-ad12-47df-a672-8e66fd6b824b",
+    "timestamp": "2025-11-08T08:27:42.268515",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.026615
+  },
+  {
+    "query": "gere um gráfico de barras ranking segmentos une scr",
+    "session_id": "e84bec4c-ad12-47df-a672-8e66fd6b824b",
+    "timestamp": "2025-11-08T08:31:37.494002",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 2.024138
+  },
+  {
+    "query": "gere um gráfico de barras ranking segmentos une scr",
+    "session_id": "e84bec4c-ad12-47df-a672-8e66fd6b824b",
+    "timestamp": "2025-11-08T08:31:50.208991",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 2.026665
+  },
+  {
+    "query": "gere um gráfico de barras ranking segmentos une scr",
+    "session_id": "c36610c6-b50a-43bc-8850-2a2ea01134d9",
+    "timestamp": "2025-11-08T08:32:11.790054",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.003952
+  },
+  {
+    "query": "em quais  unes o produto 25 está com estoque baixo",
+    "session_id": "888b39f6-7ede-42bf-ac71-e8ae5401ed24",
+    "timestamp": "2025-11-08T10:28:48.237778",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.043517
+  },
+  {
+    "query": "gráfico de estoque produto 25",
+    "session_id": "888b39f6-7ede-42bf-ac71-e8ae5401ed24",
+    "timestamp": "2025-11-08T10:29:24.313974",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.053063
+  },
+  {
+    "query": "gere relatorio do fabricante 3M segmento papelaria",
+    "session_id": "888b39f6-7ede-42bf-ac71-e8ae5401ed24",
+    "timestamp": "2025-11-08T10:31:55.504608",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 12.048801
+  },
+  {
+    "query": "gere gráfico de barras segmentos une scr",
+    "session_id": "c664ea8b-92e1-40d4-8c9a-e933c8a98c94",
+    "timestamp": "2025-11-08T13:40:57.892114",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.075986
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "ae06c312-23b6-4ef2-a9c4-489c8741ce08",
+    "timestamp": "2025-11-08T13:55:50.844952",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.1129
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "3568232f-a1de-4120-aad9-9aaca233b6a7",
+    "timestamp": "2025-11-08T13:59:57.593285",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.07775
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "3568232f-a1de-4120-aad9-9aaca233b6a7",
+    "timestamp": "2025-11-08T14:00:10.155969",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 2.044066
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "c68d7146-c48e-4178-944f-500c9bd71a86",
+    "timestamp": "2025-11-08T14:00:39.190153",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.008
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "b6df2c3d-b416-442f-aba1-c3f863143c3c",
+    "timestamp": "2025-11-08T14:09:51.684988",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.045294
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "01bdd129-f2d4-4e77-97aa-3573b7777960",
+    "timestamp": "2025-11-08T14:17:46.038236",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.19872
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "26021ffa-5344-49c8-a1fd-9290120ee2d7",
+    "timestamp": "2025-11-08T14:42:27.709299",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.122236
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos",
+    "session_id": "26021ffa-5344-49c8-a1fd-9290120ee2d7",
+    "timestamp": "2025-11-08T14:42:47.264332",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.050247
+  },
+  {
+    "query": "gere um gráfico de vendas segmentos une scr",
+    "session_id": "4fcafa8d-19a8-42df-82f1-4466af995b3e",
+    "timestamp": "2025-11-08T14:52:22.558265",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.26791
+  },
+  {
+    "query": "quais produtos estão com baixo estoque na une bar do segmento festas ?",
+    "session_id": "077a0dba-4d7f-4360-af2c-0b4d562457a8",
+    "timestamp": "2025-11-08T14:57:21.755830",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.117497
+  },
+  {
+    "query": "gere um gráfico de vendas ssegmentos une 261",
+    "session_id": "077a0dba-4d7f-4360-af2c-0b4d562457a8",
+    "timestamp": "2025-11-08T14:58:05.252875",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.043942
+  },
+  {
+    "query": "mostre o ranking completo de vendas do segmento tecidos une scr",
+    "session_id": "077a0dba-4d7f-4360-af2c-0b4d562457a8",
+    "timestamp": "2025-11-08T15:00:25.825095",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.018375
+  },
+  {
+    "query": "top 10 produtos com maiores vendas une tij",
+    "session_id": "077a0dba-4d7f-4360-af2c-0b4d562457a8",
+    "timestamp": "2025-11-08T15:02:12.072425",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.021143
+  },
+  {
+    "query": "mostre as vendas de cada segmento na une nig",
+    "session_id": "6adfcbce-7b27-497f-ab1b-c1630a122e4d",
+    "timestamp": "2025-11-08T15:06:53.378924",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.068711
+  },
+  {
+    "query": "quais produtos na une bon estão precisando de ajustes na linha verde",
+    "session_id": "6adfcbce-7b27-497f-ab1b-c1630a122e4d",
+    "timestamp": "2025-11-08T15:08:26.734512",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.618437
+  },
+  {
+    "query": "quais segmentos estão em queda de vendas nos ultimos 3 meses na une taq ",
+    "session_id": "6adfcbce-7b27-497f-ab1b-c1630a122e4d",
+    "timestamp": "2025-11-08T15:10:16.641207",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.023205
+  },
+  {
+    "query": "quais segmentos estão com ruptura na une scr",
+    "session_id": "80a9b673-21ef-452d-b439-36fdfe116606",
+    "timestamp": "2025-11-08T19:52:48.175659",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.232364
+  },
+  {
+    "query": "qual é a mc do produto 59294 na une taq",
+    "session_id": "6e7416ca-9f4d-4b7e-97ae-f90e86af7e83",
+    "timestamp": "2025-11-08T20:51:06.231675",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.061447
+  },
+  {
+    "query": "quais segmentos estão com ruptura na une scr",
+    "session_id": "6e7416ca-9f4d-4b7e-97ae-f90e86af7e83",
+    "timestamp": "2025-11-08T20:54:33.630390",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 8.699979
+  },
+  {
+    "query": "quais produtos estão com ruptura na une 261",
+    "session_id": "408526af-7f67-497b-bfb4-7c89b9e24ac8",
+    "timestamp": "2025-11-08T21:37:36.058181",
+    "success": false,
+    "results_count": 0,
+    "error": "cannot access local variable 're' where it is not associated with a value",
+    "processing_time": 4.077276
+  },
+  {
+    "query": "quais segmentos estão com ruptura na une scr",
+    "session_id": "408526af-7f67-497b-bfb4-7c89b9e24ac8",
+    "timestamp": "2025-11-08T21:43:02.548218",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 11.453498
+  },
+  {
+    "query": "quais segmentos estão com ruptura na une scr",
+    "session_id": "5f4a16f1-dbc3-4d43-bcef-f49b58464666",
+    "timestamp": "2025-11-08T21:49:41.725784",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 11.348622
+  },
+  {
+    "query": "quais segmentos estão com ruptura na une scr",
+    "session_id": "5a0adf6c-c853-4b8d-bda9-1355ab57b58f",
+    "timestamp": "2025-11-08T21:50:32.793072",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.471189
+  },
+  {
+    "query": "quais segmentos estão com ruptura na une scr",
+    "session_id": "712af679-44c7-4216-9134-c8df577f948e",
+    "timestamp": "2025-11-08T22:03:13.431083",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 6.032834
+  }
+]

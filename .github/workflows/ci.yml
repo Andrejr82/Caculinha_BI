@@ -1,0 +1,127 @@
+name: CI/CD Pipeline - Agent BI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run syntax checks
+      run: |
+        cd backend
+        python -m compileall app/
+    
+    - name: Run linting
+      run: |
+        cd backend
+        pip install flake8
+        flake8 app/ --max-line-length=120 --ignore=E501,W503 --exclude=__pycache__,migrations
+      continue-on-error: true
+    
+    - name: Run tests
+      run: |
+        cd backend
+        pip install pytest pytest-cov
+        pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+      continue-on-error: true
+    
+    - name: Check security
+      run: |
+        cd backend
+        pip install bandit
+        bandit -r app/ -ll
+      continue-on-error: true
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend-solid/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend-solid
+        npm ci
+    
+    - name: Build frontend
+      run: |
+        cd frontend-solid
+        npm run build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build
+        path: frontend-solid/dist/
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [test, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploy to staging environment"
+        # Adicionar comandos de deploy aqui
+        # Exemplo: scp, rsync, docker push, etc.
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [test, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Deploy to production
+      run: |
+        echo "Deploy to production environment"
+        # Adicionar comandos de deploy aqui
+        # Exemplo: scp, rsync, docker push, etc.
+    
+    - name: Create release tag
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        VERSION=$(date +%Y.%m.%d-%H%M)
+        git tag -a "v$VERSION" -m "Release $VERSION"
+        git push origin "v$VERSION"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

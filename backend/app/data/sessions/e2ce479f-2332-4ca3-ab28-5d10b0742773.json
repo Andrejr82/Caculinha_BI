@@ -1,0 +1,37 @@
+{
+  "user_id": "3b744dec-98ca-45d8-83b8-78090ce4e157",
+  "history": [
+    {
+      "role": "user",
+      "content": "quero um relatorio de vendas do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Aqui está o gráfico solicitado."
+    },
+    {
+      "role": "user",
+      "content": "gere um relatorio de vendas do produto 369947 eem todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Aqui está o gráfico solicitado."
+    },
+    {
+      "role": "user",
+      "content": "gere um relatorio de vendas do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Resposta vazia da API (Conteúdo nulo)"
+    },
+    {
+      "role": "user",
+      "content": "Qual o estoque do produto 369947?"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Resposta vazia da API (Conteúdo nulo)"
+    }
+  ]
+}

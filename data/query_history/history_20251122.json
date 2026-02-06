@@ -1,0 +1,119 @@
+[
+  {
+    "query": "boa noite tudo bem",
+    "session_id": "614386e0-45ab-4df4-8d28-3e7a6957ac30",
+    "timestamp": "2025-11-22T00:35:34.766187",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 7.538667
+  },
+  {
+    "query": "opa bom dia. to precisando saber com estão as vendas do produto 369947 nas unes",
+    "session_id": "e19ab15e-65df-490b-862b-125c478b1367",
+    "timestamp": "2025-11-22T08:27:55.650979",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 2.79484
+  },
+  {
+    "query": "ola bom dia",
+    "session_id": "1a12281f-124c-447d-8e18-5f1724ded498",
+    "timestamp": "2025-11-22T09:35:11.678525",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 7.592997
+  },
+  {
+    "query": "quero sabe das vendas dos tnts nas lojas",
+    "session_id": "1a12281f-124c-447d-8e18-5f1724ded498",
+    "timestamp": "2025-11-22T09:35:51.355271",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 2.192893
+  },
+  {
+    "query": "bom dia tudo bem",
+    "session_id": "74303ca8-c555-41fd-951f-db671f3360ad",
+    "timestamp": "2025-11-22T11:30:26.925221",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "preciso saber das vendas dos tns nas lojas",
+    "session_id": "74303ca8-c555-41fd-951f-db671f3360ad",
+    "timestamp": "2025-11-22T11:31:06.411250",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "quero as vendas de tnts",
+    "session_id": "74303ca8-c555-41fd-951f-db671f3360ad",
+    "timestamp": "2025-11-22T12:57:08.694320",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "olá caçulinha tudo bem",
+    "session_id": "74f21328-18c3-4d7c-b4e8-558b21e4963d",
+    "timestamp": "2025-11-22T15:21:12.343254",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "to precupadão com as vendas do tnts nas lojas me atualize aí com está",
+    "session_id": "74f21328-18c3-4d7c-b4e8-558b21e4963d",
+    "timestamp": "2025-11-22T15:22:11.608759",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "opa tudo bem caçulinha",
+    "session_id": "3df11992-6202-42af-9079-75eae92790cc",
+    "timestamp": "2025-11-22T16:00:36.149925",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "e ai",
+    "session_id": "3df11992-6202-42af-9079-75eae92790cc",
+    "timestamp": "2025-11-22T16:01:47.349850",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "Boa Noite tudo bem. Estou preocupado com as vendas  dos tecidos oxford",
+    "session_id": "40579091-f37d-494d-92d0-3b27ff34ab9e",
+    "timestamp": "2025-11-22T19:49:49.636996",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "quero dos ultimos tres meses de vendas",
+    "session_id": "40579091-f37d-494d-92d0-3b27ff34ab9e",
+    "timestamp": "2025-11-22T19:55:41.151050",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  }
+]

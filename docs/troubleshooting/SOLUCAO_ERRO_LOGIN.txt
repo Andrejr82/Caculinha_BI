@@ -1,0 +1,95 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   INSTRUÇÕES PARA RESOLVER O PROBLEMA                      ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+## PROBLEMA IDENTIFICADO
+
+✅ Página de Transferências foi corrigida com:
+   - Input radio buttons e checkboxes usando `onchange` (Solid.js correto)
+   - Renderização condicional com operador ternário (não Show/Hide)
+   - Sem nenhuma alteração que deveria quebrar o Dashboard
+
+❌ Erro "Erro ao carregar métricas" no Dashboard:
+   - Causado por: localStorage.clear() realizado em testes anteriores
+   - Token foi removido, causando falha na autenticação
+   - Dashboard tenta carregar KPIs sem token
+
+---
+
+## SOLUÇÃO RÁPIDA (1 minuto)
+
+### Opção 1: Limpar localStorage no navegador
+
+1. Abra o navegador em http://localhost:3000
+2. Pressione **F12** para abrir Developer Tools
+3. Vá para aba **Console**
+4. Cole este comando:
+   ```javascript
+   localStorage.clear(); sessionStorage.clear(); location.reload();
+   ```
+5. Pressione **Enter**
+6. Página irá recarregar e pedir Login/Senha
+
+Depois de fazer login novamente, o Dashboard deve funcionar!
+
+### Opção 2: Forçar logout via código
+
+Se não conseguir acessar o console, execute no PowerShell:
+```powershell
+pwsh .\RESET_LOGIN.ps1
+```
+Este script mostra as instruções detalhadas.
+
+---
+
+## VERIFICAÇÃO DA SINTAXE
+
+✅ Transfers.tsx: Sem erros de sintaxe
+   - Radio buttons (1→1, 1→N): `onchange` correto
+   - Checkboxes (N→N): `onchange` correto
+   - Renderização condicional com operador ternário: válido
+
+✅ Chat.py: Com garantia de resposta válida
+   - _generate_fallback_response() implementado
+   - Try-catch abrangente
+   - Nunca retorna resposta vazia
+
+✅ Caculinha BI Agent: Fallback contextualizado
+
+---
+
+## PRÓXIMOS PASSOS
+
+1. Limpe o localStorage conforme Opção 1 acima
+2. Faça login novamente
+3. Vá para http://localhost:3000/transfers
+4. Teste os 3 modos:
+   - [ ] 1→1: Selecione 1 origem, 1 destino
+   - [ ] 1→N: Selecione 1 origem, múltiplos destinos
+   - [ ] N→N: Selecione múltiplas origens e destinos
+
+5. Vá para http://localhost:3000/chat
+6. Teste uma pergunta simples
+
+---
+
+## CHECKLIST DE VALIDAÇÃO
+
+✅ Sintaxe do Transfers.tsx: CORRETA
+✅ Handlers de input: CORRETOS (onchange)
+✅ Renderização condicional: SIMPLES (ternário, não Show)
+✅ Fallback no ChatBI: IMPLEMENTADO
+✅ Garantia de resposta: ASSEGURADA
+
+---
+
+## RESUMO
+
+O problema NÃO está no código que foi modificado.
+O problema está no localStorage que perdeu o token de autenticação.
+
+Solução: Limpar localStorage e fazer login novamente.
+
+Arquivos modificados estão corretos e prontos para usar!
+
+╚════════════════════════════════════════════════════════════════════════════╝

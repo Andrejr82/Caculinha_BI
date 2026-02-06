@@ -1,0 +1,12 @@
+{
+  "status": "ready",
+  "total_files": 210,
+  "total_functions": 1191,
+  "total_classes": 142,
+  "total_lines": 38156,
+  "indexed_at": "2025-12-21T08:41:25.252635",
+  "languages": [
+    "Python",
+    "TypeScript/JavaScript"
+  ]
+}

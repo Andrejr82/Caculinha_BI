@@ -1,0 +1,85 @@
+{
+  "user_id": "00000000-0000-0000-0000-000000000001",
+  "history": [
+    {
+      "role": "user",
+      "content": "vendas produto 369947"
+    },
+    {
+      "role": "assistant",
+      "content": "Análise de Vendas para o produto **369947 - TNT 40GRS 100%O LG 1.40 035 BRANCO**.\n\nO produto teve uma venda total de **24.575,6 unidades** nos últimos 30 dias, distribuídas em 36 lojas.\n\nAqui estão as 5 lojas com as maiores vendas para este item:\n\n| Posição | Loja (UNE) | Vendas (30 dias) |\n| :--- | :--- | :--- |\n| 1 | NIG | 2.500,0 |\n| 2 | SCR | 2.100,0 |\n| 3 | CXA | 1.834,26 |\n| 4 | 261 | 1.751,0 |\n| 5 | CGR | 1.731,48 |\n\nDeseja ver a lista completa de vendas por loja ou prefere um gráfico para visualizar esses dados?"
+    },
+    {
+      "role": "user",
+      "content": "gere um relatorio de vendas do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Resposta vazia da API (Conteúdo nulo)"
+    },
+    {
+      "role": "user",
+      "content": "gere um relatorio de vendas do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Resposta vazia da API (Conteúdo nulo)"
+    },
+    {
+      "role": "user",
+      "content": "gere um relatorio de vendas do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Desculpe, encontrei um erro ao processar sua solicitação: Resposta vazia da API (Conteúdo nulo)"
+    },
+    {
+      "role": "user",
+      "content": "gere um relatorio de vendas do produto 369947 em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Com certeza! Gere um relatório de vendas para o produto `369947` em todas as lojas, ordenado pelas maiores vendas.\n\n**Relatório de Vendas do Produto 369947**\n\nEncontrei 36 lojas que venderam o produto nos últimos 30 dias. Aqui está a lista completa:\n\n| Loja (UNE) | Vendas (30 dias) |\n|:---|:---|\n| NIG | 2500.0 |\n| SCR | 2100.0 |\n| CXA | 1834.26 |\n| 261 | 1751.0 |\n| CGR | 1731.48 |\n| VIL | 1275.65 |\n| BAR | 1227.7 |\n| ALC | 1154.0 |\n| NIT | 1113.72 |\n| CFR | 1008.98 |\n| BGU | 910.1 |\n| JFA | 767.04 |\n| OBE | 715.0 |\n| MAD | 700.0 |\n| NIL | 624.62 |\n| TIJ | 465.3 |\n| JRD | 452.65 |\n| NAM | 451.76 |\n| STS | 447.49 |\n| NFR | 433.07 |\n| ITA | 409.71 |\n| TAQ | 408.01 |\n| SGO | 355.1 |\n| BON | 345.95 |\n| BOT | 329.5 |\n| REP | 315.41 |\n| RDO | 308.92 |\n| PET | 295.2 |\n| JFJ | 236.65 |\n| ANG | 202.2 |\n| CP2 | 200.0 |\n| VRD | 175.1 |\n| IPA | 121.94 |\n| CAM | 109.26 |\n| 3RS | 67.61 |\n| VVL | 0.0 |\n\nDeseja que eu gere um gráfico de barras para visualizar as vendas por loja?"
+    },
+    {
+      "role": "user",
+      "content": "quais produtos abastecer na loja 1685"
+    },
+    {
+      "role": "assistant",
+      "content": "Encontrei uma instabilidade ao tentar calcular o abastecimento para a loja 1685. A ferramenta de consulta parece estar com um problema temporário.\n\nPeço desculpas pelo inconveniente. Você poderia tentar novamente em alguns instantes ou fazer uma outra pergunta?"
+    },
+    {
+      "role": "user",
+      "content": "como estao as vendas do segmento papelaria em todas as lojas ?"
+    },
+    {
+      "role": "assistant",
+      "content": "Analisando as vendas do segmento **PAPELARIA** nos últimos 30 dias, encontrei resultados para 38 lojas.\n\nA loja **261** foi a que mais vendeu, com um total de **R$ 55.119,70**.\n\nAqui está o ranking com as 5 lojas que mais venderam no segmento:\n\n| Posição | Loja (UNE) | Vendas (R$) |\n|:---|:---|:---|\n| 1 | 261 | 55.119,70 |\n| 2 | BAR | 53.737,58 |\n| 3 | SCR | 50.934,32 |\n| 4 | NIT | 43.669,19 |\n| 5 | ALC | 37.157,02 |\n\nDeseja ver um gráfico de barras com o ranking de todas as lojas para este segmento?"
+    },
+    {
+      "role": "user",
+      "content": "como estao as vendas do segmento papelaria em todas as lojas ?"
+    },
+    {
+      "role": "assistant",
+      "content": "Analisando as vendas do segmento **PAPELARIA** nos últimos 30 dias, encontrei resultados para 38 lojas.\n\nA loja **1685** foi a que mais vendeu, com um total de **R$ 55.119,70**.\n\nAqui está o ranking com as 5 lojas que mais venderam no segmento:\n\n| Posição | Loja (UNE) | Vendas (R$) |\n|:---|:---|:---|\n| 1 | 1685 | 55.119,70 |\n| 2 | 2365 | 53.737,58 |\n| 3 | 1 | 50.934,32 |\n| 4 | 135 | 43.669,19 |\n| 5 | 3 | 37.157,02 |\n\nDeseja ver a lista completa ou prefere um gráfico de barras para visualizar o ranking de todas as lojas?"
+    },
+    {
+      "role": "user",
+      "content": "como estao as vendas do segmento tecidos em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Analisando as vendas do segmento **TECIDOS** nos últimos 30 dias, a loja **1685** se destacou com o maior volume, atingindo **R$ 50.308,99**.\n\nAqui estão as 3 lojas com as maiores vendas para este segmento:\n\n| Posição | Loja (UNE) | Vendas (R$) |\n|:--- |:--- |:--- |\n| 1 | 1685 | 50.308,99 |\n| 2 | 2586 | 45.780,09 |\n| 3 | 1 | 38.664,35 |\n\nO que você gostaria de fazer a seguir? Posso mostrar a lista completa com todas as lojas ou gerar um gráfico de barras para uma melhor visualização."
+    },
+    {
+      "role": "user",
+      "content": "como estao as vendas do segmento tecidos em todas as lojas"
+    },
+    {
+      "role": "assistant",
+      "content": "Analisando as vendas do segmento **TECIDOS** nos últimos 30 dias, a loja **261** se destacou com o maior volume, atingindo **R$ 50.308,99**.\n\nAqui estão as 5 lojas com as maiores vendas para este segmento:\n\n| Posição | Loja (UNE) | Vendas (R$) |\n|:--- |:--- |:--- |\n| 1 | 261 | 50.308,99 |\n| 2 | NIG | 45.780,09 |\n| 3 | SCR | 38.664,35 |\n| 4 | BAR | 37.702,85 |\n| 5 | NIT | 32.345,29 |\n\nO que você gostaria de fazer a seguir? Posso mostrar a lista completa com todas as 38 lojas ou gerar um gráfico de barras para uma melhor visualização."
+    }
+  ]
+}

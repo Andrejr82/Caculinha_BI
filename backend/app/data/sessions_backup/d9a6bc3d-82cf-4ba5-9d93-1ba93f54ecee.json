@@ -1,0 +1,40 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "boa noite. qual é a previsão do tempo para o rio de janeiro amanha"
+    },
+    {
+      "role": "assistant",
+      "content": "Boa noite! Como sou um assistente focado em análise de dados e Business Intelligence, não tenho acesso em tempo real a previsões meteorológicas.\n\nPara obter a previsão exata para o Rio de Janeiro amanhã, recomendo consultar sites como o **Climatempo**, **CPTEC/INPE** ou o **Alerta Rio**.\n\nNo entanto, se precisar de ajuda com dados de estoque, vendas, análise de produtos ou transferências entre unidades, estou à disposição! Como posso te ajudar com os dados hoje?"
+    },
+    {
+      "role": "user",
+      "content": "então gere um gráfico comparativo de vendas do produto 369947 em todasas unes"
+    },
+    {
+      "role": "assistant",
+      "content": "Dados enviados"
+    },
+    {
+      "role": "user",
+      "content": "me de os dados acima em gráfico de barras"
+    },
+    {
+      "role": "assistant",
+      "content": "Dados enviados"
+    },
+    {
+      "role": "user",
+      "content": "te pedi um gráfico de vendas e nao dados tabulares"
+    },
+    {
+      "role": "user",
+      "content": "ola bom dia. qual é a previsão de tempo para o rio de janeiro hoje"
+    },
+    {
+      "role": "assistant",
+      "content": "Dados enviados"
+    }
+  ]
+}

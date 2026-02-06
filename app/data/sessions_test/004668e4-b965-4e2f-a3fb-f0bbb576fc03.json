@@ -1,0 +1,13 @@
+{
+  "user_id": "tester_admin",
+  "history": [
+    {
+      "role": "user",
+      "content": "Faça um ranking de vendas por segmento (geral)"
+    },
+    {
+      "role": "assistant",
+      "content": "Análise geral de vendas da rede, totalizando R$ 3,74 milhões em faturamento com um preço médio de R$ 18,05 e 57.608 produtos ativos.\n\nA rede apresenta um faturamento robusto de R$ 3.739.971,97, impulsionado principalmente pelos segmentos de Armarinho e Confecção (R$ 881.936,53) e Papelaria (R$ 778.095,55). O preço médio de R$ 18,05 sugere uma diversidade de produtos, desde itens de menor valor unitário até produtos com maior agregação de valor. A base de 57.608 produtos ativos demonstra um mix de sortimento amplo.\n\n**Insights:**\n- ✅ Forte desempenho geral com faturamento superior a R$ 3,7 milhões.\n- ✅ Segmentos de Armarinho e Confecção e Papelaria lideram as vendas, indicando alta demanda e relevância estratégica.\n- ✅ Preço médio de R$ 18,05 sugere um sortimento diversificado, atendendo a diferentes faixas de consumo.\n- ✅ A grande quantidade de produtos ativos (57.608) reflete um portfólio abrangente.\n\n**Recomendações:**\n- 🎯 Aprofundar a análise nos segmentos de Armarinho e Confecção e Papelaria para identificar oportunidades de crescimento e otimização de sortimento.\n- 🎯 Investigar os produtos com maior volume de vendas (ex: PAPEL CHAMEX A4 75GRS 500FLS e PAPEL 40KG 96X66 120G/M BRANC) para entender os drivers de sucesso e replicar estratégias.\n- 🎯 Avaliar a performance de produtos com baixo preço unitário (R$ 1,99) em relação ao volume e margem, para garantir a rentabilidade.\n- 🎯 Considerar campanhas promocionais ou ações de marketing focadas nos segmentos e produtos de maior performance."
+    }
+  ]
+}

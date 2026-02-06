@@ -1,0 +1,41 @@
+C:\Users\AndrÚ\AppData\Roaming\Python\Python311\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+* 'schema_extra' has been renamed to 'json_schema_extra'
+  warnings.warn(message, UserWarning)
+Traceback (most recent call last):
+[OK] Tool 'gerar_grafico_universal_v2' importada com sucesso.
+[OK] Service 'QueryInterpreter' importada com sucesso.
+[START] Iniciando VerificaþÒo de Ferramentas (Intenþ§es)...
+Session ID gerado: 07ca6601-ab49-4488-82fe-1907b75e0553
+
+--- Testando: VENDAS ---
+Query: 'Quanto vendemos ontem?'
+Intent Detectado: IntentType.VENDAS (Conf: 0.95)
+[OK] InterpretaþÒo OK
+Simulando cßlculo de mÚtricas...
+[OK] MetricsCalculator compatÝvel (Te¾rico)
+
+--- Testando: ESTOQUE ---
+Query: 'Qual o estoque de tecidos?'
+
+[END] VerificaþÒo ConcluÝda.
+  File "C:\Agente_BI\BI_Solution\scripts\verify_all_tools.py", line 86, in <module>
+    asyncio.run(run_tests())
+  File "C:\Program Files\Python311\Lib\asyncio\runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\asyncio\base_events.py", line 650, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Agente_BI\BI_Solution\scripts\verify_all_tools.py", line 52, in run_tests
+    intent = chat_service.query_interpreter.interpret(query, {"user_id": user_id})
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Agente_BI\BI_Solution\backend\app\services\query_interpreter.py", line 120, in interpret
+    intent = self._heuristic_classify(query)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Agente_BI\BI_Solution\backend\app\services\query_interpreter.py", line 242, in _heuristic_classify
+    visualization=visualization,
+                  ^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'visualization' where it is not associated with a value

@@ -1,0 +1,13 @@
+{
+  "user_id": "00000000-0000-0000-0000-000000000001",
+  "history": [
+    {
+      "role": "user",
+      "content": "Quantos produtos temos cadastrados?"
+    },
+    {
+      "role": "assistant",
+      "content": "## A loja 1685 apresentou um faturamento total de R$ 311.492,84, com um preço médio de R$ 19,33, e possui 29.923 produtos ativos. Os segmentos de maior destaque em vendas foram Armarinho e Confecção (R$ 101.663,03) e Papelaria (R$ 55.119,70). O produto TNT 40GRS 100%O LG 1.40 035 BR (SKU 369947) liderou as vendas individuais com R$ 1.751,00.\n\nA análise de vendas para a **UNE 1685** revela um desempenho robusto, com um faturamento total de R$ 311.492,84. O preço médio por item vendido é de R$ 19,33, indicando uma boa variedade de produtos com diferentes faixas de preço. A loja opera com um sortimento expressivo de 29.923 produtos ativos.\n\nOs segmentos que mais contribuíram para o faturamento foram:\n- **ARMARINHO E CONFECÇÃO:** R$ 101.663,03\n- **PAPELARIA:** R$ 55.119,70\n- **TECIDOS:** R$ 50.308,99\n- **ARTES:** R$ 37.627,22\n- **FESTAS:** R$ 23.045,80\n\nOs produtos com maior volume de vendas foram:\n1. **TNT 40GRS 100%O LG 1.40 035 BR (SKU 369947):** R$ 1.751,00\n2. **PAPEL CHAMEX A4 75GRS 500FLS (SKU 59294):** R$ 1.361,00\n3. **TEC OXFORD 100%P LG 1.47 010 B (SKU 524674):** R$ 1.100,09\n4. **PAPEL 40KG 96X66 120G/M BRANC (SKU 639705):** R$ 1.043,00\n5. **PAPEL CHAMEQUINHO A4 BRANCO 75 (SKU 59334):** R$ 990,00\n\n### 💡 Insights Cruzados\n- O segmento de Armarinho e Confecção é o principal motor de vendas na loja 1685, representando cerca de um terço do faturamento total.\n- Papelaria e Tecidos também demonstram forte desempenho, indicando um público com interesse em materiais de escritório e costura/artesanato.\n- Produtos de baixo valor unitário, como o TNT (R$ 1,99) e Papel Kraft (R$ 1,99), aparecem no top 10, sugerindo alto volume de vendas e potencial para compras por impulso ou de reposição frequente.\n- A presença de itens como Papel Chamex e Chamequinho no top 5 reforça a força do segmento de Papelaria.\n\n### 🚀 Plano de Ação\n- Avaliar a possibilidade de promoções casadas entre os segmentos de Armarinho/Confecção e Papelaria para aumentar o ticket médio.\n- Analisar o estoque dos produtos de baixo valor unitário (TNT, Papel Kraft) para garantir que não haja rupturas, dada a sua alta performance.\n- Considerar ações de merchandising para destacar os produtos de maior venda e os segmentos líderes nas áreas de maior circulação da loja 1685."
+    }
+  ]
+}

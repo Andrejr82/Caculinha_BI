@@ -1,0 +1,216 @@
+
+[1m============================================================[0m
+[1mTESTES ROBUSTOS - CHAT BI & CODECHAT[0m
+[1m============================================================[0m
+
+Inicio: 2025-12-21 11:04:25
+
+[94m[AUTH][0m Fazendo login...
+[92m[OK][0m Token obtido: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0M...
+
+[1m============================================================[0m
+[1mBATERIA 1: CONVERSAÇÃO BÁSICA[0m
+[1m============================================================[0m
+
+[96m[QUERY][0m Olá! Como você pode me ajudar?
+[92m[OK][0m Conversação Básica - Saudação
+  [+] Texto com 1299 caracteres (>= 50), Keyword 'análise' encontrada, Keyword 'dados' encontrada, Keyword 'vendas' encontrada, Keyword 'estoque' encontrada
+  Tempo: 0.92s
+  Preview: Olá! É um prazer falar com você.  Como seu Assistente de BI da Caculinha, posso te ajudar de diversas formas, desde conversas gerais até análises prof...
+
+[96m[QUERY][0m Quais tipos de análise você consegue fazer?
+[92m[OK][0m Conversação - Capacidades do Sistema
+  [+] Texto com 1788 caracteres (>= 100), Keyword 'análise' encontrada, Keyword 'gráfico' encontrada, Keyword 'produtos' encontrada
+  Tempo: 0.89s
+  Preview: Eu consigo realizar uma ampla gama de análises baseadas nos dados da Caculinha para apoiar suas decisões estratégicas. Aqui estão as principais:  ### ...
+
+[1m============================================================[0m
+[1mBATERIA 2: ANÁLISES DE DADOS[0m
+[1m============================================================[0m
+
+[96m[QUERY][0m Mostre os top 10 produtos por vendas nos últimos 30 dias
+[93m[PARCIAL][0m Análise - Top 10 Produtos
+  [+] Passou: Texto com 94 caracteres (>= 50)
+  [-] Falhou: Gráfico esperado mas não gerado, Tool 'gerar_grafico_universal' esperada mas não usada
+  Tempo: 0.51s
+  Preview: Desculpe, encontrei um erro ao processar sua solicitação: Maximum conversation turns exceeded....
+
+[96m[QUERY][0m Qual categoria tem maior volume de vendas?
+[92m[OK][0m Análise - Vendas por Categoria
+  [+] Texto com 492 caracteres (>= 30), Keyword 'categoria' encontrada, Keyword 'vendas' encontrada
+  Tempo: 24.06s
+  Preview: A categoria com o maior volume de vendas é **ARMARINHO E CONFECÇÃO**, com um total de aproximadamente **881.937** em vendas nos últimos 30 dias.  Aqui...
+
+[96m[QUERY][0m Compare as vendas de TECIDOS vs PAPELARIA no último mês
+[93m[PARCIAL][0m Análise - Comparação de Segmentos
+  [+] Passou: Texto com 94 caracteres (>= 50)
+  [-] Falhou: Gráfico esperado mas não gerado, Keyword 'TECIDOS' não encontrada, Keyword 'PAPELARIA' não encontrada
+  Tempo: 1.65s
+  Preview: Desculpe, encontrei um erro ao processar sua solicitação: Maximum conversation turns exceeded....
+
+[96m[QUERY][0m Quais produtos estão em ruptura mas têm estoque no CD?
+[93m[PARCIAL][0m Análise - Produtos em Ruptura
+  [+] Passou: Texto com 94 caracteres (>= 50)
+  [-] Falhou: Keyword 'ruptura' não encontrada, Keyword 'estoque' não encontrada, Keyword 'CD' não encontrada
+  Tempo: 0.84s
+  Preview: Desculpe, encontrei um erro ao processar sua solicitação: Maximum conversation turns exceeded....
+
+[96m[QUERY][0m Mostre a curva ABC dos produtos por receita
+[93m[PARCIAL][0m Análise - Curva ABC Pareto
+  [+] Passou: Gráfico gerado
+  [-] Falhou: Texto muito curto: 31 < 50, Keyword 'pareto' não encontrada, Keyword 'ABC' não encontrada, Keyword 'receita' não encontrada
+  Tempo: 17.54s
+  Preview: Aqui está o gráfico solicitado:...
+
+[1m============================================================[0m
+[1mBATERIA 3: FILTROS E SEGMENTAÇÃO[0m
+[1m============================================================[0m
+
+[96m[QUERY][0m Mostre produtos mais vendidos na UNE 1
+[93m[PARCIAL][0m Filtros - Por UNE Específica
+  [+] Passou: Texto com 91 caracteres (>= 30)
+  [-] Falhou: Keyword 'UNE' não encontrada, Keyword '1' não encontrada
+  Tempo: 0.87s
+  Preview: Resposta processada, mas nenhum texto foi gerado. Por favor, tente reformular sua pergunta....
+
+[96m[QUERY][0m Quais produtos do fabricante KIT têm melhor giro?
+[93m[PARCIAL][0m Filtros - Por Fabricante
+  [+] Passou: Texto com 94 caracteres (>= 30)
+  [-] Falhou: Keyword 'KIT' não encontrada, Keyword 'giro' não encontrada
+  Tempo: 0.51s
+  Preview: Desculpe, encontrei um erro ao processar sua solicitação: Maximum conversation turns exceeded....
+
+[1m============================================================[0m
+[1mBATERIA 4: TIPOS DE GRÁFICOS[0m
+[1m============================================================[0m
+
+[96m[QUERY][0m Crie um gráfico de barras dos top 5 segmentos por vendas
+[92m[OK][0m Gráficos - Barras
+  [+] Gráfico gerado, Tool 'gerar_grafico_universal' usada
+  Tempo: 15.00s
+  Preview: Aqui está o gráfico com os 5 segmentos que mais venderam no último período.  O segmento de **ARMARINHO E CONFECÇÃO** lidera o ranking, seguido de pert...
+
+[96m[QUERY][0m Mostre a tendência de vendas dos últimos 30 dias
+[92m[OK][0m Gráficos - Linhas (Tendência)
+  [+] Gráfico gerado, Keyword 'tendência' encontrada, Keyword 'vendas' encontrada
+  Tempo: 18.58s
+  Preview: Aqui está o gráfico de tendência de vendas por segmento nos últimos 30 dias.  Como podemos observar, os segmentos de **ARMARINHO E CONFECÇÃO**, **PAPE...
+
+[96m[QUERY][0m Faça um gráfico de pizza mostrando distribuição de vendas por categoria
+[92m[OK][0m Gráficos - Pizza (Distribuição)
+  [+] Gráfico gerado, Keyword 'categoria' encontrada, Keyword 'distribuição' encontrada
+  Tempo: 17.96s
+  Preview: Aqui está o gráfico de pizza com a distribuição das vendas por segmento.  Como podemos observar, o segmento de **ARMARINHO E CONFECÇÃO** detém a maior...
+
+[1m============================================================[0m
+[1mBATERIA 5: EDGE CASES[0m
+[1m============================================================[0m
+
+[96m[QUERY][0m 
+[91m[FALHA][0m Edge Case - Query Vazia (não tratado)
+
+[96m[QUERY][0m Mostre produtos com COLUNA_INEXISTENTE maior que 100
+[92m[OK][0m Edge Case - Coluna Inexistente
+  [+] Texto com 500 caracteres (>= 20)
+  Tempo: 0.65s
+  Preview: Desculpe, mas não encontrei a coluna "COLUNA_INEXISTENTE" em nossa base de dados.   Para que eu possa te ajudar com essa consulta, você poderia utiliz...
+
+[96m[QUERY][0m Mostre os top 10000 produtos por vendas
+[92m[OK][0m Edge Case - Limite Muito Grande
+  [+] Texto com 94 caracteres (>= 30)
+  Tempo: 0.74s
+  Preview: Desculpe, encontrei um erro ao processar sua solicitação: Maximum conversation turns exceeded....
+
+[1m============================================================[0m
+[1mRESUMO DOS TESTES - CHAT BI[0m
+[1m============================================================[0m
+
+Total de Testes: 15
+[92m[+] Passou: 8[0m
+[93m[!] Parcial: 6[0m
+[91m[-] Falhou: 1[0m
+
+Tempo Medio: 6.75s
+Taxa de Sucesso: 53.3%
+
+[1mDETALHES:[0m
+
+[92m[+][0m Conversação Básica - Saudação (0.92s)
+[92m[+][0m Conversação - Capacidades do Sistema (0.89s)
+[93m[!][0m Análise - Top 10 Produtos (0.51s)
+    [-] Gráfico esperado mas não gerado
+    [-] Tool 'gerar_grafico_universal' esperada mas não usada
+[92m[+][0m Análise - Vendas por Categoria (24.06s)
+  Tools: consultar_dados_flexivel, gerar_grafico_universal
+[93m[!][0m Análise - Comparação de Segmentos (1.65s)
+    [-] Gráfico esperado mas não gerado
+    [-] Keyword 'TECIDOS' não encontrada
+    [-] Keyword 'PAPELARIA' não encontrada
+[93m[!][0m Análise - Produtos em Ruptura (0.84s)
+    [-] Keyword 'ruptura' não encontrada
+    [-] Keyword 'estoque' não encontrada
+    [-] Keyword 'CD' não encontrada
+[93m[!][0m Análise - Curva ABC Pareto (17.54s)
+  Tools: gerar_grafico_universal, consultar_dados_flexivel
+    [-] Texto muito curto: 31 < 50
+    [-] Keyword 'pareto' não encontrada
+    [-] Keyword 'ABC' não encontrada
+    [-] Keyword 'receita' não encontrada
+[93m[!][0m Filtros - Por UNE Específica (0.87s)
+    [-] Keyword 'UNE' não encontrada
+    [-] Keyword '1' não encontrada
+[93m[!][0m Filtros - Por Fabricante (0.51s)
+    [-] Keyword 'KIT' não encontrada
+    [-] Keyword 'giro' não encontrada
+[92m[+][0m Gráficos - Barras (15.00s)
+  Tools: gerar_grafico_universal
+[92m[+][0m Gráficos - Linhas (Tendência) (18.58s)
+  Tools: gerar_grafico_universal
+[92m[+][0m Gráficos - Pizza (Distribuição) (17.96s)
+  Tools: gerar_grafico_universal
+[91m[-][0m Edge Case - Query Vazia (0.61s)
+[92m[+][0m Edge Case - Coluna Inexistente (0.65s)
+[92m[+][0m Edge Case - Limite Muito Grande (0.74s)
+
+[1m============================================================[0m
+
+
+[1m============================================================[0m
+[1mBATERIA 6: CODECHAT (RAG DOCUMENTAÇÃO)[0m
+[1m============================================================[0m
+
+[96m[CODECHAT][0m Como funciona o sistema de agentes neste projeto?
+[93m[INFO][0m CodeChat endpoint não disponível (esperado)
+
+[96m[CODECHAT][0m Como faço para criar uma nova ferramenta (tool) no sistema?
+[93m[INFO][0m CodeChat endpoint não disponível
+
+[1m============================================================[0m
+[1mRESUMO DOS TESTES - CODECHAT[0m
+[1m============================================================[0m
+
+[93m[x][0m CodeChat - Arquitetura - Endpoint não implementado
+[93m[x][0m CodeChat - API Usage - Endpoint não implementado
+
+[1m============================================================[0m
+
+
+[1m============================================================[0m
+[1mTESTE DE CACHE SEMÂNTICO[0m
+[1m============================================================[0m
+
+[96m[1ª EXEC][0m Mostre os top 5 produtos mais vendidos
+  Tempo: 17.80s
+[96m[2ª EXEC][0m Mostre os top 5 produtos mais vendidos (esperando cache hit)
+  Tempo: 18.92s
+[93m[AVISO][0m Cache pode não estar ativo (diferença: 106.3%)
+
+[1m============================================================[0m
+[1mRESULTADO FINAL[0m
+[1m============================================================[0m
+
+Termino: 2025-12-21 11:06:46
+
+[93m[1m[!] TESTES PASSARAM COM RESSALVAS[0m
+Algumas funcionalidades podem precisar de ajuste.
+

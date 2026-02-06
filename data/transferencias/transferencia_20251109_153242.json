@@ -1,0 +1,72 @@
+{
+  "timestamp": "2025-11-09T15:32:42.014818",
+  "usuario": "admin",
+  "modo": "1",
+  "unes_origem": [
+    1
+  ],
+  "unes_destino": [
+    35,
+    81,
+    79,
+    1685,
+    2137,
+    2365
+  ],
+  "produtos": {
+    "699832_UNE1": {
+      "produto": {
+        "codigo": 699832,
+        "nome_produto": "PONTEIRA METAL SINO ASPIRAL J207 14.5MM NIQUEL",
+        "estoque_atual": "38.0000000000000000",
+        "venda_30_d": 0.0,
+        "preco_38_percent": "7.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 1,
+      "distribuicao": {
+        "11": 37
+      },
+      "total": 37,
+      "preco": "7.4900",
+      "valor_total_item": 277.13,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 37
+      }
+    },
+    "634891_UNE3578": {
+      "produto": {
+        "codigo": 634891,
+        "nome_produto": "FITA METALOIDE 15MM PET-15 DOURADO",
+        "estoque_atual": "10.0000000000000000",
+        "venda_30_d": 8.0,
+        "preco_38_percent": "6.4900",
+        "nomesegmento": "ARMARINHO E CONFECÇÃO",
+        "NOMEFABRICANTE": "KIT"
+      },
+      "une_origem": 3578,
+      "distribuicao": {
+        "3499": 8
+      },
+      "total": 8,
+      "preco": "6.4900",
+      "valor_total_item": 51.92,
+      "validacao": {
+        "valido": true,
+        "prioridade": "URGENTE",
+        "score_prioridade": 100.0,
+        "quantidade_recomendada": 8
+      }
+    }
+  },
+  "total_produtos": 2,
+  "total_itens": 45,
+  "total_valor": 329.05,
+  "prioridade": "Normal",
+  "observacoes": "",
+  "status": "PENDENTE"
+}

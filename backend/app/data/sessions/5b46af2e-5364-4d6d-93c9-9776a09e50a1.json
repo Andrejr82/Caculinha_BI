@@ -1,0 +1,13 @@
+{
+  "user_id": "3b744dec-98ca-45d8-83b8-78090ce4e157",
+  "history": [
+    {
+      "role": "user",
+      "content": "gere um gráfico de ranking de vendas dos segmentos da une 135"
+    },
+    {
+      "role": "assistant",
+      "content": "A análise geral de vendas da rede revela um faturamento total de R$ 3,74 milhões, com um preço médio de R$ 18,05 e 57.608 produtos ativos.\n\nO faturamento consolidado de R$ 3.739.971,97 demonstra uma base de vendas robusta. O preço médio de R$ 18,05 sugere uma variedade de produtos em diferentes faixas de preço. A presença de 57.608 produtos ativos indica um mix de sortimento amplo e diversificado. Os segmentos de 'ARMARINHO E CONFECÇÃO' (R$ 881.936,53) e 'PAPELARIA' (R$ 778.095,55) lideram as vendas, representando uma parcela significativa do faturamento total.\n\n**Insights:**\n- ✅ Faturamento geral expressivo de R$ 3,74 milhões.\n- ✅ Mix de produtos diversificado com mais de 57 mil SKUs ativos.\n- ✅ Segmentos de Armarinho e Confecção e Papelaria são os principais motores de receita.\n- ⚠️ O preço médio de R$ 18,05 pode indicar oportunidades de explorar produtos de maior valor agregado em segmentos com menor participação.\n- ⚠️ A lista de top produtos mostra uma forte concentração em itens de papelaria (Chamex A4 e Papel 40kg), o que pode indicar uma dependência desses SKUs específicos.\n\n**Recomendações:**\n- 🎯 Investigar a fundo os motivos do sucesso dos segmentos de Armarinho e Confecção e Papelaria para replicar estratégias.\n- 🎯 Analisar a performance dos produtos de menor venda para identificar oportunidades de descontinuação ou otimização de estoque.\n- 🎯 Desenvolver estratégias para impulsionar vendas em segmentos com menor participação, como 'FESTAS' e 'ARTES'.\n- 🎯 Avaliar a concentração de vendas nos produtos de papelaria e buscar diversificar o portfólio com itens de maior valor agregado ou de outros segmentos."
+    }
+  ]
+}

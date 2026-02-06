@@ -1,0 +1,73 @@
+================================================================================
+TESTADOR AUTOMATICO DE CONNECTION STRINGS
+================================================================================
+
+
+[1/7] Testando: Localhost com IP 127.0.0.1
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('28000', '[28000] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Falha de logon do usußrio \
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.OperationalError) ('08001', '[08001] [Microsoft][ODBC Driver 17 for SQL Server]Provedor de P
+
+[2/7] Testando: Localhost com (local)
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('28000', '[28000] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Falha de logon do usußrio \
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.OperationalError) ('08001', '[08001] [Microsoft][ODBC Driver 17 for SQL Server]Provedor de P
+
+[3/7] Testando: Localhost padrao
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('28000', '[28000] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Falha de logon do usußrio \
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.OperationalError) ('08001', '[08001] [Microsoft][ODBC Driver 17 for SQL Server]Provedor de P
+
+[4/7] Testando: SQLEXPRESS (instancia nomeada)
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('08001', '[08001] [Microsoft][ODBC Driver 17 for SQL Server]Provedor de Pipes Nomeados: NÒo foi pos
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.OperationalError) ('08001', '[08001] [Microsoft][ODBC Driver 17 for SQL Server]SQL Server Ne
+
+[5/7] Testando: Autenticacao Windows (Trusted)
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('28000', '[28000] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Falha de logon do usußrio \
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.InterfaceError) ('28000', '[28000] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Fal
+
+[6/7] Testando: ODBC Driver 18 (mais recente)
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('IM002', '[IM002] [Microsoft][ODBC Driver Manager] Nome da fonte de dados nÒo encontrado e nenhum d
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.InterfaceError) ('IM002', '[IM002] [Microsoft][ODBC Driver Manager] Nome da fonte de dados n
+
+[7/7] Testando: Porta especifica 1433
+--------------------------------------------------------------------------------
+  [1] Testando pyodbc direto...
+      [ERRO] ('28000', '[28000] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Falha de logon do usußrio \
+  [2] Testando SQLAlchemy...
+      [ERRO] (pyodbc.OperationalError) ('08001', '[08001] [Microsoft][ODBC Driver 17 for SQL Server]Provedor TCP:
+
+================================================================================
+RESULTADOS FINAIS
+================================================================================
+
+[ERRO] Nenhuma configuracao funcionou!
+
+Possiveis causas:
+  1. SQL Server nao esta instalado ou rodando
+  2. Database 'agentbi' nao existe
+  3. Usuario/senha incorretos
+  4. TCP/IP nao esta habilitado
+  5. Firewall bloqueando conexoes
+
+Solucao alternativa:
+  - Use apenas Parquet/DuckDB:
+    USE_SQL_SERVER=false
+    FALLBACK_TO_PARQUET=true
+
+================================================================================

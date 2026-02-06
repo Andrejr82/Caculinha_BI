@@ -1,0 +1,92 @@
+[
+  {
+    "query": "quais produtos estão com ruptura na une 261?",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T22:53:29.126737",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.023525
+  },
+  {
+    "query": "gere um gráfico de vendas do produto 25",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:12:30.346642",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 10.132303
+  },
+  {
+    "query": "quais produtos estão com ruptura na une bar?",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:17:24.877608",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.032334
+  },
+  {
+    "query": "quais produtos estão com ruptura na une 261?",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:18:08.627743",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.0
+  },
+  {
+    "query": "quais produtos estão com ruptura na une 2365?",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:18:43.583865",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.037227
+  },
+  {
+    "query": "quais produtos estão com ruptura na une bar",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:19:22.776122",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.005126
+  },
+  {
+    "query": "quais produtos estão com ruptura na une bar?",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:24:33.364005",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.015334
+  },
+  {
+    "query": "quais produtos estão com ruptura na une 2365",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:25:02.610101",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 0.038923
+  },
+  {
+    "query": "quais promoções sugere para esses produtos ?",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-11T23:26:38.429579",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.036434
+  },
+  {
+    "query": "pesquise no google quais sao as tendencias de tecidos para o natal 2025",
+    "session_id": "d06bb828-40ab-4e75-ae7c-6a380e55da34",
+    "timestamp": "2025-11-12T00:19:18.980522",
+    "success": true,
+    "results_count": 0,
+    "error": null,
+    "processing_time": 4.029422
+  }
+]

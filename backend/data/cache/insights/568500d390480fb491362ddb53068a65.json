@@ -1,0 +1,34 @@
+{
+  "insights": [
+    {
+      "title": "ALERTA GERAL: Operação Parada - Vendas e Estoque Zerados",
+      "description": "A loja está em estado crítico. Nos últimos 30 dias, o faturamento foi de R$ 0,00 ('total_sales_30d') e não há nenhuma unidade em estoque ('total_stock_units': 0.0). Isso significa que a operação está completamente paralisada.",
+      "category": "alert",
+      "severity": "high",
+      "recommendation": "AÇÃO IMEDIATA: Verifique a causa da falta total de estoque e vendas. Inicie o processo de compra e recebimento de mercadorias com máxima urgência para reativar as operações hoje. Investigue se há um erro de integração de sistema ou uma falha catastrófica na cadeia de suprimentos."
+    },
+    {
+      "title": "Impossível Prever Demanda: Ausência de Dados de Vendas",
+      "description": "Com as vendas zeradas, a lista de 'TOP 5 PRODUTOS MAIS VENDIDOS' está vazia. Sem esses dados, é impossível prever a demanda, identificar produtos com alto giro e gerenciar proativamente o risco de futuras rupturas.",
+      "category": "alert",
+      "severity": "medium",
+      "recommendation": "Após a reposição emergencial do estoque, monitore as vendas diárias de perto para identificar rapidamente os itens mais vendidos e estabelecer níveis de estoque de segurança para eles."
+    },
+    {
+      "title": "Ponto de Atenção: Capital de Giro Não Imobilizado",
+      "description": "Atualmente, não há problemas com estoque parado ('ESTOQUE PARADO' está vazio) pois o valor financeiro em estoque é de R$ 0,00. Embora isso signifique que não há capital preso, é um sintoma da paralisação total.",
+      "category": "alert",
+      "severity": "medium",
+      "recommendation": "Ao reabastecer a loja, estabeleça um processo para monitorar a idade do estoque desde o primeiro dia para evitar que o problema de estoque parado surja no futuro. Foque em um mix inicial enxuto e de alto potencial."
+    },
+    {
+      "title": "Oportunidade Estratégica: Recomeço da Operação",
+      "description": "A ausência completa de dados e estoque ('total_sales_30d': 0.0, 'total_stock_units': 0.0) cria uma 'página em branco'. Esta é uma oportunidade forçada para reavaliar o mix de produtos e a estratégia comercial antes de fazer um novo investimento em inventário.",
+      "category": "alert",
+      "severity": "low",
+      "recommendation": "Planeje o reabastecimento com base em uma análise de mercado atualizada. Considere lançar uma campanha de marketing de 'Reinauguração' ou 'Estamos de volta com novo estoque!' para reengajar clientes."
+    }
+  ],
+  "generated_at": "2026-02-05T00:54:45.532434",
+  "cache_key": "568500d390480fb491362ddb53068a65"
+}

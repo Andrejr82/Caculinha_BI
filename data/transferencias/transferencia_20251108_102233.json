@@ -1,0 +1,88 @@
+{
+  "timestamp": "2025-11-08T10:22:33.084795",
+  "usuario": "admin",
+  "modo": "1",
+  "unes_origem": [
+    1
+  ],
+  "unes_destino": [
+    520,
+    2365,
+    2720,
+    3577
+  ],
+  "produtos": {
+    "601914_UNE1": {
+      "produto": {
+        "codigo": 601914,
+        "nome_produto": "TEC TULE 12050 100%P LG 1.20 001 BRANCO",
+        "estoque_atual": 62.97,
+        "venda_30_d": 167.0,
+        "preco_38_percent": "1.7900",
+        "nomesegmento": "TECIDOS",
+        "NOMEFABRICANTE": "KIT",
+        "une_origem": 1
+      },
+      "une_origem": 1,
+      "distribuicao": {
+        "520": 25,
+        "2365": 0,
+        "2720": 0,
+        "3577": 0
+      },
+      "total": 25,
+      "preco": "1.7900",
+      "valor_total_item": 44.75
+    },
+    "41648_UNE1": {
+      "produto": {
+        "codigo": 41648,
+        "nome_produto": "TEC TULE 7001 100%P LG 1.20 006 PRETO",
+        "estoque_atual": 286.02,
+        "venda_30_d": 160.8,
+        "preco_38_percent": "2.1900",
+        "nomesegmento": "TECIDOS",
+        "NOMEFABRICANTE": "DELFIM",
+        "une_origem": 1
+      },
+      "une_origem": 1,
+      "distribuicao": {
+        "520": 25,
+        "2365": 25,
+        "2720": 0,
+        "3577": 0
+      },
+      "total": 50,
+      "preco": "2.1900",
+      "valor_total_item": 109.5
+    },
+    "49901_UNE1": {
+      "produto": {
+        "codigo": 49901,
+        "nome_produto": "TEC FILO ARMACAO 9001 100%M LG 3.00 001 BRANCO",
+        "estoque_atual": 290.56,
+        "venda_30_d": 57.33,
+        "preco_38_percent": "10.9900",
+        "nomesegmento": "TECIDOS",
+        "NOMEFABRICANTE": "DELFIM",
+        "une_origem": 1
+      },
+      "une_origem": 1,
+      "distribuicao": {
+        "520": 50,
+        "2365": 50,
+        "2720": 0,
+        "3577": 0
+      },
+      "total": 100,
+      "preco": "10.9900",
+      "valor_total_item": 1099.0
+    }
+  },
+  "total_produtos": 3,
+  "total_itens": 175,
+  "total_valor": 1253.25,
+  "prioridade": "Normal",
+  "observacoes": "Só envie os produtos em condições de vendas.\nOs tecidos devem ser enviados enfestados na tala devida.",
+  "status": "PENDENTE"
+}
