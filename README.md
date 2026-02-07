@@ -1,124 +1,229 @@
-# 🛒 Agent Solution BI - Lojas Caçula (Executive Edition)
+# Caculinha BI Agent Platform v2.0
 
-**Inteligência Artificial Generativa e Análise de Alta Performance para a Gestão de Varejo.**
+> **Plataforma de Business Intelligence Conversacional com Agentes de IA**
 
-O **Agent Solution BI** é uma plataforma de decisão estratégica desenvolvida especificamente para a rede Lojas Caçula. Combinando o poder do **Google Gemini 3.0 Flash** com a velocidade do motor de dados **Polars**, o sistema transforma milhões de registros de venda e estoque em planos de ação imediatos.
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
----
+## 🎯 Visão Geral
 
-## 💎 Diferenciais Estratégicos (Apresentação à Diretoria)
+Plataforma de BI que permite consultas em **linguagem natural** sobre dados de varejo, utilizando **8 agentes especializados** orquestrados por IA (Google Gemini).
 
-### 🧠 IA Retail Insights (Gemini 3.0 Flash)
-Não apenas gráficos, mas diagnósticos. A IA analisa proativamente:
-- **Crescimento MoM**: Monitoramento de tração de vendas em tempo real.
-- **Eficiência de Cobertura**: Identificação de capital imobilizado (estoque acima de 30 dias).
-- **Ruptura de Gôndola**: Alertas imediatos quando há estoque no CD mas falta na Loja.
+```
+"Como estão as vendas da loja 1685 este mês?"
+     ↓
+[OrchestratorAgent] → [SQLAgent] → DuckDB → [InsightAgent]
+     ↓
+"As vendas da loja 1685 totalizaram R$ 125.430,00 este mês, 
+um crescimento de 12% comparado ao mesmo período do ano anterior..."
+```
 
-### 📈 Análise de Pareto 80/20 Real
-Foco no que gera faturamento. O sistema utiliza a técnica de **Curva ABC por Receita** para identificar o "Vital Few":
-- **Classe A**: Os 20% de produtos que sustentam 80% do faturamento da Caçula.
-- **Visualização Dual**: Gráfico de Pareto (Barras + Linha Acumulada) para visão clara de concentração.
+## 🏗️ Arquitetura
 
-### ⚡ Performance Ultra-Rápida
-- **Motor DuckDB**: Processamento de mais de 1 milhão de SKUs em milissegundos (3.3x mais rápido).
-- **Arquitetura Parquet**: Queries SQL analíticas em arquivos colunares de alta eficiência.
-- **76% menos memória**: Otimizado para execução em qualquer ambiente (400 MB vs 1.7 GB).
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (SolidJS)                   │
+└────────────────────────┬────────────────────────────────┘
+                         │ REST/SSE
+┌────────────────────────▼────────────────────────────────┐
+│                     API Layer (FastAPI)                 │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│  │ /auth    │ │ /chat    │ │ /agents  │ │ /metrics │   │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
+├─────────────────────────────────────────────────────────┤
+│                   Middleware Layer                       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                 │
+│  │ Auth/JWT │ │ Tenant   │ │RateLimit │                 │
+│  └──────────┘ └──────────┘ └──────────┘                 │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│               Application Layer (Agents)                │
+│  ┌────────────────────────────────────────────┐         │
+│  │            OrchestratorAgent               │         │
+│  └──────────────────┬─────────────────────────┘         │
+│         ┌───────────┼───────────┬───────────┐           │
+│    ┌────▼────┐ ┌────▼────┐ ┌────▼────┐ ┌────▼────┐      │
+│    │SQLAgent │ │Insight  │ │Forecast │ │Metadata │      │
+│    └─────────┘ │Agent    │ │Agent    │ │Agent    │      │
+│                └─────────┘ └─────────┘ └─────────┘      │
+│    ┌─────────┐ ┌─────────┐ ┌─────────┐                  │
+│    │Tenant   │ │Security │ │Monitor  │                  │
+│    │Agent    │ │Agent    │ │Agent    │                  │
+│    └─────────┘ └─────────┘ └─────────┘                  │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│              Infrastructure Layer                        │
+│    ┌─────────────────┐    ┌─────────────────┐           │
+│    │  GeminiAdapter  │    │  DuckDBAdapter  │           │
+│    │  (LLM Port)     │    │  (Data Port)    │           │
+│    └────────┬────────┘    └────────┬────────┘           │
+│             │                      │                     │
+│    ┌────────▼────────┐    ┌────────▼────────┐           │
+│    │  Google Gemini  │    │  Parquet Files  │           │
+│    └─────────────────┘    └─────────────────┘           │
+└─────────────────────────────────────────────────────────┘
+```
 
----
+## 🚀 Quick Start
 
-## 🚀 Funcionalidades Principais
+### Pré-requisitos
 
-### 💬 Chat BI Conversacional
-Interação em linguagem natural (ex: *"Quais categorias de Tecidos cresceram mais de 10%?"*). A IA entende o contexto do varejo e gera visualizações sob demanda.
+- Python 3.11+
+- Google Gemini API Key
 
-### 📊 Dashboard Estratégico
-Painel executivo com KPIs críticos: Valor Total de Estoque, Taxa de Ruptura, Mix de Produtos e Monitoramento de UNEs.
-
-### 🚚 Operacional e Logística
-- **Sugestão de Transferência**: Algoritmo inteligente que propõe movimentações CD -> Loja.
-- **Rupturas Críticas**: Listagem prioritária baseada em perda de faturamento iminente.
-
-### 🔐 Segurança e Governança
-- **Controle por Segmento**: Gestores de "Papelaria" acessam apenas seus dados, enquanto a Diretoria possui "Visão Global".
-- **Sistema de Aprendizado**: A IA aprende com o feedback dos gestores para refinar suas recomendações.
-
----
-
-## 🎨 Identidade Visual (Lojas Caçula - 40 Anos)
-
-| Cor | Hex | Significado |
-|-----|-----|-------------|
-| Marrom Caçula | `#8B7355` | Solidez e Tradição |
-| Dourado/Bronze | `#C9A961` | Excelência e Valor |
-| Verde Sucesso | `#166534` | Eficiência de Estoque (Classe A) |
-| Vermelho Alerta | `#991B1B` | Risco de Ruptura (Classe C/D) |
-
----
-
-## 🛠️ Tecnologias Utilizadas
-
-- **Frontend**: SolidJS (Performance reativa superior ao React).
-- **Backend**: FastAPI (Python 3.11+).
-- **Processamento**: DuckDB 1.1+ (SQL Analítico Ultra-Rápido).
-- **IA de Negócio**: Google Gemini 3.0 Flash (Native Function Calling).
-- **Armazenamento**: Apache Parquet (Arrow Zero-Copy).
-
----
-
-## 📁 Guia de Instalação Rápida
+### Instalação
 
 ```bash
-# Instalação simplificada
-npm run install
-# Execução sincronizada (Frontend + Backend)
-npm run dev
+# Clone o repositório
+git clone https://github.com/seu-repo/caculinha-bi.git
+cd caculinha-bi
+
+# Crie um virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou: venv\Scripts\activate  # Windows
+
+# Instale dependências
+pip install -r backend/requirements.txt
+
+# Configure variáveis de ambiente
+cp backend/.env.example backend/.env
+# Edite backend/.env e adicione sua GEMINI_API_KEY
 ```
 
-**Acesse:** [http://localhost:3000](http://localhost:3000)
+### Execução
+
+```bash
+# Desenvolvimento
+cd backend
+python main.py
+
+# Ou com uvicorn
+uvicorn backend.main:app --reload --port 8000
+```
+
+### Docker
+
+```bash
+# Build
+docker build -t caculinha-bi:latest .
+
+# Run
+docker run -p 8000:8000 --env-file backend/.env caculinha-bi:latest
+
+# Ou com docker-compose
+docker-compose up -d
+```
+
+## 📚 API Endpoints
+
+### Autenticação
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | `/api/v2/auth/login` | Login (retorna JWT) |
+| GET | `/api/v2/auth/me` | Perfil do usuário |
+| POST | `/api/v2/auth/refresh` | Renovar token |
+
+### Chat
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| POST | `/api/v2/chat` | Chat síncrono |
+| POST | `/api/v2/chat/stream` | Chat com SSE |
+
+### Agentes
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/v2/agents` | Lista agentes |
+| GET | `/api/v2/agents/{name}` | Detalhes do agente |
+
+### Métricas
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/v2/metrics` | Métricas da aplicação |
+| GET | `/api/v2/metrics/usage` | Uso do tenant |
+| GET | `/api/v2/metrics/invoice` | Gerar fatura |
+
+## 🤖 Agentes
+
+| Agente | Função |
+|--------|--------|
+| **OrchestratorAgent** | Coordena agentes e roteia requisições |
+| **SQLAgent** | Executa queries SQL via DuckDB |
+| **InsightAgent** | Gera narrativas e insights |
+| **ForecastAgent** | Previsões e tendências |
+| **MetadataAgent** | Schema e dicionário de dados |
+| **TenantAgent** | Multi-tenancy e isolamento |
+| **SecurityAgent** | Validação de acesso e auditoria |
+| **MonitoringAgent** | Saúde do sistema e alertas |
+
+## 💼 Planos
+
+| Plano | Requests/Hora | Tokens | Features |
+|-------|---------------|--------|----------|
+| **Free** | 100 | 4K | chat, basic_insights |
+| **Pro** | 1.000 | 8K | + sql, forecasts |
+| **Enterprise** | 10.000 | 32K | + custom_agents, api |
+
+## 🧪 Testes
+
+```bash
+# Todos os testes
+pytest .agent/tests/ -v
+
+# Por fase
+pytest .agent/tests/test_fase5_api_async.py -v   # API
+pytest .agent/tests/test_fase6_saas.py -v        # Auth/SaaS
+pytest .agent/tests/test_fase7_observability.py -v # Métricas
+```
+
+## 📁 Estrutura do Projeto
+
+```
+backend/
+├── main.py                 # Entrypoint
+├── domain/                 # Entidades e Ports
+│   ├── entities/           # Modelos de domínio
+│   ├── value_objects/      # Value Objects
+│   └── ports/              # Interfaces
+├── application/            # Casos de uso e Agentes
+│   └── agents/             # 8 Agentes especializados
+├── infrastructure/         # Adapters
+│   └── adapters/
+│       ├── llm/            # GeminiAdapter
+│       └── data/           # DuckDBAdapter
+├── api/                    # Camada de API
+│   ├── middleware/         # Auth, Tenant, RateLimit
+│   └── v2/endpoints/       # Routers
+└── services/               # Serviços de infraestrutura
+    ├── metrics.py          # Observabilidade
+    ├── billing.py          # Billing
+    └── logging_config.py   # Logs
+```
+
+## 🔐 Segurança
+
+- JWT para autenticação
+- Rate limiting por plano
+- Isolamento de dados por tenant
+- Logs estruturados para auditoria
+
+## 📊 Observabilidade
+
+- **Métricas**: Contadores, gauges, histogramas
+- **Logs**: Structlog JSON
+- **Health Checks**: `/ping`, `/api/v2/health`
+
+## 📝 Licença
+
+MIT License - Veja [LICENSE](LICENSE)
 
 ---
 
-## 👥 Contas de Demonstração
-
-- **Administrador (Global)**: `admin` / `admin`
-- **Gestor Segmento**: `hugo.mendes` / `123456`
-
----
-
-## 📂 Estrutura do Projeto
-
-```
-BI_Solution/
-├── README.md                  # Este arquivo
-├── docker-compose.yml         # Configuração Docker principal
-├── docker-compose.light.yml   # Configuração Docker leve
-├── start.bat                  # Script de inicialização rápida
-│
-├── backend/                   # API FastAPI + DuckDB
-├── frontend-solid/            # Interface SolidJS
-│
-├── docs/                      # 📚 Documentação completa
-│   ├── INDEX.md              # Índice de toda documentação
-│   ├── migration/            # Documentação migração DuckDB
-│   ├── guides/               # Guias operacionais
-│   ├── archive/              # Documentação histórica
-│   └── PRD.md                # Product Requirements Document
-│
-├── scripts/                   # Scripts utilitários
-│   └── utils/                # Scripts Docker/WSL/manutenção
-│
-├── config/                    # Configurações
-│   ├── docker/               # Docker Compose especializados
-│   └── prometheus/           # Monitoramento
-│
-└── data/                      # Dados e cache (não versionado)
-    ├── parquet/              # Arquivos .parquet
-    └── cache/                # Cache DuckDB
-```
-
-**📖 Para começar, leia**: [`docs/INDEX.md`](docs/INDEX.md)
-
----
-
-*Lojas Caçula © 2025 - Transformando dados em decisões estratégicas.*
-*Powered by DuckDB 🦆 - 3.3x mais rápido, 76% menos memória.*
+**Desenvolvido com ❤️ para Lojas Caçula**

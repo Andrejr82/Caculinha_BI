@@ -1,193 +1,191 @@
 """
-FastAPI Main Application
-Entry point for the backend API
+Caculinha BI Agent Platform - Main Application
+
+Ponto de entrada da aplicação FastAPI com configuração completa
+de middlewares, routers e serviços.
+
+Uso:
+    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+
+Autor: Arquiteto de Sistema
+Data: 2026-02-07
 """
 
-from contextlib import asynccontextmanager
-import logging
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 
-import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+import structlog
 
-from app.api.v1.router import api_router
-from app.config.database import engine
-from app.config.settings import get_settings
-from app.infrastructure.database.models import Base
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter, DuckDBEnhancedAdapter
+# Carregar .env
+from dotenv import load_dotenv
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+load_dotenv(_ENV_PATH)
 
-# Import logging configuration
-from app.core.logging_config import setup_application_logging
-from app.core.logging_middleware import (
-    RequestLoggingMiddleware,
-    PerformanceLoggingMiddleware,
-    SecurityLoggingMiddleware,
-    AuditLoggingMiddleware,
-    ErrorLoggingMiddleware,
+# Configurar logging
+from backend.services.logging_config import setup_logging
+setup_logging(
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    json_format=os.getenv("LOG_FORMAT", "json") == "json",
 )
 
-settings = get_settings()
+logger = structlog.get_logger(__name__)
 
-# Setup complete logging system
-loggers = setup_application_logging(environment=settings.ENVIRONMENT)
 
-# Get main logger
-logger = structlog.get_logger("agentbi")
-api_logger = logging.getLogger("agentbi.api")
-security_logger = logging.getLogger("agentbi.security")
-chat_logger = logging.getLogger("agentbi.chat")
-audit_logger = logging.getLogger("agentbi.audit")
+# =============================================================================
+# LIFESPAN (Startup/Shutdown)
+# =============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for startup and shutdown events
-    """
+    """Gerencia ciclo de vida da aplicação."""
     # Startup
-    logger.info("application_startup", environment=settings.ENVIRONMENT)
+    logger.info(
+        "application_starting",
+        env=os.getenv("ENVIRONMENT", "development"),
+        version="2.0.0",
+    )
     
-    # 🛠️ FIX: Create tables for BOTH SQL Server AND SQLite fallback
-    try:
-        if settings.DEBUG:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            if settings.USE_SQL_SERVER:
-                logger.info("database_tables_created", db="SQL Server")
-            else:
-                logger.info("database_tables_created", db="SQLite (local)")
-    except Exception as e:
-        logger.warning("database_connection_failed", error=str(e))
-        logger.info("continuing_without_database")
-
-    try:
-        # Initialize DuckDBEnhancedAdapter (singleton)
-        logger.info("initializing_data_adapter")
-        app.state.data_adapter = get_duckdb_adapter()
-        logger.info("data_adapter_initialized", adapter_type="DuckDBEnhanced")
-    except Exception as e:
-        logger.warning("data_adapter_failed", error=str(e))
-        logger.info("continuing_without_data_adapter")
+    # Inicializar serviços
+    from backend.services.metrics import MetricsService
+    from backend.services.billing import BillingService
     
-    # ✅ PERFORMANCE FIX: Background Initialization of Agents
-    # Starts immediately but doesn't block the server from accepting connections.
-    from app.api.v1.endpoints.chat import initialize_agents_async
-    import asyncio
+    MetricsService()
+    BillingService()
     
-    # Schedule the initialization task
-    # We use create_task to run it in the background event loop
-    asyncio.create_task(initialize_agents_async())
-    logger.info("startup_background_task_scheduled: Agent initialization")
-
+    logger.info("services_initialized")
+    
     yield
     
     # Shutdown
-    logger.info("application_shutdown")
-    if hasattr(app.state, "data_adapter"):
-        try:
-            await app.state.data_adapter.disconnect()
-        except:
-            pass
-    try:
-        await engine.dispose()
-    except:
-        pass
+    logger.info("application_shutting_down")
 
 
+# =============================================================================
+# APPLICATION
+# =============================================================================
 
-# Create FastAPI app
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
+    title="Caculinha BI Agent Platform",
+    description="""
+    Plataforma de BI Conversacional com Agentes de IA.
+    
+    ## Features
+    
+    * **Chat Conversacional**: Pergunte em linguagem natural sobre seus dados
+    * **8 Agentes Especializados**: SQL, Insight, Forecast, Metadata, Tenant, Security, Monitoring
+    * **Multi-Tenancy**: Suporte a múltiplas organizações
+    * **Rate Limiting**: Controle de uso por plano
+    * **Observabilidade**: Métricas e logs estruturados
+    
+    ## Autenticação
+    
+    Use o endpoint `/api/v2/auth/login` para obter um token JWT.
+    Inclua o token no header `Authorization: Bearer <token>`.
+    """,
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan,
 )
 
-# Configure CORS
-origins = settings.BACKEND_CORS_ORIGINS.split(",") if isinstance(settings.BACKEND_CORS_ORIGINS, str) else settings.BACKEND_CORS_ORIGINS
+
+# =============================================================================
+# CORS
+# =============================================================================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Use configured origins
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add logging middlewares
-# app.add_middleware(ErrorLoggingMiddleware)
-# app.add_middleware(AuditLoggingMiddleware)
-# app.add_middleware(SecurityLoggingMiddleware)
-# app.add_middleware(PerformanceLoggingMiddleware, slow_request_threshold=2.0)
-# app.add_middleware(RequestLoggingMiddleware)
 
-# Configure rate limiting
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# =============================================================================
+# MIDDLEWARES CUSTOMIZADOS
+# =============================================================================
+
+from backend.api.middleware.auth import AuthMiddleware
+from backend.api.middleware.tenant import TenantMiddleware
+from backend.api.middleware.rate_limit import RateLimitMiddleware
+
+# Ordem importa: Rate Limit → Tenant → Auth
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(TenantMiddleware)
+app.add_middleware(AuthMiddleware)
 
 
-# Health check endpoint
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint"""
+# =============================================================================
+# ROUTERS
+# =============================================================================
+
+from backend.api.v2 import router as v2_router
+
+app.include_router(v2_router, prefix="/api/v2")
+
+
+# =============================================================================
+# ROOT ENDPOINTS
+# =============================================================================
+
+@app.get("/")
+async def root():
+    """Endpoint raiz com informações da API."""
     return {
-        "status": "healthy",
-        "version": settings.APP_VERSION,
-        "environment": settings.ENVIRONMENT,
+        "name": "Caculinha BI Agent Platform",
+        "version": "2.0.0",
+        "status": "running",
+        "docs": "/docs",
+        "api": "/api/v2",
     }
 
 
-# Include API router
-app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-
-# Root endpoint for simple login UI
-from fastapi import Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-
-templates = Jinja2Templates(directory="app/templates")
-
-@app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Render a basic login page"""
-    return templates.TemplateResponse("login.html", {"request": request})
+@app.get("/ping")
+async def ping():
+    """Endpoint de ping para load balancers."""
+    return {"status": "pong"}
 
 
-# Global exception handler
+# =============================================================================
+# ERROR HANDLERS
+# =============================================================================
+
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler for unhandled errors"""
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handler global de exceções."""
     logger.error(
         "unhandled_exception",
-        error=str(exc),
         path=request.url.path,
         method=request.method,
+        error=str(exc),
+        exc_info=exc,
     )
     
     return JSONResponse(
         status_code=500,
         content={
-            "detail": "Internal server error" if not settings.DEBUG else str(exc)
-        },
+            "detail": "Internal server error",
+            "type": type(exc).__name__,
+        }
     )
 
+
+# =============================================================================
+# ENTRYPOINT
+# =============================================================================
 
 if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.DEBUG,
-        log_level=settings.LOG_LEVEL.lower(),
+        "backend.main:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", 8000)),
+        reload=os.getenv("ENVIRONMENT", "development") == "development",
+        log_level=os.getenv("LOG_LEVEL", "info").lower(),
     )
-
- 

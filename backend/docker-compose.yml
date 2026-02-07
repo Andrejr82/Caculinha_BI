@@ -1,0 +1,83 @@
+# =============================================================================
+# Caculinha BI Agent Platform - Docker Compose
+# Ambiente de desenvolvimento local
+# =============================================================================
+
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend API
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: caculinha-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      # LLM
+      - LLM_PROVIDER=google
+      - LLM_MODEL_NAME=gemini-2.5-pro # Mesmo modelo do .env
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # Database
+      - DATABASE_URL=sqlite:///./data/caculinha.db
+      - DUCKDB_DATABASE=./data/analytics.duckdb
+      # Cache
+      - REDIS_URL=redis://redis:6379/0
+      # Auth
+      - USE_SUPABASE_AUTH=false
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
+    depends_on:
+      - redis
+    networks:
+      - caculinha-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis (Cache e Message Broker)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: caculinha-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - caculinha-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  caculinha-network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis-data:
+    driver: local

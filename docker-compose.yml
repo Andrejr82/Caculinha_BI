@@ -1,0 +1,79 @@
+# Docker Compose — Caculinha BI Enterprise
+# Orquestração de serviços para ambiente local/dev
+
+version: "3.9"
+
+services:
+  # ===========================================
+  # Backend API
+  # ===========================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: caculinha-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - LLM_PROVIDER=google
+      - LLM_MODEL_NAME=gemini-2.5-flash-lite
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite:///data/memory.db
+    volumes:
+      - ./backend:/app/backend:ro
+      - backend_data:/app/data
+    depends_on:
+      - redis
+    networks:
+      - caculinha-network
+    restart: unless-stopped
+
+  # ===========================================
+  # Redis (Cache de Memória)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: caculinha-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - caculinha-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # ===========================================
+  # Frontend (SolidJS)
+  # ===========================================
+  frontend:
+    build:
+      context: ./frontend-solid
+      dockerfile: Dockerfile
+    container_name: caculinha-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - caculinha-network
+    restart: unless-stopped
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  caculinha-network:
+    driver: bridge
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  backend_data:
+    driver: local
+  redis_data:
+    driver: local
