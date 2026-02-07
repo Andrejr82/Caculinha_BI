@@ -1,0 +1,1 @@
+import{c as o,m as e,I as p}from"./index-BTwf99OE.js";const s=[["polyline",{points:"22 7 13.5 15.5 8.5 10.5 2 17",key:"126l90"}],["polyline",{points:"16 7 22 7 22 13",key:"kwv8wd"}]],r=n=>o(p,e(n,{name:"TrendingUp",iconNode:s}));export{r as T};

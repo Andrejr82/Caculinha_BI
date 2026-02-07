@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limpeza de Cache - Admin Fix</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        .status.error {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        button.danger {
+            background: #d32f2f;
+        }
+        button.danger:hover {
+            background: #c62828;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        .log {
+            max-height: 300px;
+            overflow-y: auto;
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Limpeza de Cache - Admin Fix</h1>
+        <p>Esta página ajuda a limpar tokens antigos e resolver problemas de permissão.</p>
+
+        <div id="currentStatus" class="status info">
+            Verificando status atual...
+        </div>
+
+        <h2>Ações Disponíveis:</h2>
+
+        <button onclick="checkCurrentToken()">1. Verificar Token Atual</button>
+        <button onclick="clearCache()" class="danger">2. Limpar Cache Completo</button>
+        <button onclick="goToLogin()">3. Ir para Login</button>
+
+        <h2>Logs:</h2>
+        <div id="logs" class="log"></div>
+    </div>
+
+    <script>
+        const log = (msg, type = 'info') => {
+            const logsDiv = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ef5350' : type === 'success' ? '#66bb6a' : '#aed581';
+            logsDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${msg}</div>`;
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        };
+
+        const updateStatus = (msg, type) => {
+            const statusDiv = document.getElementById('currentStatus');
+            statusDiv.textContent = msg;
+            statusDiv.className = `status ${type}`;
+        };
+
+        function checkCurrentToken() {
+            log('=== VERIFICANDO TOKEN ATUAL ===');
+
+            const token = localStorage.getItem('token');
+
+            if (!token) {
+                log('❌ Nenhum token encontrado no localStorage', 'error');
+                updateStatus('Nenhum token encontrado - Você precisa fazer login', 'info');
+                return;
+            }
+
+            log('✅ Token encontrado no localStorage', 'success');
+
+            try {
+                // Decode JWT
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    log('❌ Token inválido (formato incorreto)', 'error');
+                    updateStatus('Token inválido detectado', 'error');
+                    return;
+                }
+
+                const payload = JSON.parse(atob(parts[1]));
+                log('✅ Token decodificado com sucesso', 'success');
+
+                // Show payload
+                log('--- PAYLOAD DO TOKEN ---');
+                log(`Username: ${payload.username || payload.sub}`);
+                log(`Role: ${payload.role || 'undefined'}`, payload.role === 'admin' ? 'success' : 'error');
+                log(`Allowed Segments: ${JSON.stringify(payload.allowed_segments || [])}`);
+
+                // Validate
+                if (payload.role !== 'admin') {
+                    log('❌ PROBLEMA: Role deveria ser "admin" mas é "' + payload.role + '"', 'error');
+                    updateStatus('PROBLEMA ENCONTRADO: Token com role incorreto', 'error');
+                } else if (!payload.allowed_segments || !payload.allowed_segments.includes('*')) {
+                    log('❌ PROBLEMA: allowed_segments deveria ter ["*"]', 'error');
+                    updateStatus('PROBLEMA ENCONTRADO: Token sem permissões completas', 'error');
+                } else {
+                    log('✅ Token válido e correto!', 'success');
+                    updateStatus('Token OK - Admin com permissões completas', 'success');
+                }
+
+                // Check expiration
+                if (payload.exp) {
+                    const now = Math.floor(Date.now() / 1000);
+                    if (payload.exp < now) {
+                        log('⚠️ Token EXPIRADO!', 'error');
+                        updateStatus('Token expirado - Faça login novamente', 'error');
+                    } else {
+                        const expiresIn = Math.floor((payload.exp - now) / 60);
+                        log(`Token expira em ${expiresIn} minutos`);
+                    }
+                }
+
+            } catch (e) {
+                log('❌ Erro ao decodificar token: ' + e.message, 'error');
+                updateStatus('Token inválido ou corrompido', 'error');
+            }
+        }
+
+        function clearCache() {
+            if (!confirm('Isso vai limpar TODO o cache e fazer logout. Continuar?')) {
+                return;
+            }
+
+            log('=== LIMPANDO CACHE ===');
+
+            // Clear localStorage
+            const keys = Object.keys(localStorage);
+            log(`Removendo ${keys.length} itens do localStorage...`);
+            localStorage.clear();
+            log('✅ localStorage limpo', 'success');
+
+            // Clear sessionStorage
+            sessionStorage.clear();
+            log('✅ sessionStorage limpo', 'success');
+
+            // Clear cookies
+            document.cookie.split(";").forEach(c => {
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+            });
+            log('✅ Cookies limpos', 'success');
+
+            updateStatus('Cache limpo com sucesso! Redirecionando para login...', 'success');
+
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 2000);
+        }
+
+        function goToLogin() {
+            window.location.href = '/login';
+        }
+
+        // Auto-check on load
+        window.onload = () => {
+            log('Página carregada. Use os botões acima para diagnosticar.');
+            checkCurrentToken();
+        };
+    </script>
+</body>
+</html>

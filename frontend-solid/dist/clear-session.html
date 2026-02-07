@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limpeza de Sessão - Agent BI</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        h1 {
+            color: #1a202c;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        p {
+            color: #4a5568;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .success {
+            background: #48bb78;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .info {
+            background: #edf2f7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #2d3748;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Atualização de Segurança</h1>
+        <p>O sistema foi atualizado para usar sessões temporárias (sessionStorage) ao invés de armazenamento persistente (localStorage).</p>
+
+        <div class="info">
+            <strong>O que mudou:</strong><br>
+            • Sessão expira ao fechar o navegador<br>
+            • Mais segurança contra roubo de tokens<br>
+            • Login necessário após reiniciar o navegador
+        </div>
+
+        <div id="status"></div>
+
+        <button onclick="clearOldSession()">Limpar Sessão Antiga</button>
+    </div>
+
+    <script>
+        function clearOldSession() {
+            const statusDiv = document.getElementById('status');
+
+            try {
+                // Remover token antigo do localStorage
+                const oldToken = localStorage.getItem('token');
+                if (oldToken) {
+                    localStorage.removeItem('token');
+                    statusDiv.innerHTML = '<div class="success">✅ Sessão antiga removida com sucesso!<br><br>Você será redirecionado para o login...</div>';
+
+                    // Redirecionar para login após 2 segundos
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                } else {
+                    statusDiv.innerHTML = '<div class="success">✅ Nenhuma sessão antiga encontrada.<br><br>Você será redirecionado para o login...</div>';
+
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<div style="background: #f56565; color: white; padding: 15px; border-radius: 8px;">❌ Erro: ' + error.message + '</div>';
+            }
+        }
+
+        // Auto-executar ao carregar a página
+        window.addEventListener('load', () => {
+            // Verificar se existe token antigo
+            const oldToken = localStorage.getItem('token');
+            if (oldToken) {
+                document.getElementById('status').innerHTML = '<div class="info">⚠️ Token antigo detectado. Clique no botão para limpar.</div>';
+            }
+        });
+    </script>
+</body>
+</html>
