@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico - Agent BI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .test-section {
+            margin-bottom: 25px;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+
+        .test-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .test-result {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        .info-box strong {
+            color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .status-ok {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-fail {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Diagnóstico Agent BI</h1>
+        <p class="subtitle">Verificando componentes do sistema...</p>
+
+        <!-- Teste 1: Backend -->
+        <div class="test-section">
+            <div class="test-title">1. Conectividade com Backend</div>
+            <div id="backend-result" class="test-result loading">Testando...</div>
+        </div>
+
+        <!-- Teste 2: API Login -->
+        <div class="test-section">
+            <div class="test-title">2. API de Login</div>
+            <div id="login-result" class="test-result loading">Aguardando teste de backend...</div>
+        </div>
+
+        <!-- Teste 3: LocalStorage -->
+        <div class="test-section">
+            <div class="test-title">3. LocalStorage</div>
+            <div id="storage-result" class="test-result loading">Testando...</div>
+        </div>
+
+        <!-- Teste 4: JavaScript -->
+        <div class="test-section">
+            <div class="test-title">4. JavaScript/ES6</div>
+            <div id="js-result" class="test-result loading">Testando...</div>
+        </div>
+
+        <!-- Teste 5: Console -->
+        <div class="test-section">
+            <div class="test-title">5. Console do Navegador</div>
+            <div id="console-result" class="test-result warning">
+                Abra o DevTools (F12) e verifique se há erros no console
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong>💡 Dica:</strong> Se todos os testes passarem mas a tela ainda estiver branca:
+            <br>1. Limpe o cache do navegador (Ctrl+Shift+Del)
+            <br>2. Tente em modo anônimo (Ctrl+Shift+N no Chrome)
+            <br>3. Verifique se há erros no console do navegador (F12)
+        </div>
+
+        <div class="button-group">
+            <button onclick="runAllTests()">🔄 Executar Testes Novamente</button>
+            <button onclick="goToApp()">🏠 Ir para Aplicação</button>
+            <button onclick="clearCache()">🧹 Limpar Cache</button>
+        </div>
+    </div>
+
+    <script>
+        async function testBackend() {
+            const resultDiv = document.getElementById('backend-result');
+            try {
+                const response = await fetch('http://127.0.0.1:8000/health', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.className = 'test-result success';
+                    resultDiv.innerHTML = `✅ Backend conectado <span class="status-badge status-ok">${data.status}</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    return true;
+                } else {
+                    resultDiv.className = 'test-result error';
+                    resultDiv.innerHTML = `❌ Backend respondeu com erro (${response.status})`;
+                    return false;
+                }
+            } catch (error) {
+                resultDiv.className = 'test-result error';
+                resultDiv.innerHTML = `❌ Não foi possível conectar ao backend<br><small>${error.message}</small><br><br><strong>Solução:</strong> Execute o arquivo <code>run.bat</code> para iniciar o backend`;
+                return false;
+            }
+        }
+
+        async function testLogin() {
+            const resultDiv = document.getElementById('login-result');
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: 'Admin@2024' })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.className = 'test-result success';
+                    resultDiv.innerHTML = `✅ Login funcionando <span class="status-badge status-ok">Token OK</span><pre>Token: ${data.access_token.substring(0, 50)}...</pre>`;
+                    return true;
+                } else {
+                    const errorData = await response.json();
+                    resultDiv.className = 'test-result error';
+                    resultDiv.innerHTML = `❌ Erro no login: ${errorData.detail || response.statusText}`;
+                    return false;
+                }
+            } catch (error) {
+                resultDiv.className = 'test-result error';
+                resultDiv.innerHTML = `❌ Erro ao testar login<br><small>${error.message}</small>`;
+                return false;
+            }
+        }
+
+        function testLocalStorage() {
+            const resultDiv = document.getElementById('storage-result');
+            try {
+                const testKey = '__test_storage__';
+                localStorage.setItem(testKey, 'test');
+                const value = localStorage.getItem(testKey);
+                localStorage.removeItem(testKey);
+
+                if (value === 'test') {
+                    resultDiv.className = 'test-result success';
+                    resultDiv.innerHTML = '✅ LocalStorage funcionando <span class="status-badge status-ok">OK</span>';
+                    return true;
+                } else {
+                    throw new Error('Valor não corresponde');
+                }
+            } catch (error) {
+                resultDiv.className = 'test-result error';
+                resultDiv.innerHTML = `❌ LocalStorage não está disponível<br><small>${error.message}</small><br><br><strong>Solução:</strong> Verifique as configurações de privacidade do navegador`;
+                return false;
+            }
+        }
+
+        function testJavaScript() {
+            const resultDiv = document.getElementById('js-result');
+            try {
+                // Testar recursos ES6+
+                const arrow = () => true;
+                const [a, b] = [1, 2];
+                const obj = { ...{ test: true } };
+                const promise = Promise.resolve(true);
+
+                resultDiv.className = 'test-result success';
+                resultDiv.innerHTML = '✅ JavaScript/ES6+ suportado <span class="status-badge status-ok">OK</span>';
+                return true;
+            } catch (error) {
+                resultDiv.className = 'test-result error';
+                resultDiv.innerHTML = `❌ Navegador não suporta recursos modernos<br><small>${error.message}</small><br><br><strong>Solução:</strong> Atualize seu navegador para a versão mais recente`;
+                return false;
+            }
+        }
+
+        async function runAllTests() {
+            console.log('🔧 Iniciando diagnóstico...');
+
+            // Teste 3: LocalStorage
+            testLocalStorage();
+
+            // Teste 4: JavaScript
+            testJavaScript();
+
+            // Teste 1: Backend
+            const backendOk = await testBackend();
+
+            // Teste 2: Login (só se backend estiver ok)
+            if (backendOk) {
+                await testLogin();
+            } else {
+                const loginDiv = document.getElementById('login-result');
+                loginDiv.className = 'test-result warning';
+                loginDiv.innerHTML = '⚠️ Teste de login pulado (backend offline)';
+            }
+
+            console.log('✅ Diagnóstico completo');
+        }
+
+        function goToApp() {
+            window.location.href = '/';
+        }
+
+        function clearCache() {
+            localStorage.clear();
+            sessionStorage.clear();
+            alert('Cache limpo! Recarregando a página...');
+            window.location.reload();
+        }
+
+        // Executar testes automaticamente ao carregar
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Página de diagnóstico carregada');
+            runAllTests();
+        });
+    </script>
+</body>
+</html>
