@@ -70,21 +70,32 @@ class TestDuckDBVectorAdapter:
     
     @pytest.mark.asyncio
     async def test_index_and_search(self, adapter):
-        doc = Document(tenant_id="test", content="Test document")
-        embedding = Embedding(document_id=doc.id, vector=[0.1] * 768, model="test")
+        from backend.domain.entities.memory_entry import MemoryEntry
+        # Usar MemoryEntry pois search_similar busca em memory_entries
+        entry = MemoryEntry(
+            conversation_id="conv-test",
+            content="Test document content",
+            embedding=[0.1] * 768,
+        )
         
-        await adapter.index_document(doc, embedding)
+        await adapter.index_entry(entry)
         
-        results = await adapter.search_similar([0.1] * 768, limit=5, tenant_id="test")
+        results = await adapter.search_similar([0.1] * 768, limit=5)
         assert len(results) >= 1
+        assert "Test document" in results[0].content
     
     @pytest.mark.asyncio
     async def test_search_by_content(self, adapter):
-        doc = Document(tenant_id="test", content="Unique content ABC123")
-        embedding = Embedding(document_id=doc.id, vector=[0.5] * 768, model="test")
-        await adapter.index_document(doc, embedding)
+        from backend.domain.entities.memory_entry import MemoryEntry
+        entry = MemoryEntry(
+            conversation_id="conv-test",
+            content="Unique content ABC123 for testing",
+            embedding=[0.5] * 768,
+        )
+        await adapter.index_entry(entry)
         
-        results = await adapter.search_by_content("ABC123", limit=5, tenant_id="test")
+        results = await adapter.search_by_content("ABC123", limit=5)
+        assert len(results) >= 1
         assert any("ABC123" in r.content for r in results)
 
 

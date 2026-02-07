@@ -59,8 +59,10 @@ class DuckDBFeatureStoreAdapter(IFeatureStore):
     async def store_feature(self, feature: Feature) -> str:
         await self._ensure_initialized()
         conn = self._get_connection()
+        # Delete existing then insert
+        conn.execute("DELETE FROM features WHERE id = ?", [feature.id])
         conn.execute("""
-            INSERT OR REPLACE INTO features 
+            INSERT INTO features 
             (id, tenant_id, entity_id, feature_name, value, value_type, version, ttl_seconds, created_at, updated_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [

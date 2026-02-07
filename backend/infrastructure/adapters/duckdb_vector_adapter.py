@@ -115,8 +115,10 @@ class DuckDBVectorAdapter(IVectorRepository):
         
         embedding_str = str(entry.embedding) if entry.embedding else "NULL"
         
+        # Delete existing then insert (DuckDB não suporta INSERT OR REPLACE)
+        conn.execute("DELETE FROM memory_entries WHERE id = ?", [entry.id])
         conn.execute("""
-            INSERT OR REPLACE INTO memory_entries 
+            INSERT INTO memory_entries 
             (id, conversation_id, message_id, content, embedding, score, created_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, [
@@ -137,8 +139,10 @@ class DuckDBVectorAdapter(IVectorRepository):
         await self._ensure_initialized()
         conn = self._get_connection()
         
+        # Delete existing then insert
+        conn.execute("DELETE FROM document_embeddings WHERE id = ?", [embedding.id])
         conn.execute("""
-            INSERT OR REPLACE INTO document_embeddings 
+            INSERT INTO document_embeddings 
             (id, document_id, tenant_id, content, embedding, created_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, [
