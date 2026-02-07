@@ -1,34 +1,34 @@
 {
   "insights": [
     {
-      "title": "ALERTA GERAL: Operação Parada - Vendas e Estoque Zerados",
-      "description": "A loja está em estado crítico. Nos últimos 30 dias, o faturamento foi de R$ 0,00 ('total_sales_30d') e não há nenhuma unidade em estoque ('total_stock_units': 0.0). Isso significa que a operação está completamente paralisada.",
+      "title": "ALERTA CRÍTICO: Loja Inoperante - Zero Vendas e Zero Estoque",
+      "description": "A loja está completamente parada. Nos últimos 30 dias, o faturamento foi de R$ 0,00 (`total_sales_30d`) e o estoque físico e financeiro estão zerados (`total_stock_units`: 0.0, `stock_financial_value`: R$ 0,00).",
       "category": "alert",
       "severity": "high",
-      "recommendation": "AÇÃO IMEDIATA: Verifique a causa da falta total de estoque e vendas. Inicie o processo de compra e recebimento de mercadorias com máxima urgência para reativar as operações hoje. Investigue se há um erro de integração de sistema ou uma falha catastrófica na cadeia de suprimentos."
+      "recommendation": "AÇÃO IMEDIATA: Verifique se há um erro na integração dos dados de vendas e estoque. Se os dados estiverem corretos, a operação está em estado crítico e é preciso reabastecer a loja urgentemente para retomar as vendas."
     },
     {
-      "title": "Impossível Prever Demanda: Ausência de Dados de Vendas",
-      "description": "Com as vendas zeradas, a lista de 'TOP 5 PRODUTOS MAIS VENDIDOS' está vazia. Sem esses dados, é impossível prever a demanda, identificar produtos com alto giro e gerenciar proativamente o risco de futuras rupturas.",
+      "title": "Risco Total de Ruptura: Impossível Atender Qualquer Demanda",
+      "description": "Com 100% do catálogo sem estoque, a loja não pode atender a nenhum cliente, resultando em perda total de vendas e deterioração da imagem da marca. A lista de 'Top 5 Produtos Mais Vendidos' está vazia, indicando que nem os produtos principais estão disponíveis.",
       "category": "alert",
       "severity": "medium",
-      "recommendation": "Após a reposição emergencial do estoque, monitore as vendas diárias de perto para identificar rapidamente os itens mais vendidos e estabelecer níveis de estoque de segurança para eles."
+      "recommendation": "Após confirmar a causa da falta de dados/estoque, defina um plano de compra emergencial focado nos produtos historicamente mais vendidos para restabelecer a operação mínima o mais rápido possível."
     },
     {
-      "title": "Ponto de Atenção: Capital de Giro Não Imobilizado",
-      "description": "Atualmente, não há problemas com estoque parado ('ESTOQUE PARADO' está vazio) pois o valor financeiro em estoque é de R$ 0,00. Embora isso signifique que não há capital preso, é um sintoma da paralisação total.",
+      "title": "Capital de Giro Parado: Valor Financeiro do Estoque é Nulo",
+      "description": "O valor financeiro do estoque (`stock_financial_value`) é de R$ 0,00. Isso significa que não há capital investido em produtos para gerar receita, paralisando completamente o fluxo de caixa da empresa.",
       "category": "alert",
       "severity": "medium",
-      "recommendation": "Ao reabastecer a loja, estabeleça um processo para monitorar a idade do estoque desde o primeiro dia para evitar que o problema de estoque parado surja no futuro. Foque em um mix inicial enxuto e de alto potencial."
+      "recommendation": "Aloque um orçamento de compra para reativar o inventário. Inicie com um estoque mínimo viável para gerar as primeiras receitas e financiar compras futuras."
     },
     {
-      "title": "Oportunidade Estratégica: Recomeço da Operação",
-      "description": "A ausência completa de dados e estoque ('total_sales_30d': 0.0, 'total_stock_units': 0.0) cria uma 'página em branco'. Esta é uma oportunidade forçada para reavaliar o mix de produtos e a estratégia comercial antes de fazer um novo investimento em inventário.",
+      "title": "Oportunidade Estratégica: Reestruturação do Catálogo de Produtos",
+      "description": "O cenário de estoque zerado, embora crítico, oferece uma oportunidade única para reavaliar e otimizar completamente o mix de produtos sem se preocupar com inventário antigo.",
       "category": "alert",
       "severity": "low",
-      "recommendation": "Planeje o reabastecimento com base em uma análise de mercado atualizada. Considere lançar uma campanha de marketing de 'Reinauguração' ou 'Estamos de volta com novo estoque!' para reengajar clientes."
+      "recommendation": "Utilize dados históricos (anteriores a este período de 30 dias) para planejar o reabastecimento, focando em itens com maior margem de lucro e descontinuando produtos com baixo desempenho histórico."
     }
   ],
-  "generated_at": "2026-02-05T00:54:45.532434",
+  "generated_at": "2026-02-06T02:18:45.038287",
   "cache_key": "568500d390480fb491362ddb53068a65"
 }

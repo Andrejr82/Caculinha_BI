@@ -10,7 +10,7 @@ echo ===========================================================================
 echo.
 
 REM Mudar para o diretorio do projeto
-cd /d D:\Dev\Agente_BI\BI_Solution
+cd /d "%~dp0"
 
 echo [1/4] Validando pre-requisitos...
 
@@ -45,7 +45,7 @@ echo.
 echo [3/4] Iniciando Backend (porta 8000)...
 
 REM Iniciar backend em nova janela (sem abrir browser)
-start "BI Backend" cmd /k "cd /d D:\Dev\Agente_BI\BI_Solution\backend && python main.py"
+start "BI Backend" cmd /k "cd /d "%~dp0backend" && python main.py"
 
 echo   Aguardando backend inicializar...
 timeout /t 5 /nobreak >nul
@@ -56,7 +56,7 @@ echo.
 echo [4/4] Iniciando Frontend (porta 3000)...
 
 REM Iniciar frontend em nova janela (sem --open, para nao abrir browser duas vezes)
-start "BI Frontend" cmd /k "cd /d D:\Dev\Agente_BI\BI_Solution\frontend-solid && npm run dev"
+start "BI Frontend" cmd /k "cd /d "%~dp0frontend-solid" && npm run dev"
 
 echo   Aguardando frontend inicializar...
 timeout /t 8 /nobreak >nul

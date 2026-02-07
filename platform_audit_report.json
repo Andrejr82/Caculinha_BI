@@ -1,0 +1,124 @@
+{
+  "fase1_diagnostico": [
+    {
+      "item": "Diagn\u00f3stico",
+      "path": "C:\\Projetos_BI\\BI_Solution\\docs\\diagnostico.md",
+      "status": "MISSING"
+    },
+    {
+      "item": "Riscos",
+      "path": "C:\\Projetos_BI\\BI_Solution\\docs\\riscos.md",
+      "status": "MISSING"
+    },
+    {
+      "item": "Mapa de m\u00f3dulos",
+      "path": "C:\\Projetos_BI\\BI_Solution\\docs\\mapa_modulos.md",
+      "status": "MISSING"
+    }
+  ],
+  "fase2_arquitetura": [
+    {
+      "item": "Camada domain",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\domain",
+      "status": "OK"
+    },
+    {
+      "item": "Camada application",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application",
+      "status": "OK"
+    },
+    {
+      "item": "Camada infrastructure",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\infrastructure",
+      "status": "OK"
+    },
+    {
+      "item": "Camada api",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\api",
+      "status": "OK"
+    },
+    {
+      "item": "Dockerfile",
+      "path": "C:\\Projetos_BI\\BI_Solution\\Dockerfile",
+      "status": "OK"
+    },
+    {
+      "item": "Docker Compose",
+      "path": "C:\\Projetos_BI\\BI_Solution\\docker-compose.yml",
+      "status": "OK"
+    }
+  ],
+  "fase3_agentes": [
+    {
+      "item": "Agente orchestrator_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\orchestrator_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente sql_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\sql_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente insight_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\insight_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente forecast_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\forecast_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente metadata_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\metadata_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente tenant_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\tenant_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente security_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\security_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "Agente monitoring_agent.py",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\monitoring_agent.py",
+      "status": "OK"
+    }
+  ],
+  "fase4_codigo_base": [
+    {
+      "item": "BaseAgent",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\application\\agents\\base_agent.py",
+      "status": "OK"
+    },
+    {
+      "item": "FastAPI App",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\main.py",
+      "status": "OK"
+    },
+    {
+      "item": "requirements.txt",
+      "path": "C:\\Projetos_BI\\BI_Solution\\requirements.txt",
+      "status": "MISSING"
+    }
+  ],
+  "fase5_mvp": [
+    {
+      "item": "API Layer",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\api",
+      "status": "OK"
+    }
+  ],
+  "fase6_saas": [
+    {
+      "item": "Auth Adapter",
+      "path": "C:\\Projetos_BI\\BI_Solution\\backend\\infrastructure\\adapters\\auth",
+      "status": "MISSING"
+    }
+  ]
+}

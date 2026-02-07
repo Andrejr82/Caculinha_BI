@@ -214,5 +214,17 @@
     "normalized": "quais são os top 10 na une 1",
     "timestamp": 1769636045.6812084,
     "user_id": "242e1d1f-c7f0-4a6e-b222-19cd585f41a4"
+  },
+  "899cbfb8c39a5324ef0e5cd4cbbaf595": {
+    "query": "preciso de um relatorio de vendas da une 2365 segmento tecidos",
+    "normalized": "preciso de um relatorio de vendas da une 2365 segmento tecidos__NUMS:2365",
+    "timestamp": 1770344391.0531325,
+    "user_id": "b71ad1a4-9b2e-4227-927d-209ba7f5a1f2"
+  },
+  "9fef4dcb3a31fb56c3ed5938da16f398": {
+    "query": "qual ação sugere para melhorar as vendas dos tecidos sem vendas na une 2365?",
+    "normalized": "qual ação sugere para melhorar as vendas dos tecidos sem vendas na une 2365__NUMS:2365",
+    "timestamp": 1770344521.859803,
+    "user_id": "b71ad1a4-9b2e-4227-927d-209ba7f5a1f2"
   }
 }
