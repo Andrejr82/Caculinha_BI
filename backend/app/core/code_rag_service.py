@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from app.config.settings import settings
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ sys.path.insert(0, str(backend_dir))
 
 # Tenta carregar as configurações
 try:
-    from app.config.settings import get_settings
+    from backend.app.config.settings import get_settings
     settings = get_settings()
 except ImportError as e:
     print(f"❌ Erro ao importar configurações: {e}")

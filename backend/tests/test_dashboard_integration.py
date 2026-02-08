@@ -10,7 +10,7 @@ try:
     from main import app
 except ImportError:
     # Fallback structure
-    from app.main import app
+    from backend.app.main import app
 
 client = TestClient(app)
 

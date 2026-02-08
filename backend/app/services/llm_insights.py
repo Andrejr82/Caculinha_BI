@@ -2,8 +2,8 @@
 import logging
 import json
 from typing import List, Dict, Any
-from app.core.llm_factory import LLMFactory
-from app.services.data_aggregation import DataAggregationService
+from backend.app.core.llm_factory import LLMFactory
+from backend.app.services.data_aggregation import DataAggregationService
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class LLMInsightsService:
             
             # 3. Chama LLM
             # Usa o provider configurado em settings (google/groq/mock)
-            from app.config.settings import settings
+            from backend.app.config.settings import settings
             llm = LLMFactory.get_adapter(provider=settings.LLM_PROVIDER, use_smart=True)
             
             # Configura system prompt

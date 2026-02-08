@@ -6,7 +6,7 @@ Provides the DuckDBEnhancedAdapter instance to API endpoints.
 from typing import Annotated
 from fastapi import Depends, Request
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter, DuckDBEnhancedAdapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter, DuckDBEnhancedAdapter
 
 def get_data_adapter(request: Request) -> DuckDBEnhancedAdapter:
     """

@@ -13,7 +13,7 @@ print("  VERIFICAÇÃO RÁPIDA - CONFIGURAÇÕES")
 print("="*60 + "\n")
 
 try:
-    from app.config.settings import get_settings
+    from backend.app.config.settings import get_settings
     settings = get_settings()
     
     print("✅ Settings carregado com sucesso\n")

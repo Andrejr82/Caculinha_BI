@@ -13,9 +13,9 @@ def test_1_imports():
     """Teste 1: Verificar imports"""
     print("\n🧪 TESTE 1: Verificando imports...")
     try:
-        from app.core.tools.flexible_query_tool import consultar_dados_flexivel
-        from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-        from app.config.settings import settings
+        from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
+        from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+        from backend.app.config.settings import settings
         print("✅ Todos os imports OK")
         return True
     except Exception as e:
@@ -27,7 +27,7 @@ def test_2_model_config():
     """Teste 2: Verificar configuração do modelo"""
     print("\n🧪 TESTE 2: Verificando configuração do modelo...")
     try:
-        from app.config.settings import settings
+        from backend.app.config.settings import settings
         model = settings.LLM_MODEL_NAME
         print(f"   Modelo configurado: {model}")
         
@@ -47,7 +47,7 @@ def test_3_flexible_tool():
     """Teste 3: Testar ferramenta flexível"""
     print("\n🧪 TESTE 3: Testando ferramenta flexível...")
     try:
-        from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+        from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
         
         # Teste simples: buscar dados sem filtros
         result = consultar_dados_flexivel.invoke({"limite": 5})
@@ -71,9 +71,9 @@ def test_4_agent_tools():
     """Teste 4: Verificar ferramentas do agente"""
     print("\n🧪 TESTE 4: Verificando ferramentas do agente...")
     try:
-        from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-        from app.core.llm_gemini_adapter import GeminiLLMAdapter
-        from app.core.utils.field_mapper import FieldMapper
+        from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+        from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
+        from backend.app.core.utils.field_mapper import FieldMapper
         
         # Criar instância do agente (sem executar)
         llm = GeminiLLMAdapter()
@@ -104,7 +104,7 @@ def test_5_parquet_config():
     """Teste 5: Verificar configuração do Parquet"""
     print("\n🧪 TESTE 5: Verificando configuração do Parquet...")
     try:
-        from app.config.settings import settings
+        from backend.app.config.settings import settings
         import os
         
         parquet_path = settings.PARQUET_FILE_PATH

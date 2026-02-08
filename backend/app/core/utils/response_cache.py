@@ -6,7 +6,7 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-from app.config.settings import settings
+from backend.app.config.settings import settings
 import re
 
 class ResponseCache:

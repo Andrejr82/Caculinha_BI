@@ -13,12 +13,12 @@ import pyarrow as pa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.api.dependencies import get_current_active_user
-from app.infrastructure.database.models import User
-from app.core.monitoring.metrics_dashboard import MetricsDashboard
-from app.config.settings import settings 
-from app.core.data_scope_service import data_scope_service
-from app.core.duckdb_config import get_safe_connection
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.infrastructure.database.models import User
+from backend.app.core.monitoring.metrics_dashboard import MetricsDashboard
+from backend.app.config.settings import settings 
+from backend.app.core.data_scope_service import data_scope_service
+from backend.app.core.duckdb_config import get_safe_connection
 
 logger = logging.getLogger(__name__)
 

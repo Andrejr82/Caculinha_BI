@@ -10,8 +10,8 @@ import numpy as np
 from datetime import datetime
 
 # Importar módulos a testar
-from app.core.agents.code_gen_agent import CodeGenAgent, get_code_gen_agent
-from app.core.utils.seasonality_detector import (
+from backend.app.core.agents.code_gen_agent import CodeGenAgent, get_code_gen_agent
+from backend.app.core.utils.seasonality_detector import (
     detect_seasonal_context,
     get_seasonal_recommendation,
     get_all_upcoming_seasons

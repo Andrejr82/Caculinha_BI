@@ -13,7 +13,7 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
 import pyodbc
 import numpy as np
 

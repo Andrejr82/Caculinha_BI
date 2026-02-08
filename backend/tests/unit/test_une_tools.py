@@ -1,7 +1,7 @@
 # backend/tests/unit/test_une_tools.py
 
 import pytest
-from app.core.tools.une_tools import (
+from backend.app.core.tools.une_tools import (
     calcular_abastecimento_une,
     calcular_mc_produto,
     calcular_preco_final_une,
@@ -12,7 +12,7 @@ from app.core.tools.une_tools import (
     _normalize_dataframe,
     _load_data
 )
-from app.infrastructure.data.hybrid_adapter import HybridDataAdapter
+from backend.app.infrastructure.data.hybrid_adapter import HybridDataAdapter
 
 # Mocking the HybridDataAdapter to control test data
 @pytest.fixture

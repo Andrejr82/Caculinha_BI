@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from collections import defaultdict
 
-from app.config.settings import settings
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

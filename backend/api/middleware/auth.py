@@ -35,6 +35,8 @@ JWT_EXPIRATION_HOURS = 24
 
 # Rotas públicas (não requerem autenticação)
 PUBLIC_ROUTES = [
+    "/api/v1/auth/login",
+    "/api/v2/auth/login",
     "/api/v2/health",
     "/api/v2/health/detailed",
     "/docs",
@@ -116,7 +118,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
 
 
-def create_access_token(user_id: str, tenant_id: str, role: str = "user") -> str:
+def create_access_token(
+    user_id: str, 
+    tenant_id: str, 
+    role: str = "user",
+    extra_claims: dict = None
+) -> str:
     """
     Cria um token JWT para o usuário.
     
@@ -124,18 +131,27 @@ def create_access_token(user_id: str, tenant_id: str, role: str = "user") -> str
         user_id: ID do usuário
         tenant_id: ID do tenant
         role: Papel do usuário (admin, user, guest)
+        extra_claims: Claims adicionais (username, allowed_segments, etc.)
     
     Returns:
         Token JWT assinado
     """
     payload = {
-        "user_id": user_id,
+        "sub": user_id,  # Standard JWT claim - required by dependencies.py
+        "user_id": user_id,  # Legacy claim for backward compatibility
         "tenant_id": tenant_id,
         "role": role,
         "iat": datetime.utcnow(),
         "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
     }
+    
+    # Adicionar claims extras se fornecidos
+    if extra_claims:
+        payload.update(extra_claims)
+    
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
 
 
 def decode_token(token: str) -> dict:

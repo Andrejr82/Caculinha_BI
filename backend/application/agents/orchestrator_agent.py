@@ -8,6 +8,7 @@ Data: 2026-02-07
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 import structlog
+from backend.app.core.observability import metrics as observability_metrics
 
 from backend.application.agents.base_agent import BaseAgent, AgentRequest, AgentResponse
 
@@ -23,6 +24,7 @@ class PipelineContext:
     compressed_context: Optional[str] = None
     sql_results: Optional[List[Dict]] = None
     final_response: Optional[str] = None
+    quality_evaluation: Optional[Dict[str, Any]] = None
 
 
 class OrchestratorAgent(BaseAgent):
@@ -37,6 +39,7 @@ class OrchestratorAgent(BaseAgent):
         compression_agent=None,
         sql_agent=None,
         insight_agent=None,
+        quality_evaluator_agent=None,
         llm_client=None,
     ):
         super().__init__(
@@ -51,6 +54,7 @@ class OrchestratorAgent(BaseAgent):
         self.compression = compression_agent
         self.sql = sql_agent
         self.insight = insight_agent
+        self.quality_evaluator = quality_evaluator_agent
         self.llm = llm_client
     
     async def _execute(self, request: AgentRequest) -> AgentResponse:
@@ -70,14 +74,50 @@ class OrchestratorAgent(BaseAgent):
             # 4. Gerar resposta
             ctx = await self._step_generate(ctx)
             
-            # 5. Salvar memória
+            # 5. Quality Gate (Governança)
+            ctx = await self._step_quality_gate(ctx)
+            
+            # 6. Salvar memória (com Memory Shield)
             await self._step_save_memory(ctx)
             
+            # Definição de resposta final baseada no Quality Gate
+            final_content = ctx.final_response or "Processamento concluído"
+            decision = ctx.quality_evaluation.get("final_decision", "OK") if ctx.quality_evaluation else "OK"
+            
+            if decision == "BLOCK":
+                final_content = "Identifiquei uma inconsistência nos dados de suporte para esta análise. Para sua segurança, por favor tente reformular a pergunta ou consulte o dicionário de dados."
+                logger.warning("response_blocked_by_quality_gate", 
+                               conversation_id=request.conversation_id,
+                               scores=ctx.quality_evaluation.get("scores"))
+                observability_metrics.RESPONSES_BLOCKED_TOTAL.labels(tenant=request.tenant_id).inc()
+            elif decision == "WARNING":
+                logger.info("response_warning_issued", 
+                            conversation_id=request.conversation_id,
+                            scores=ctx.quality_evaluation.get("scores"))
+                observability_metrics.RESPONSES_WARNING_TOTAL.labels(tenant=request.tenant_id).inc()
+            
+            # Report quality scores to Prometheus
+            if ctx.quality_evaluation and "scores" in ctx.quality_evaluation:
+                scores = ctx.quality_evaluation["scores"]
+                observability_metrics.RESPONSE_QUALITY_SCORE.labels(
+                    tenant=request.tenant_id, agent=self.name
+                ).set(scores.get("quality", 0))
+                observability_metrics.RESPONSE_UTILITY_SCORE.labels(
+                    tenant=request.tenant_id, agent=self.name
+                ).set(scores.get("utility", 0))
+                observability_metrics.RESPONSE_GROUNDEDNESS_SCORE.labels(
+                    tenant=request.tenant_id, agent=self.name
+                ).set(scores.get("groundedness", 0))
+
             return AgentResponse(
-                content=ctx.final_response or "Processamento concluído",
+                content=final_content,
                 agent_name=self.name,
                 success=True,
-                metadata={"pipeline_steps": 5}
+                metadata={
+                    "pipeline_steps": 6,
+                    "quality_scores": ctx.quality_evaluation.get("scores") if ctx.quality_evaluation else None,
+                    "quality_decision": decision
+                }
             )
         except Exception as e:
             logger.error("orchestration_failed", error=str(e))
@@ -133,19 +173,55 @@ class OrchestratorAgent(BaseAgent):
         
         return ctx
     
+    async def _step_quality_gate(self, ctx: PipelineContext) -> PipelineContext:
+        """Step 5: Avaliação de Qualidade (Governança)."""
+        if not self.quality_evaluator or not ctx.final_response:
+            return ctx
+        
+        # Prepara contexto para avaliação
+        eval_request = AgentRequest(
+            content=ctx.final_response,
+            conversation_id=ctx.request.conversation_id,
+            tenant_id=ctx.request.tenant_id,
+            user_id=ctx.request.user_id,
+            context={
+                "user_query": ctx.request.content,
+                "rag_context": ctx.rag_context
+            }
+        )
+        
+        eval_response = await self.quality_evaluator.run(eval_request)
+        if eval_response.success:
+            import json
+            try:
+                ctx.quality_evaluation = json.loads(eval_response.content)
+            except:
+                ctx.quality_evaluation = eval_response.metadata
+        
+        return ctx
+    
     async def _step_save_memory(self, ctx: PipelineContext) -> None:
-        """Step 5: Salvar em memória."""
+        """
+        Step 6: Salvar em memória.
+        Implementa o 'Memory Shield' - não salva respostas bloqueadas.
+        """
         if not self.memory:
             return
         
+        decision = ctx.quality_evaluation.get("final_decision", "OK") if ctx.quality_evaluation else "OK"
+        if decision == "BLOCK":
+            logger.info("memory_shield_activated", conversation_id=ctx.request.conversation_id)
+            return
+
         from backend.domain.entities.message import Message
         
         # Salva mensagem do usuário
         user_msg = Message.user(ctx.request.conversation_id, ctx.request.content)
         await self.memory.save_message(user_msg)
         
-        # Salva resposta do assistente
+        # Salva resposta do assistente (original)
         if ctx.final_response:
+            # Se for WARNING, podemos salvar com flag ou metadata no futuro
             assistant_msg = Message.assistant(ctx.request.conversation_id, ctx.final_response)
             await self.memory.save_message(assistant_msg)
     

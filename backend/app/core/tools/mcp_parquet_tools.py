@@ -16,7 +16,7 @@ import logging
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
 
 # Caminho para o arquivo Parquet - Fonte única: Filial_Madureira
 PARQUET_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "parquet")

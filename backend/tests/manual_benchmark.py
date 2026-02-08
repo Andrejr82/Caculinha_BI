@@ -8,16 +8,16 @@ from datetime import datetime
 # Add backend to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.config.settings import settings
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-from app.core.llm_gemini_adapter_v2 import GeminiLLMAdapterV2 as GeminiLLMAdapter
-from app.core.utils.field_mapper import FieldMapper
-from app.core.rag.query_retriever import QueryRetriever
-from app.core.learning.pattern_matcher import PatternMatcher
-from app.core.utils.response_cache import ResponseCache
-from app.core.utils.query_history import QueryHistory
-from app.core.agents.code_gen_agent import CodeGenAgent
-from app.core.utils.session_manager import SessionManager
+from backend.app.config.settings import settings
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+from backend.app.core.llm_gemini_adapter_v2 import GeminiLLMAdapterV2 as GeminiLLMAdapter
+from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.rag.query_retriever import QueryRetriever
+from backend.app.core.learning.pattern_matcher import PatternMatcher
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.app.core.utils.query_history import QueryHistory
+from backend.app.core.agents.code_gen_agent import CodeGenAgent
+from backend.app.core.utils.session_manager import SessionManager
 
 # Setup logging to console
 import logging

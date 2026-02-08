@@ -16,12 +16,12 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.chat_service_v3 import ChatServiceV3
-from app.core.utils.session_manager import SessionManager
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-from app.core.llm_factory import LLMFactory
-from app.core.utils.field_mapper import FieldMapper
-from app.core.agents.code_gen_agent import CodeGenAgent
+from backend.app.services.chat_service_v3 import ChatServiceV3
+from backend.app.core.utils.session_manager import SessionManager
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+from backend.app.core.llm_factory import LLMFactory
+from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.agents.code_gen_agent import CodeGenAgent
 
 
 class TestProgressivo:

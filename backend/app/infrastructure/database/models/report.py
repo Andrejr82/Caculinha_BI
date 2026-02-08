@@ -10,7 +10,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, JSON, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.config.database import Base
+from backend.app.config.database import Base
 
 
 class Report(Base):

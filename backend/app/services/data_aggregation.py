@@ -2,7 +2,7 @@
 import logging
 import pandas as pd
 from typing import Dict, Any, List
-from app.core.data_source_manager import get_data_manager
+from backend.app.core.data_source_manager import get_data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,8 @@ class DataAggregationService:
         Returns:
             Dict com totais, top vendas, rupturas e alertas.
         """
-        from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
-        from app.config.settings import settings
+        from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+        from backend.app.config.settings import settings
         
         try:
             adapter = get_duckdb_adapter()

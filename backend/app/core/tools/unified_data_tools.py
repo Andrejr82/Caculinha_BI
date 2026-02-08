@@ -9,7 +9,7 @@ import pandas as pd
 from langchain_core.tools import tool
 
 # Importa o gerenciador de dados centralizado
-from app.core.data_source_manager import get_data_manager
+from backend.app.core.data_source_manager import get_data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -329,12 +329,12 @@ def obter_estoque(
 
 
 # Importação do novo tool flexível
-from app.core.tools.flexible_query_tool import consultar_dados_flexivel
-from app.core.tools.offline_chart_tool import gerar_grafico_offline
+from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
+from backend.app.core.tools.offline_chart_tool import gerar_grafico_offline
 # [OK] FIX 2026-01-14: Importar ferramenta principal de gráficos mencionada no SYSTEM_PROMPT
-from app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
+from backend.app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
 # [OK] FIX 2026-01-15: Ferramenta de análise multi-loja (evita loops de timeout)
-from app.core.tools.une_tools import analisar_produto_todas_lojas
+from backend.app.core.tools.une_tools import analisar_produto_todas_lojas
 
 # Lista de ferramentas unificadas - EXPORTAÇÃO IMPORTANTE
 unified_tools = [

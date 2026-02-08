@@ -11,9 +11,9 @@ import logging
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
-from app.api.dependencies import get_current_active_user
-from app.core.context import set_current_user_context
-from app.infrastructure.database.models import User
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.core.context import set_current_user_context
+from backend.app.infrastructure.database.models import User
 
 print("DEBUG: LOADING DASHBOARD MODULE (WITH EXPORT ENDPOINT)!!!")
 
@@ -123,7 +123,7 @@ async def api_prever_demanda(request: ForecastRequest):
     """Endpoint para previsão de demanda (com ajuste sazonal opcional)."""
     try:
         # [OK] FIX: Lazy import to avoid circular dependency
-        from app.core.tools.purchasing_tools import calculate_demand_forecast_logic
+        from backend.app.core.tools.purchasing_tools import calculate_demand_forecast_logic
         
         result = calculate_demand_forecast_logic(
             produto_id=request.produto_id,
@@ -189,7 +189,7 @@ async def api_calcular_eoq(request: EOQRequest):
     """Endpoint para cálculo de EOQ."""
     try:
         # [OK] FIX: Lazy import to avoid circular dependency
-        from app.core.tools.purchasing_tools import calculate_eoq_logic
+        from backend.app.core.tools.purchasing_tools import calculate_eoq_logic
         
         result = calculate_eoq_logic(produto_id=request.produto_id)
         return result
@@ -209,7 +209,7 @@ async def api_alocar_estoque(request: AllocationRequest):
     """Endpoint para sugestão de alocação de estoque entre lojas."""
     try:
         # [OK] FIX: Lazy import to avoid circular dependency
-        from app.core.tools.purchasing_tools import allocate_stock_logic
+        from backend.app.core.tools.purchasing_tools import allocate_stock_logic
         
         result = allocate_stock_logic(
             produto_id=request.produto_id,
@@ -235,7 +235,7 @@ async def get_executive_kpis(current_user: User = Depends(get_current_active_use
     """Retorna KPIs executivos do dashboard com RLS."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -320,7 +320,7 @@ async def get_critical_alerts(current_user: User = Depends(get_current_active_us
     """Retorna alertas críticos do sistema com RLS."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -369,7 +369,7 @@ async def get_top_vendidos(current_user: User = Depends(get_current_active_user)
     """Retorna top 50 produtos mais vendidos com RLS."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -434,7 +434,7 @@ async def get_top_margin_products(current_user: User = Depends(get_current_activ
     """
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -492,9 +492,9 @@ async def get_top_margin_products(current_user: User = Depends(get_current_activ
 
 
 
-from app.api.dependencies import get_current_active_user
-from app.core.context import set_current_user_context
-from app.infrastructure.database.models import User
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.core.context import set_current_user_context
+from backend.app.infrastructure.database.models import User
 
 # ============================================================================
 # METADATA ENDPOINTS (Filters)
@@ -505,7 +505,7 @@ async def get_segments(current_user: User = Depends(get_current_active_user)):
     """Retorna lista única de segmentos com RLS aplicado."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -531,7 +531,7 @@ async def get_groups(segmento: Optional[str] = None, current_user: User = Depend
     """Retorna lista única de grupos (opcionalmente filtrados por segmento) com RLS."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -564,7 +564,7 @@ async def get_suppliers_metrics(current_user: User = Depends(get_current_active_
     """Retorna métricas de fornecedores com RLS."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -625,7 +625,7 @@ async def get_groups_by_segment(segmento: str, current_user: User = Depends(get_
     """Retorna grupos de produtos dentro de um segmento específico com RLS."""
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         if not segmento:
             return {"groups": [], "error": "Segmento não informado"}
@@ -687,7 +687,7 @@ async def get_products_by_filter(segmento: str, grupo: Optional[str] = None, cur
     """
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()
@@ -752,7 +752,7 @@ async def export_ruptures_csv(segmento: str, grupo: Optional[str] = None, curren
     """
     try:
         set_current_user_context(current_user)
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         parquet_path = get_parquet_path()
         con = duckdb.connect()

@@ -65,7 +65,7 @@ class QueryExecutor:
         Returns:
             dict com 'data', 'rows_count', 'execution_time_ms', 'warnings'
         """
-        from utils.sql_validator import validate_sql, safe_add_limit
+        from backend.utils.sql_validator import validate_sql, safe_add_limit
         
         start_time = time.time()
         
@@ -130,8 +130,8 @@ class QueryExecutor:
         start_time = time.time()
         
         try:
-            from app.core.parquet_cache import cache
-            from utils.sql_validator import validate_sql, safe_add_limit
+            from backend.app.core.parquet_cache import cache
+            from backend.utils.sql_validator import validate_sql, safe_add_limit
             
             # 1. Validar
             is_valid, error_msg = validate_sql(sql)

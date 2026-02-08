@@ -10,8 +10,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config.settings import get_settings
-from app.config.security import get_password_hash, verify_password
+from backend.app.config.settings import get_settings
+from backend.app.config.security import get_password_hash, verify_password
 
 
 def print_header(title: str):
@@ -66,7 +66,7 @@ async def check_database_connection():
     print_header("2. VERIFICANDO CONEXÃO COM BANCO DE DADOS")
     
     try:
-        from app.config.database import AsyncSessionLocal
+        from backend.app.config.database import AsyncSessionLocal
         from sqlalchemy import text
         
         async with AsyncSessionLocal() as db:
@@ -116,8 +116,8 @@ async def check_admin_user():
     print_header("3. VERIFICANDO USUÁRIO ADMIN")
     
     try:
-        from app.config.database import AsyncSessionLocal
-        from app.infrastructure.database.models import User
+        from backend.app.config.database import AsyncSessionLocal
+        from backend.app.infrastructure.database.models import User
         from sqlalchemy import select
         
         async with AsyncSessionLocal() as db:
@@ -183,7 +183,7 @@ async def test_jwt_tokens():
     print_header("5. TESTANDO TOKENS JWT")
     
     try:
-        from app.config.security import create_access_token, create_refresh_token, decode_token
+        from backend.app.config.security import create_access_token, create_refresh_token, decode_token
         
         # Dados de teste
         token_data = {
@@ -222,9 +222,9 @@ async def test_login_flow():
     print_header("6. TESTANDO FLUXO DE LOGIN COMPLETO")
     
     try:
-        from app.config.database import AsyncSessionLocal
-        from app.infrastructure.database.models import User
-        from app.config.security import verify_password, create_access_token
+        from backend.app.config.database import AsyncSessionLocal
+        from backend.app.infrastructure.database.models import User
+        from backend.app.config.security import verify_password, create_access_token
         from sqlalchemy import select
         
         async with AsyncSessionLocal() as db:

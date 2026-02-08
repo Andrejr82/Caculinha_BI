@@ -26,7 +26,7 @@ class AgentWrapper:
                 return
             
             # Importar QueryProcessor
-            from app.core.query_processor import QueryProcessor
+            from backend.app.core.query_processor import QueryProcessor
             
             self.query_processor = QueryProcessor()
             logger.info("Sistema de agentes inicializado com sucesso")

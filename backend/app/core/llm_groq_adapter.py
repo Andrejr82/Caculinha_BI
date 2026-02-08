@@ -4,8 +4,8 @@ import logging
 import json
 from typing import List, Dict, Any, Optional
 from groq import Groq
-from app.core.llm_base import BaseLLMAdapter
-from app.config.settings import settings
+from backend.app.core.llm_base import BaseLLMAdapter
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

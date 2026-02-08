@@ -10,9 +10,9 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config.database import AsyncSessionLocal
-from app.config.security import get_password_hash
-from app.infrastructure.database.models import User
+from backend.app.config.database import AsyncSessionLocal
+from backend.app.config.security import get_password_hash
+from backend.app.infrastructure.database.models import User
 
 
 async def seed_admin():

@@ -12,8 +12,8 @@ from pathlib import Path
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(backend_dir)
 
-from app.config.settings import get_settings
-from app.core.supabase_client import get_supabase_client
+from backend.app.config.settings import get_settings
+from backend.app.core.supabase_client import get_supabase_client
 from supabase import Client, ClientOptions
 
 settings = get_settings()

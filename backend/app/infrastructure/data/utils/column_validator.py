@@ -22,7 +22,7 @@ from difflib import get_close_matches
 from functools import lru_cache
 
 # Importações do projeto (AJUSTADO PARA BACKEND)
-from app.infrastructure.data.config.column_mapping import (
+from backend.app.infrastructure.data.config.column_mapping import (
     COLUMN_MAP,
     COLUMN_INFO,
     normalize_column_name,

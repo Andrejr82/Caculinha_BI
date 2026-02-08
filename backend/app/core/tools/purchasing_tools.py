@@ -18,9 +18,9 @@ import pandas as pd
 import duckdb
 
 from langchain.tools import tool
-from app.core.data_source_manager import get_data_manager
+from backend.app.core.data_source_manager import get_data_manager
 # from app.core.agents.code_gen_agent import get_code_gen_agent  # REMOVE CIRCULAR IMPORT
-from app.core.utils.seasonality_detector import detect_seasonal_context
+from backend.app.core.utils.seasonality_detector import detect_seasonal_context
 
 logger = logging.getLogger(__name__)
 

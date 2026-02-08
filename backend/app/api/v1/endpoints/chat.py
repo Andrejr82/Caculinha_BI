@@ -18,23 +18,23 @@ from decimal import Decimal
 from datetime import datetime, date
 
 # Import core dependencies
-from app.api.dependencies import get_current_active_user
-from app.infrastructure.database.models import User
-from app.config.settings import settings
-from app.core.utils.response_cache import ResponseCache
-from app.core.utils.query_history import QueryHistory
-from app.core.utils.field_mapper import FieldMapper
-from app.core.rag.query_retriever import QueryRetriever
-from app.core.learning.pattern_matcher import PatternMatcher
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.infrastructure.database.models import User
+from backend.app.config.settings import settings
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.app.core.utils.query_history import QueryHistory
+from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.rag.query_retriever import QueryRetriever
+from backend.app.core.learning.pattern_matcher import PatternMatcher
 # CodeGenAgent e CaculinhaBIAgent removidos - Arquitetura V2 deprecated
 # Sistema agora usa ChatServiceV3 (Metrics-First)
-from app.core.llm_factory import LLMFactory, SmartLLM
-from app.core.utils.error_handler import APIError
-from app.core.utils.session_manager import SessionManager
-from app.core.utils.semantic_cache import cache_get, cache_set, cache_stats
-from app.core.utils.response_validator import validate_response, validator_stats
+from backend.app.core.llm_factory import LLMFactory, SmartLLM
+from backend.app.core.utils.error_handler import APIError
+from backend.app.core.utils.session_manager import SessionManager
+from backend.app.core.utils.semantic_cache import cache_get, cache_set, cache_stats
+from backend.app.core.utils.response_validator import validate_response, validator_stats
 # NEW SERVICE V3 - Metrics-First Architecture
-from app.services.chat_service_v3 import ChatServiceV3
+from backend.app.services.chat_service_v3 import ChatServiceV3
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +185,8 @@ async def stream_chat(
     Streaming endpoint using Server-Sent Events (SSE)
     Integrates the agent system for dynamic responses.
     """
-    from app.api.dependencies import get_current_user_from_token
-    from app.core.context import set_current_user_context
+    from backend.app.api.dependencies import get_current_user_from_token
+    from backend.app.core.context import set_current_user_context
 
     try:
         current_user = await get_current_user_from_token(token)

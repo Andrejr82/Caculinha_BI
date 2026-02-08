@@ -3,11 +3,11 @@ import logging
 from typing import Dict, Any, List, Optional
 from langchain_core.tools import tool
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
 
 # Get singleton adapter instance
 duckdb_adapter = get_duckdb_adapter()
-from app.core.utils.field_mapper import FieldMapper
+from backend.app.core.utils.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
 field_mapper = FieldMapper()

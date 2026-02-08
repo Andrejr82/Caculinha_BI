@@ -5,9 +5,9 @@ import time
 from typing import List, Optional, Union, Any
 from pathlib import Path
 
-from app.infrastructure.database.models.user import User
-from app.config.settings import settings
-from app.core.duckdb_config import get_safe_connection
+from backend.app.infrastructure.database.models.user import User
+from backend.app.config.settings import settings
+from backend.app.core.duckdb_config import get_safe_connection
 
 logger = logging.getLogger(__name__)
 

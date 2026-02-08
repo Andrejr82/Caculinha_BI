@@ -33,6 +33,10 @@ const Forecasting = lazy(() => import('./pages/Forecasting'));
 const Executive = lazy(() => import('./pages/Executive'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
 
+// ✅ NEW 2026-02-08: Admin-Only Pages
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminEvaluations = lazy(() => import('./pages/AdminEvaluations'));
+
 // Importar Store de Autenticação
 import auth from './store/auth';
 
@@ -148,6 +152,10 @@ function App() {
         <Route path="/forecasting" component={() => <PrivateRoute component={<Forecasting />} />} />
         <Route path="/executive" component={() => <PrivateRoute component={<Executive />} />} />
         <Route path="/suppliers" component={() => <PrivateRoute component={<Suppliers />} />} />
+
+        {/* ✅ NEW 2026-02-08: Admin-Only Dashboard & Evaluations */}
+        <Route path="/admin/dashboard" component={() => <RoleRoute component={<AdminDashboard />} requiredRole="admin" />} />
+        <Route path="/admin/evaluations" component={() => <RoleRoute component={<AdminEvaluations />} requiredRole="admin" />} />
       </Route>
 
       {/* Fallback */}
