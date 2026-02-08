@@ -1,6 +1,7 @@
 """
 DuckDB Configuration for Large Dataset Processing
 Implements best practices for memory management and disk spilling
+Otimizado para ambientes com pouca memória (Docker/WSL)
 """
 import duckdb
 import os
@@ -16,75 +17,54 @@ class DuckDBConfig:
     DuckDB configuration manager for optimal memory handling
     """
     
-    def __init__(self, memory_limit: str = "4GB", temp_dir: str = None):
+    def __init__(self, memory_limit: str = None, temp_dir: str = None):
         """
         Initialize DuckDB configuration
         
         Args:
-            memory_limit: Maximum memory (e.g., '4GB', '8GB'). Default 4GB (50-70% of typical 8GB RAM)
+            memory_limit: Maximum memory (e.g., '1GB', '2GB'). 
+                          Default: Pega de DUCKDB_MEMORY_LIMIT ou usa 1GB
             temp_dir: Temporary directory for disk spilling. If None, uses system temp
         """
-        self.memory_limit = memory_limit
+        # Pega o limite do docker-compose ou usa um padrão seguro (1GB)
+        self.memory_limit = memory_limit or os.getenv("DUCKDB_MEMORY_LIMIT", "1GB")
+        self.threads = int(os.getenv("DUCKDB_THREADS", "2"))
+        
         self.temp_dir = temp_dir or os.path.join(tempfile.gettempdir(), "duckdb_spill")
         
         # Ensure temp directory exists
         Path(self.temp_dir).mkdir(parents=True, exist_ok=True)
-        logger.info(f"DuckDB temp directory: {self.temp_dir}")
+        logger.info(f"DuckDB Config: memory={self.memory_limit}, threads={self.threads}, spill={self.temp_dir}")
     
-    def create_connection(self) -> duckdb.DuckDBPyConnection:
+    def create_connection(self, database: str = ':memory:') -> duckdb.DuckDBPyConnection:
         """
         Create a DuckDB connection with optimized settings for large datasets
         
         Returns:
             Configured DuckDB connection
         """
-        conn = duckdb.connect(':memory:')
+        conn = duckdb.connect(database=database)
         
+        # Comandos PRAGMA essenciais para pouca memória
         # Memory Management
         conn.execute(f"SET memory_limit = '{self.memory_limit}'")
         conn.execute(f"SET temp_directory = '{self.temp_dir}'")
         
-        # Performance Optimization
-        conn.execute("SET threads TO 4")  # Adjust based on CPU cores
-        conn.execute("SET preserve_insertion_order = false")  # Reduce memory for large imports
+        # Performance Optimization (Otimizado via env)
+        conn.execute(f"SET threads = {self.threads}") 
+        conn.execute("SET preserve_insertion_order = false")  # Economiza RAM significativamente
         
-        # Enable disk spilling for larger-than-memory operations
-        # This is enabled by default in DuckDB 0.10.0+, but we log it for clarity
-        logger.info(f"DuckDB connection created with memory_limit={self.memory_limit}, temp_dir={self.temp_dir}")
+        logger.info(f"DuckDB connection established (memory_limit={self.memory_limit})")
         
         return conn
-    
-    def create_relation_from_arrow(self, conn: duckdb.DuckDBPyConnection, arrow_table):
-        """
-        Create a DuckDB relation from PyArrow table with zero-copy optimization
-        
-        Args:
-            conn: DuckDB connection
-            arrow_table: PyArrow Table
-            
-        Returns:
-            DuckDB relation
-        """
-        # Zero-copy integration: DuckDB can directly query Arrow tables
-        # without materializing them in memory
-        return conn.from_arrow(arrow_table)
 
 
 # Global singleton instance
 _duckdb_config = None
 
 
-def get_duckdb_config(memory_limit: str = "4GB", temp_dir: str = None) -> DuckDBConfig:
-    """
-    Get or create the global DuckDB configuration instance
-    
-    Args:
-        memory_limit: Maximum memory limit
-        temp_dir: Temporary directory for spilling
-        
-    Returns:
-        DuckDB configuration instance
-    """
+def get_duckdb_config(memory_limit: str = None, temp_dir: str = None) -> DuckDBConfig:
+    """Get the global DuckDB configuration instance"""
     global _duckdb_config
     if _duckdb_config is None:
         _duckdb_config = DuckDBConfig(memory_limit=memory_limit, temp_dir=temp_dir)
@@ -92,11 +72,12 @@ def get_duckdb_config(memory_limit: str = "4GB", temp_dir: str = None) -> DuckDB
 
 
 def get_safe_connection() -> duckdb.DuckDBPyConnection:
-    """
-    Convenience function to get a configured DuckDB connection
-    
-    Returns:
-        Configured DuckDB connection with memory limits and disk spilling
-    """
+    """Get a configured DuckDB connection (Singleton)"""
     config = get_duckdb_config()
     return config.create_connection()
+
+
+# Alias para compatibilidade com o pedido do usuário
+def get_db_connection() -> duckdb.DuckDBPyConnection:
+    """Alias para get_safe_connection para compatibilidade interna"""
+    return get_safe_connection()

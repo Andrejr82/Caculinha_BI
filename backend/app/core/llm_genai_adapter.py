@@ -14,8 +14,8 @@ from typing import List, Dict, Any, Optional
 import logging
 import time
 import json
-from app.core.llm_base import BaseLLMAdapter
-from app.config.settings import settings
+from backend.app.core.llm_base import BaseLLMAdapter
+from backend.app.config.settings import settings
 
 GENAI_AVAILABLE = False
 

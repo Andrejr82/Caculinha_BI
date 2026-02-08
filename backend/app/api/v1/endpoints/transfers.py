@@ -8,15 +8,15 @@ import duckdb
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_current_active_user
-from app.infrastructure.database.models import User
-from app.core.tools.une_tools import (
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.infrastructure.database.models import User
+from backend.app.core.tools.une_tools import (
     validar_transferencia_produto,
     sugerir_transferencias_automaticas,
 )
-from app.core.utils.error_handler import APIError
-from app.core.duckdb_config import get_safe_connection
-from app.core.data_scope_service import data_scope_service
+from backend.app.core.utils.error_handler import APIError
+from backend.app.core.duckdb_config import get_safe_connection
+from backend.app.core.data_scope_service import data_scope_service
 
 router = APIRouter(prefix="/transfers", tags=["Transfers"])
 
@@ -62,7 +62,7 @@ async def validate_transfer(
     Integrates with `validar_transferencia_produto` tool.
     Includes priority score (0-100) and urgency level.
     """
-    from app.core.data_scope_service import data_scope_service
+    from backend.app.core.data_scope_service import data_scope_service
 
     try:
         # Validação básica usando a tool existente

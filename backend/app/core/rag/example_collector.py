@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app.config.settings import settings
+from backend.app.config.settings import settings
 
 class ExampleCollector:
     """
@@ -99,7 +99,7 @@ class ExampleCollector:
 
 # Example usage
 if __name__ == '__main__':
-    from app.config.settings import Settings
+    from backend.app.config.settings import Settings
     temp_settings = Settings()
 
     # Ensure examples directory exists for testing

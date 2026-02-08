@@ -20,8 +20,8 @@ from typing import Dict, Any
 import sys
 sys.path.insert(0, 'app')
 
-from app.services.chat_service_v3 import ChatServiceV3
-from app.core.utils.session_manager import SessionManager
+from backend.app.services.chat_service_v3 import ChatServiceV3
+from backend.app.core.utils.session_manager import SessionManager
 
 
 class TestChatServiceV3ProcessAgentResponse:

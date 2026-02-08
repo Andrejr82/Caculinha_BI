@@ -6,9 +6,9 @@ import sys
 # Adicionar raiz ao path
 sys.path.append(os.getcwd())
 
-from app.services.chat_service_v3 import ChatServiceV3
-from app.core.utils.session_manager import SessionManager
-from app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
+from backend.app.services.chat_service_v3 import ChatServiceV3
+from backend.app.core.utils.session_manager import SessionManager
+from backend.app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
 
 async def test_oxford():
     print("--- Teste Grupo Oxford ---")

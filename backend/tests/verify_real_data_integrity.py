@@ -9,10 +9,10 @@ from typing import Dict, Any, List
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.services.chat_service_v3 import ChatServiceV3
-from app.core.utils.session_manager import SessionManager
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
-from app.core.data_source_manager import get_data_manager
+from backend.app.services.chat_service_v3 import ChatServiceV3
+from backend.app.core.utils.session_manager import SessionManager
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.core.data_source_manager import get_data_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

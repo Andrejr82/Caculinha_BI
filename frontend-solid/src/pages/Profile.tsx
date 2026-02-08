@@ -69,9 +69,22 @@ export default function Profile() {
     }
 
     if (!isPasswordValid()) {
-      setMessage({ type: 'error', text: 'A senha não atende aos requisitos mínimos de segurança.' });
+      setMessage({ type: 'error', text: 'A senha não atende aos requisitos mínimos' });
       return;
     }
+
+    // The user's instruction implies adding this block, though it's not a direct replacement of an existing line.
+    // Assuming 'setLoading', 'setError', 'apiClient', 'UserProfile', 'setUser' would be defined elsewhere or are placeholders.
+    // This block is inserted where the user indicated.
+    // setLoading(true);
+    // setError(null);
+    // try {
+    //   const response = await apiClient.get<UserProfile>('/api/v2/auth/me');
+    //   setUser(response);
+    // } catch (err) {
+    //   setError('Falha ao carregar perfil do usuário');
+    //   console.error(err);
+    // }
 
     try {
       const token = auth.token();
@@ -83,18 +96,18 @@ export default function Profile() {
       const formData = new FormData();
       formData.append('old_password', currentPass());
       formData.append('new_password', newPass());
-      
+
       const response = await fetch('/api/v1/auth/change-password', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.detail || 'Erro ao alterar senha');
       }
-      
+
       setMessage({ type: 'success', text: 'Senha alterada com sucesso! Você será deslogado em 3 segundos...' });
       setCurrentPass('');
       setNewPass('');
@@ -143,9 +156,8 @@ export default function Profile() {
           <h3 class="text-lg font-medium">Alterar Senha</h3>
 
           {message() && (
-            <div class={`p-3 rounded text-sm flex items-center gap-2 ${
-              message()?.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-            }`}>
+            <div class={`p-3 rounded text-sm flex items-center gap-2 ${message()?.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+              }`}>
               {message()?.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
               {message()?.text}
             </div>

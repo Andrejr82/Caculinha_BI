@@ -47,7 +47,7 @@ class TestRunner:
         print_header("FASE 1: Gemini Thinking Mode")
         
         try:
-            from app.config.settings import settings
+            from backend.app.config.settings import settings
             
             # Teste 1: Verificar modelo configurado
             model = settings.LLM_MODEL_NAME
@@ -55,7 +55,7 @@ class TestRunner:
             self.add_result("Fase 1", "Modelo Gemini configurado", passed, f"Modelo: {model}")
             
             # Teste 2: Verificar import do adapter
-            from app.core.llm_gemini_adapter import GeminiLLMAdapter
+            from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
             self.add_result("Fase 1", "Import GeminiLLMAdapter", True, "Import OK")
             
             # Teste 3: Verificar GenerationConfig
@@ -71,7 +71,7 @@ class TestRunner:
         print_header("FASE 2: Semantic Caching")
         
         try:
-            from app.core.utils.semantic_cache import SemanticCache, cache_get, cache_set, cache_stats
+            from backend.app.core.utils.semantic_cache import SemanticCache, cache_get, cache_set, cache_stats
             
             # Teste 1: Criar instância
             cache = SemanticCache(cache_dir="data/cache/test_semantic", ttl_minutes=60)
@@ -108,7 +108,7 @@ class TestRunner:
         print_header("FASE 3: Response Validator")
         
         try:
-            from app.core.utils.response_validator import (
+            from backend.app.core.utils.response_validator import (
                 ResponseValidator, validate_response, validator_stats, ValidationResult
             )
             
@@ -147,7 +147,7 @@ class TestRunner:
         print_header("FASE 4: LangGraph Multi-Step Agent")
         
         try:
-            from app.core.agents.multi_step_agent import (
+            from backend.app.core.agents.multi_step_agent import (
                 MultiStepAgent, AgentState, LANGGRAPH_AVAILABLE
             )
             
@@ -186,7 +186,7 @@ class TestRunner:
         print_header("FASE 5: Code Interpreter")
         
         try:
-            from app.core.tools.code_interpreter import (
+            from backend.app.core.tools.code_interpreter import (
                 CodeInterpreter, get_interpreter, ALLOWED_MODULES, BLOCKED_FUNCTIONS
             )
             

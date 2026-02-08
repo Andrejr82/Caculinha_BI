@@ -17,9 +17,9 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.learning.continuous_learner import get_continuous_learner
-from app.core.rag.hybrid_retriever import get_hybrid_retriever
-from app.core.utils.confidence_scorer import get_confidence_scorer
+from backend.app.core.learning.continuous_learner import get_continuous_learner
+from backend.app.core.rag.hybrid_retriever import get_hybrid_retriever
+from backend.app.core.utils.confidence_scorer import get_confidence_scorer
 
 
 def print_section(title: str):

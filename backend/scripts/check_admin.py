@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config.database import AsyncSessionLocal
-from app.infrastructure.database.models import User
+from backend.app.config.database import AsyncSessionLocal
+from backend.app.infrastructure.database.models import User
 from sqlalchemy import select
 
 async def check_admin():

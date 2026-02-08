@@ -23,9 +23,9 @@ from functools import lru_cache
 from pathlib import Path
 
 # Validadores integrados (v3.0) - Ajustado para FastAPI
-from app.core.validators.schema_validator import SchemaValidator
-from app.core.utils.query_validator import validate_columns, handle_nulls, safe_filter
-from app.core.utils.error_handler import error_handler_decorator
+from backend.app.core.validators.schema_validator import SchemaValidator
+from backend.app.core.utils.query_validator import validate_columns, handle_nulls, safe_filter
+from backend.app.core.utils.error_handler import error_handler_decorator
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ def _load_data(filters: Dict[str, Any] = None, columns: List[str] = None) -> pd.
             duckdb_filters[real_col] = val
 
     # --- RLS INJECTION (SEGURANÇA) ---
-    from app.core.context import get_current_user_segments
+    from backend.app.core.context import get_current_user_segments
     allowed_segments = get_current_user_segments()
     if allowed_segments and "*" not in allowed_segments:
         # Injetar filtro de segmento diretamente na query DuckDB
@@ -129,7 +129,7 @@ def _load_data(filters: Dict[str, Any] = None, columns: List[str] = None) -> pd.
     # ---------------------------------
 
     try:
-        from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+        from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
         adapter = get_duckdb_adapter()
         logger.info(f"[DUCKDB] Load: Cols={len(parquet_cols_to_load) if parquet_cols_to_load else 'All'}, Filters={list(duckdb_filters.keys())}")
         

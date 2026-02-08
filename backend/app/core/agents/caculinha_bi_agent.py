@@ -20,7 +20,7 @@ except (ImportError, OSError):
     BaseChatModel = object # Dummy for type hinting
     BaseTool = object # Dummy for type hinting
 
-from app.core.tools.une_tools import (
+from backend.app.core.tools.une_tools import (
     calcular_abastecimento_une,
     calcular_mc_produto,
     calcular_preco_final_une,
@@ -32,13 +32,13 @@ from app.core.tools.une_tools import (
 )
 # Safe Import of Core Tools (LangChain dependency risk)
 try:
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
 except (ImportError, OSError):
     logger.warning("Flexible Query Tool missing (LangChain/DLL issue). Agent running in degraded mode.")
     consultar_dados_flexivel = None
 
 # from app.core.tools.anomaly_detection import analisar_anomalias # NOVA FERRAMENTA (Warning: Possible DL Dep)
-from app.core.tools.metadata_tools import consultar_dicionario_dados, analisar_historico_vendas  # Ferramentas de metadados e previsão
+from backend.app.core.tools.metadata_tools import consultar_dicionario_dados, analisar_historico_vendas  # Ferramentas de metadados e previsão
 
 # [OK] NEW 2026-01-22: Purchasing Tools - Advanced Calculations
 # WRAPPED IN SAFE IMPORT BELOW
@@ -48,14 +48,14 @@ from app.core.tools.metadata_tools import consultar_dicionario_dados, analisar_h
 #     alocar_estoque_lojas
 # )
 
-from app.core.data_source_manager import get_data_manager # Para injeção dinâmica
+from backend.app.core.data_source_manager import get_data_manager # Para injeção dinâmica
 
 # Import NEW universal chart tool - Context7 2025 Best Practice
-from app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
-from app.core.tools.test_minimal import teste_minimal  # DEBUG: Ferramenta mínima para teste
+from backend.app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
+from backend.app.core.tools.test_minimal import teste_minimal  # DEBUG: Ferramenta mínima para teste
 
 # Import legacy chart tools for compatibility
-from app.core.tools.chart_tools import (
+from backend.app.core.tools.chart_tools import (
     gerar_ranking_produtos_mais_vendidos,
     gerar_dashboard_executivo,
     listar_graficos_disponiveis,
@@ -66,18 +66,31 @@ from app.core.tools.chart_tools import (
 # MOVED TO __INIT__ FOR SAFETY
 # from app.core.tools.semantic_search_tool import buscar_produtos_inteligente
 
+# NEW 2026-02-07: Deep Catalog Search (Hybrid BM25 + Vector)
+try:
+    from backend.app.core.tools.catalog_search_tool import create_catalog_search_tool
+    from backend.application.services.product_search_service import ProductSearchService
+    from backend.infrastructure.adapters.search.whoosh_bm25_index_adapter import WhooshBM25IndexAdapter
+    from backend.infrastructure.adapters.search.vector_index_adapter import VectorIndexAdapter
+    from backend.infrastructure.adapters.search.hybrid_ranking_adapter import HybridRankingAdapter
+    from backend.infrastructure.adapters.repository.duckdb_catalog_repository import DuckDBCatalogRepository
+    CATALOG_SEARCH_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Catalog Search dependencies missing: {e}")
+    CATALOG_SEARCH_AVAILABLE = False
+
 # Import RAG Hybrid Retriever - Query Example Retrieval 2025
-from app.core.rag.hybrid_retriever import HybridRetriever
+from backend.app.core.rag.hybrid_retriever import HybridRetriever
 
 # Optional: Import CodeGenAgent just for type hinting if needed,
 # but we won't use it for logic anymore.
-from app.core.utils.field_mapper import FieldMapper
+from backend.app.core.utils.field_mapper import FieldMapper
 
 # Import TypeConverter para serialização segura
-from app.core.utils.serializers import TypeConverter, safe_json_dumps
+from backend.app.core.utils.serializers import TypeConverter, safe_json_dumps
 
 # Import Tool Scoping - Security 2025
-from app.core.utils.tool_scoping import ToolPermissionManager, get_scoped_tools
+from backend.app.core.utils.tool_scoping import ToolPermissionManager, get_scoped_tools
 
 # Alias para manter compatibilidade com código existente
 safe_json_serialize = safe_json_dumps
@@ -86,7 +99,7 @@ safe_json_serialize = safe_json_dumps
 # DEPRECATED: Este arquivo faz parte da arquitetura V2 (removida)
 # O SYSTEM_PROMPT agora está centralizado em app.core.prompts.master_prompt
 # Este agente está deprecated. Use ChatServiceV3 para novas implementações.
-from app.core.prompts.master_prompt import MASTER_PROMPT as SYSTEM_PROMPT
+from backend.app.core.prompts.master_prompt import MASTER_PROMPT as SYSTEM_PROMPT
 
 class CaculinhaBIAgent:
     """
@@ -143,6 +156,25 @@ class CaculinhaBIAgent:
             analisar_produto_todas_lojas,  # FIX 2026-02-04: Restaurado para análise multi-loja
         ]
         
+        # [OK] NEW 2026-02-07: Integration of Deep Catalog Search
+        if CATALOG_SEARCH_AVAILABLE:
+            try:
+                # Initialize Search Infrastructure
+                db_path = "backend/data/product_catalog.duckdb"
+                index_dir = "backend/data/whoosh_index"
+                
+                repo = DuckDBCatalogRepository(db_path)
+                bm25 = WhooshBM25IndexAdapter(index_dir)
+                vec = VectorIndexAdapter(db_path)
+                ranker = HybridRankingAdapter(repo)
+                
+                search_service = ProductSearchService(bm25, vec, ranker, repo)
+                catalog_search_tool = create_catalog_search_tool(search_service)
+                core_tools.append(catalog_search_tool)
+                logger.info("[OK] Deep Catalog Search tool registered successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Catalog Search tool: {e}")
+        
         # FIX 2026-02-04: Ferramentas restauradas para melhorar capacidade do agente
         
         # Remove None tools (failed imports)
@@ -153,14 +185,14 @@ class CaculinhaBIAgent:
         
         # 1. Anomaly Detection (SciPy/Stats dependency)
         try:
-            from app.core.tools.anomaly_detection import analisar_anomalias
+            from backend.app.core.tools.anomaly_detection import analisar_anomalias
             optional_tools.append(analisar_anomalias)
         except ImportError:
             logger.warning("[WARNING] Anomaly Detection tools missing (dependency issue).")
 
         # 2. Purchasing Tools (StatsModels/Torch dependency)
         try:
-            from app.core.tools.purchasing_tools import (
+            from backend.app.core.tools.purchasing_tools import (
                 calcular_eoq,
                 prever_demanda,
                 alocar_estoque_lojas
@@ -172,7 +204,7 @@ class CaculinhaBIAgent:
         # 3. Advanced Analytics Tools (SciPy/Sklearn dependency) - NOVO 2026-01-24
         # Ferramentas STEM para Gemini 2.5 Pro: regressão, anomalias, correlação
         try:
-            from app.core.tools.advanced_analytics_tool import (
+            from backend.app.core.tools.advanced_analytics_tool import (
                 analise_regressao_vendas,
                 detectar_anomalias_vendas,
                 analise_correlacao_produtos
@@ -472,8 +504,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # ========================================================================
         # CAMADA 1: INTENT CLASSIFICATION (NEW 2026-01-24)
         # ========================================================================
-        from app.core.utils.intent_classifier import classify_intent
-        from app.core.utils.query_router import route_query
+        from backend.app.core.utils.intent_classifier import classify_intent
+        from backend.app.core.utils.query_router import route_query
         
         intent_result = classify_intent(user_query)
         logger.info(
@@ -568,7 +600,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # Injeta colunas válidas para evitar alucinação (ex: VLR_VENDA_LIQ_NF)
         # ========================================================================
         try:
-            from app.core.utils.field_mapper import FieldMapper
+            from backend.app.core.utils.field_mapper import FieldMapper
             fm = FieldMapper()
             # Only inject if we are likely doing data analysis
             if tool_selection.confidence > 0.5 or intent_result.intent.value in ["analysis", "data_query"]:

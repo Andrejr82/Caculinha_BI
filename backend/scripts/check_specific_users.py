@@ -13,7 +13,7 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
 
 # Configurações
 CONN_STR = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=localhost,1433;DATABASE=agentbi;UID=AgenteVirtual;PWD=Cacula@2020;TrustServerCertificate=yes;"

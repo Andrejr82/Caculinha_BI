@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, BigInteger
 from sqlalchemy.sql import func
-from app.config.database import Base
+from backend.app.config.database import Base
 
 class Admmatao(Base):
     __tablename__ = "admmatao"

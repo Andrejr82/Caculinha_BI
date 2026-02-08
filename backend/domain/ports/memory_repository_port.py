@@ -191,3 +191,18 @@ class IMemoryRepository(ABC):
             Número de mensagens
         """
         pass
+
+    @abstractmethod
+    async def save_feedback(self, request_id: str, rating: int, comment: Optional[str] = None) -> bool:
+        """
+        Salva o feedback do usuário para uma requisição específica.
+        
+        Args:
+            request_id: ID da requisição (X-Request-Id)
+            rating: Nota de 1 a 5
+            comment: Comentário opcional
+            
+        Returns:
+            True se salvo com sucesso
+        """
+        pass

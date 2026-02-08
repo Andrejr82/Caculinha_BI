@@ -20,7 +20,7 @@ if sys.platform == 'win32':
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
     sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
-from app.infrastructure.data.hybrid_adapter import HybridDataAdapter
+from backend.app.infrastructure.data.hybrid_adapter import HybridDataAdapter
 
 async def test_integration():
     print("\n" + "="*70)

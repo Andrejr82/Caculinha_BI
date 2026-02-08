@@ -2,10 +2,10 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
-from app.core.agents.code_gen_agent import CodeGenAgent, FieldMapper, QueryRetriever, PatternMatcher
-from app.core.utils.response_cache import ResponseCache
-from app.core.utils.query_history import QueryHistory
-from app.core.utils.error_handler import APIError
+from backend.app.core.agents.code_gen_agent import CodeGenAgent, FieldMapper, QueryRetriever, PatternMatcher
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.app.core.utils.query_history import QueryHistory
+from backend.app.core.utils.error_handler import APIError
 
 class MockLLM:
     """A mock LLM that can simulate responses for code generation."""

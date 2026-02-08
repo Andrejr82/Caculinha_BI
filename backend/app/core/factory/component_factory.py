@@ -22,7 +22,7 @@ class ComponentFactory:
     def get_data_adapter(cls):
         """Obtém uma instância do adaptador de dados DuckDB Enhanced"""
         if "data_adapter" not in cls._components:
-            from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+            from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
             logger.info("Obtendo instância do DuckDBEnhancedAdapter")
             cls._components["data_adapter"] = get_duckdb_adapter()
         return cls._components["data_adapter"]

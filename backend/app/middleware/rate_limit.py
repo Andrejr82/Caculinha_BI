@@ -32,7 +32,7 @@ def get_limiter() -> Limiter:
     Retorna instância do limiter para uso em endpoints.
     
     Usage:
-        from app.middleware.rate_limit import get_limiter, limiter
+        from backend.app.middleware.rate_limit import get_limiter, limiter
         
         @app.post("/api/v1/chat")
         @limiter.limit("100/minute")

@@ -1,79 +1,33 @@
-# Docker Compose — Caculinha BI Enterprise
-# Orquestração de serviços para ambiente local/dev
-
-version: "3.9"
+version: '3.8'
 
 services:
-  # ===========================================
-  # Backend API
-  # ===========================================
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    container_name: caculinha-backend
+    container_name: caculinha_backend
+    # Mapeia a porta
     ports:
       - "8000:8000"
-    environment:
-      - ENVIRONMENT=development
-      - LLM_PROVIDER=google
-      - LLM_MODEL_NAME=gemini-2.5-flash-lite
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=sqlite:///data/memory.db
+    # Monta os volumes (código e dados)
     volumes:
-      - ./backend:/app/backend:ro
-      - backend_data:/app/data
-    depends_on:
-      - redis
-    networks:
-      - caculinha-network
-    restart: unless-stopped
-
-  # ===========================================
-  # Redis (Cache de Memória)
-  # ===========================================
-  redis:
-    image: redis:7-alpine
-    container_name: caculinha-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - caculinha-network
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-
-  # ===========================================
-  # Frontend (SolidJS)
-  # ===========================================
-  frontend:
-    build:
-      context: ./frontend-solid
-      dockerfile: Dockerfile
-    container_name: caculinha-frontend
-    ports:
-      - "3000:3000"
+      - ./backend:/app/backend
+      - ./backend/data:/app/backend/data
     environment:
-      - VITE_API_URL=http://localhost:8000
-    depends_on:
-      - backend
-    networks:
-      - caculinha-network
-    restart: unless-stopped
-
-# ===========================================
-# Networks
-# ===========================================
-networks:
-  caculinha-network:
-    driver: bridge
-
-# ===========================================
-# Volumes
-# ===========================================
-volumes:
-  backend_data:
-    driver: local
-  redis_data:
-    driver: local
+      # O SEGREDO: Limita o DuckDB a usar apenas 1.5GB de RAM real
+      - DUCKDB_MEMORY_LIMIT=1.5GB
+      - DUCKDB_THREADS=2
+      # Evita que o Python bufferize logs (economiza um pouco)
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    # LIMITES DO DOCKER (Hard Limits)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5' # Deixa 0.5 cpu livre para o sistema não engasgar
+          memory: 2.5G # Se passar de 2.5GB, o Docker reinicia o container (protege o WSL)
+        reservations:
+          memory: 1G
+    # Comando otimizado: apenas 1 worker para economizar RAM
+    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --reload
+  # NÃO RODE O FRONTEND AQUI. Rode no terminal do Windows.

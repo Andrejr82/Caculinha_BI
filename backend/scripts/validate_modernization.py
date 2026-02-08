@@ -16,7 +16,7 @@ print("=" * 80)
 # Test 1: Chart Tools Consolidation
 print("\n[1/3] Testando consolidação de chart tools...")
 try:
-    from app.core.tools.chart_tools import listar_graficos_disponiveis
+    from backend.app.core.tools.chart_tools import listar_graficos_disponiveis
 
     result = listar_graficos_disponiveis.invoke({})
     assert result["status"] == "success"
@@ -32,7 +32,7 @@ except Exception as e:
 # Test 2: Semantic Search Tool
 print("\n[2/3] Testando ferramenta de semantic search...")
 try:
-    from app.core.tools.semantic_search_tool import buscar_produtos_inteligente
+    from backend.app.core.tools.semantic_search_tool import buscar_produtos_inteligente
 
     assert buscar_produtos_inteligente is not None
     assert buscar_produtos_inteligente.name == "buscar_produtos_inteligente"
@@ -50,7 +50,7 @@ except Exception as e:
 # Test 3: Tool Scoping
 print("\n[3/3] Testando tool scoping por role...")
 try:
-    from app.core.utils.tool_scoping import ToolPermissionManager
+    from backend.app.core.utils.tool_scoping import ToolPermissionManager
     from langchain_core.tools import BaseTool
 
     # Create dummy tools
@@ -102,7 +102,7 @@ except Exception as e:
 # Test 4: Agent Integration
 print("\n[4/4] Testando integração no agent...")
 try:
-    from app.core.agents import caculinha_bi_agent
+    from backend.app.core.agents import caculinha_bi_agent
 
     # Check imports
     assert hasattr(caculinha_bi_agent, "buscar_produtos_inteligente")

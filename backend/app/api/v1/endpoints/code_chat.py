@@ -19,9 +19,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import require_role
-from app.infrastructure.database.models import User
-from app.core.code_rag_service import get_code_rag_service
+from backend.app.api.dependencies import require_role
+from backend.app.infrastructure.database.models import User
+from backend.app.core.code_rag_service import get_code_rag_service
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ async def stream_code_chat(
     """
     Streaming endpoint for code chat.
     """
-    from app.api.dependencies import get_current_user_from_token
+    from backend.app.api.dependencies import get_current_user_from_token
     
     # Manual auth check for SSE
     try:

@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from langchain_core.tools import BaseTool
 
 # Import das ferramentas a testar
-from app.core.utils.tool_scoping import ToolPermissionManager, get_scoped_tools
+from backend.app.core.utils.tool_scoping import ToolPermissionManager, get_scoped_tools
 
 
 class TestChartToolsConsolidation:
@@ -20,7 +20,7 @@ class TestChartToolsConsolidation:
 
     def test_listar_graficos_disponiveis_returns_only_active_tools(self):
         """listar_graficos_disponiveis deve retornar apenas 4 ferramentas ativas"""
-        from app.core.tools.chart_tools import listar_graficos_disponiveis
+        from backend.app.core.tools.chart_tools import listar_graficos_disponiveis
 
         result = listar_graficos_disponiveis()
 
@@ -32,7 +32,7 @@ class TestChartToolsConsolidation:
     def test_deprecated_tools_have_warnings(self):
         """Verifica que tools deprecated têm comentários de warning"""
         import inspect
-        from app.core.tools import chart_tools
+        from backend.app.core.tools import chart_tools
 
         source = inspect.getsource(chart_tools)
 
@@ -46,7 +46,7 @@ class TestSemanticSearch:
 
     def test_semantic_search_tool_exists(self):
         """Verifica que a tool de semantic search foi criada"""
-        from app.core.tools.semantic_search_tool import buscar_produtos_inteligente
+        from backend.app.core.tools.semantic_search_tool import buscar_produtos_inteligente
 
         assert buscar_produtos_inteligente is not None
         assert callable(buscar_produtos_inteligente)
@@ -54,7 +54,7 @@ class TestSemanticSearch:
 
     def test_semantic_search_tool_has_correct_schema(self):
         """Verifica schema da tool de semantic search"""
-        from app.core.tools.semantic_search_tool import buscar_produtos_inteligente
+        from backend.app.core.tools.semantic_search_tool import buscar_produtos_inteligente
 
         schema = buscar_produtos_inteligente.args_schema
 
@@ -68,7 +68,7 @@ class TestSemanticSearch:
     )
     def test_semantic_search_integration(self):
         """Teste de integração real (requer API key)"""
-        from app.core.tools.semantic_search_tool import buscar_produtos_inteligente
+        from backend.app.core.tools.semantic_search_tool import buscar_produtos_inteligente
 
         # Test semantic search
         result = buscar_produtos_inteligente(
@@ -188,8 +188,8 @@ class TestAgentIntegration:
     @patch("app.core.agents.caculinha_bi_agent.ToolPermissionManager")
     def test_agent_applies_tool_scoping(self, mock_manager):
         """Verifica que o agent aplica tool scoping no __init__"""
-        from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-        from app.core.utils.field_mapper import FieldMapper
+        from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+        from backend.app.core.utils.field_mapper import FieldMapper
 
         mock_llm = Mock()
         mock_code_gen = Mock()
@@ -213,7 +213,7 @@ class TestAgentIntegration:
 
     def test_agent_imports_new_tools(self):
         """Verifica que o agent importa as novas ferramentas"""
-        from app.core.agents import caculinha_bi_agent
+        from backend.app.core.agents import caculinha_bi_agent
 
         # Deve importar semantic search
         assert hasattr(caculinha_bi_agent, "buscar_produtos_inteligente")

@@ -1,86 +1,40 @@
 """
-Feedback Endpoint — API de Feedback para Active Learning
+Feedback Endpoint — Coleta de Satisfação do Usuário
+
+Permite correlacionar a percepção humana com a auditoria automática.
 
 Autor: Backend Specialist Agent
 Data: 2026-02-07
 """
 
-from typing import Optional, Literal
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-import structlog
+from typing import Optional
 
-logger = structlog.get_logger(__name__)
-router = APIRouter(prefix="/feedback", tags=["Feedback"])
+from backend.core.pipeline_factory import get_pipeline_factory
 
+router = APIRouter(prefix="/feedback", tags=["Governance"])
 
 class FeedbackRequest(BaseModel):
-    """Request de feedback."""
-    conversation_id: str
-    message_id: str
-    rating: Literal["positive", "negative", "neutral"]
-    feedback_text: Optional[str] = None
-    correction: Optional[str] = None
+    request_id: str = Field(..., description="ID da requisição correlacionado (X-Request-Id)")
+    user_rating: int = Field(..., ge=1, le=5, description="Nota de 1 a 5")
+    comment: Optional[str] = Field(None, description="Comentário opcional do usuário")
 
-
-class FeedbackResponse(BaseModel):
-    """Response de feedback."""
-    feedback_id: str
-    success: bool = True
-
-
-# Placeholder para feature store
-_feature_store_agent = None
-
-
-def set_feature_store_agent(agent):
-    global _feature_store_agent
-    _feature_store_agent = agent
-
-
-@router.post("", response_model=FeedbackResponse)
-async def submit_feedback(
-    request: FeedbackRequest,
-    tenant_id: str = "default",
-):
+@router.post("")
+async def submit_feedback(data: FeedbackRequest):
     """
-    Submete feedback do usuário para active learning.
-    
-    Pipeline:
-    1. Armazena feedback como feature
-    2. Marca para retraining
+    Submete feedback para uma resposta específica.
     """
-    logger.info("feedback_received", conversation_id=request.conversation_id, rating=request.rating)
+    factory = get_pipeline_factory()
+    memory_agent = factory.get_memory_agent()
     
-    try:
-        feedback_id = f"fb-{request.conversation_id[:8]}"
-        
-        # Armazena como feature
-        if _feature_store_agent:
-            await _feature_store_agent.store_feature(
-                tenant_id=tenant_id,
-                entity_id=request.message_id,
-                feature_name="user_feedback",
-                value={
-                    "rating": request.rating,
-                    "text": request.feedback_text,
-                    "correction": request.correction,
-                },
-                ttl=0,  # Permanente
-            )
-        
-        return FeedbackResponse(feedback_id=feedback_id, success=True)
+    success = await memory_agent.save_feedback(
+        request_id=data.request_id,
+        rating=data.user_rating,
+        comment=data.comment
+    )
     
-    except Exception as e:
-        logger.error("feedback_error", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/stats")
-async def get_feedback_stats(tenant_id: str = "default"):
-    """Retorna estatísticas de feedback."""
-    if not _feature_store_agent:
-        return {"total": 0, "positive": 0, "negative": 0}
+    if not success:
+        raise HTTPException(status_code=500, detail="Erro ao salvar feedback")
     
-    stats = await _feature_store_agent.store.get_feature_stats(tenant_id, "user_feedback")
-    return stats
+    return {"status": "success", "message": "Feedback registrado com sucesso"}

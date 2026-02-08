@@ -7,8 +7,8 @@ Date: 2026-01-24
 """
 
 import pytest
-from app.core.utils.intent_classifier import classify_intent, IntentType
-from app.core.utils.query_router import route_query
+from backend.app.core.utils.intent_classifier import classify_intent, IntentType
+from backend.app.core.utils.query_router import route_query
 
 
 class TestIntentClassifier:

@@ -251,7 +251,7 @@ def executar_codigo_python(
     
     # Carregar dados do Parquet
     try:
-        from app.config.settings import settings
+        from backend.app.config.settings import settings
         df = pd.read_parquet(settings.PARQUET_FILE_PATH)
     except Exception as e:
         logger.error(f"Erro ao carregar dados: {e}")

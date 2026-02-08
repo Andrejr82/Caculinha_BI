@@ -8,15 +8,15 @@ import asyncio
 
 # Assuming 'main' is your FastAPI application instance
 from main import app
-from app.config.settings import settings
-from app.core.utils.response_cache import ResponseCache
-from app.core.utils.query_history import QueryHistory
-from app.core.utils.field_mapper import FieldMapper
-from app.core.rag.query_retriever import QueryRetriever
-from app.core.learning.pattern_matcher import PatternMatcher
-from app.core.agents.code_gen_agent import CodeGenAgent
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-from app.core.llm_gemini_adapter import GeminiLLMAdapter
+from backend.app.config.settings import settings
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.app.core.utils.query_history import QueryHistory
+from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.rag.query_retriever import QueryRetriever
+from backend.app.core.learning.pattern_matcher import PatternMatcher
+from backend.app.core.agents.code_gen_agent import CodeGenAgent
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
 
 # Create a test client
 client = TestClient(app)

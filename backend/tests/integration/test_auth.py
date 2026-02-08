@@ -6,7 +6,7 @@ Unit tests for authentication
 import pytest
 from httpx import AsyncClient
 
-from app.config.security import create_access_token
+from backend.app.config.security import create_access_token
 from main import app
 
 

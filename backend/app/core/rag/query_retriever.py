@@ -6,8 +6,8 @@ import json
 import functools # Added import
 
 # Import ExampleCollector
-from app.core.rag.example_collector import ExampleCollector
-from app.config.settings import settings
+from backend.app.core.rag.example_collector import ExampleCollector
+from backend.app.config.settings import settings
 
 # Placeholder for SentenceTransformer and FAISS.
 # In a real implementation, these would be loaded conditionally/lazily.
@@ -135,7 +135,7 @@ class QueryRetriever:
 
 if __name__ == '__main__':
     # Setup dummy environment for testing
-    from app.config.settings import Settings
+    from backend.app.config.settings import Settings
     temp_settings = Settings()
     
     # Ensure data/learning directory exists

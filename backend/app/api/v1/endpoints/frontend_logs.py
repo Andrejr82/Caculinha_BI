@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict
 
-from app.core.logging_config import log_api_request
+from backend.app.core.logging_config import log_api_request
 
 router = APIRouter(tags=["logs"])
 

@@ -82,7 +82,7 @@ def analise_regressao_vendas(
     
     try:
         # Buscar dados do produto em todas as lojas
-        from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+        from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
         
         dados = consultar_dados_flexivel(
             filtros={"PRODUTO": produto_id},
@@ -187,7 +187,7 @@ def detectar_anomalias_vendas(
         return {"error": "scipy não instalado"}
     
     try:
-        from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+        from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
         
         dados = consultar_dados_flexivel(
             filtros={"PRODUTO": produto_id},
@@ -292,7 +292,7 @@ def analise_correlacao_produtos(
         return {"error": "Máximo 10 produtos para análise de correlação"}
     
     try:
-        from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+        from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
         
         data_inicio = (datetime.now() - timedelta(days=periodo_dias)).strftime("%Y-%m-%d")
         

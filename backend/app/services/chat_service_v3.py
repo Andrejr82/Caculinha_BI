@@ -24,13 +24,13 @@ from typing import Dict, Any, Optional, Callable, Awaitable, Union
 from dataclasses import dataclass
 
 # Componentes do agente
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-from app.core.agents.code_gen_agent import CodeGenAgent
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+from backend.app.core.agents.code_gen_agent import CodeGenAgent
 
 # Componentes existentes
-from app.core.llm_factory import LLMFactory
-from app.core.utils.session_manager import SessionManager
-from app.core.utils.field_mapper import FieldMapper
+from backend.app.core.llm_factory import LLMFactory
+from backend.app.core.utils.session_manager import SessionManager
+from backend.app.core.utils.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
 

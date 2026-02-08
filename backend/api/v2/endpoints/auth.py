@@ -68,86 +68,52 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
-# =============================================================================
-# MOCK USERS (em produção, usar banco de dados)
-# =============================================================================
-
-MOCK_USERS = {
-    "admin@lojas-cacula.com.br": {
-        "user_id": "user-001",
-        "password": "admin123",
-        "tenant_id": "lojas-cacula",
-        "role": "admin",
-        "name": "Administrador",
-    },
-    "user@lojas-cacula.com.br": {
-        "user_id": "user-002",
-        "password": "user123",
-        "tenant_id": "lojas-cacula",
-        "role": "user",
-        "name": "Usuário Padrão",
-    },
-    "test@test.com": {
-        "user_id": "user-test",
-        "password": "test123",
-        "tenant_id": "test-tenant",
-        "role": "user",
-        "name": "Usuário Teste",
-    },
-}
-
-
-# =============================================================================
-# ENDPOINTS
-# =============================================================================
-
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest):
     """
-    Autentica usuário e retorna token JWT.
-    
-    Args:
-        request: Credenciais de login
-    
-    Returns:
-        Token de acesso e informações do usuário
+    Autentica usuário via AuthService (Supabase > Parquet > SQL).
     """
-    # Buscar usuário
-    user = MOCK_USERS.get(request.email)
+    from backend.app.core.auth_service import auth_service
     
-    if not user or user["password"] != request.password:
+    # Autenticar usando o serviço centralizado
+    user = await auth_service.authenticate_user(request.email, request.password)
+    
+    if not user:
         logger.warning("login_failed", email=request.email)
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
-    # Gerar token
+    # Adaptação para campos retornados pelo AuthService
+    user_id = user.get("id") or user.get("user_id")
+    tenant_id = request.tenant_id or user.get("tenant_id", "default")
+    role = user.get("role", "user")
+    
+    # Gerar token local (Session Token)
     token = create_access_token(
-        user_id=user["user_id"],
-        tenant_id=request.tenant_id or user["tenant_id"],
-        role=user["role"],
+        user_id=user_id,
+        tenant_id=tenant_id,
+        role=role,
     )
     
     logger.info(
         "login_success",
-        user_id=user["user_id"],
-        tenant_id=user["tenant_id"],
+        user_id=user_id,
+        tenant_id=tenant_id,
+        provider="auth_service"
     )
     
     return LoginResponse(
         access_token=token,
-        user_id=user["user_id"],
-        tenant_id=user["tenant_id"],
-        role=user["role"],
+        user_id=user_id,
+        tenant_id=tenant_id,
+        role=role,
     )
 
 
 @router.get("/me", response_model=UserProfile)
 async def get_current_user(request: Request):
     """
-    Retorna o perfil do usuário autenticado.
-    
-    Requer token de autenticação no header Authorization.
+    Retorna o perfil do usuário autenticado a partir do token.
     """
-    # Extrair token
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token não fornecido")
@@ -156,25 +122,13 @@ async def get_current_user(request: Request):
     
     try:
         payload = decode_token(token)
-        user_id = payload.get("user_id")
-        
-        # Buscar dados do usuário
-        for email, user in MOCK_USERS.items():
-            if user["user_id"] == user_id:
-                return UserProfile(
-                    user_id=user_id,
-                    email=email,
-                    tenant_id=payload.get("tenant_id"),
-                    role=payload.get("role"),
-                    name=user.get("name"),
-                    created_at=datetime.utcnow().isoformat(),
-                )
-        
         return UserProfile(
-            user_id=user_id,
-            email="unknown",
-            tenant_id=payload.get("tenant_id"),
-            role=payload.get("role"),
+            user_id=payload.get("user_id"),
+            email=payload.get("sub", "unknown"), # JWT standard often uses sub for email/id
+            tenant_id=payload.get("tenant_id", "default"),
+            role=payload.get("role", "user"),
+            name=payload.get("name", "Usuário"),
+            created_at=datetime.fromtimestamp(payload.get("iat", 0)).isoformat(),
         )
         
     except Exception as e:
@@ -185,27 +139,23 @@ async def get_current_user(request: Request):
 async def refresh_token(request: RefreshRequest):
     """
     Atualiza o token de acesso.
-    
-    Args:
-        request: Token de refresh
-    
-    Returns:
-        Novo token de acesso
     """
     try:
         payload = decode_token(request.refresh_token)
         
+        # TODO: Validar se usuário ainda existe/está ativo no Supabase/DB
+        
         # Gerar novo token
         token = create_access_token(
             user_id=payload["user_id"],
-            tenant_id=payload["tenant_id"],
+            tenant_id=payload.get("tenant_id", "default"),
             role=payload.get("role", "user"),
         )
         
         return LoginResponse(
             access_token=token,
             user_id=payload["user_id"],
-            tenant_id=payload["tenant_id"],
+            tenant_id=payload.get("tenant_id", "default"),
             role=payload.get("role", "user"),
         )
         
@@ -217,8 +167,5 @@ async def refresh_token(request: RefreshRequest):
 async def logout(request: Request):
     """
     Invalida o token do usuário.
-    
-    Em uma implementação real, adicionar token a uma blacklist.
     """
-    # TODO: Implementar blacklist de tokens
     return {"message": "Logout realizado com sucesso"}

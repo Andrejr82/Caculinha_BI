@@ -4,10 +4,10 @@ import duckdb
 from fastapi import APIRouter, Depends, HTTPException, Query
 import logging
 
-from app.api.dependencies import get_current_active_user
-from app.core.data_scope_service import data_scope_service
-from app.infrastructure.database.models import User
-from app.core.duckdb_config import get_safe_connection
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.core.data_scope_service import data_scope_service
+from backend.app.infrastructure.database.models import User
+from backend.app.core.duckdb_config import get_safe_connection
 
 router = APIRouter(prefix="/rupturas", tags=["Rupturas"])
 logger = logging.getLogger(__name__)
