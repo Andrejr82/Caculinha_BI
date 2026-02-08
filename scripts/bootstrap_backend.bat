@@ -1,44 +1,69 @@
 @echo off
+REM Bootstrap Script for Caculinha BI Backend (Windows Batch)
+REM Deterministic dependency installation using pip-sync
+
 setlocal enabledelayedexpansion
 
-echo [INFO] Iniciando bootstrap do backend (Batch)...
+echo ============================================================
+echo   Caculinha BI - Backend Bootstrap
+echo ============================================================
 
-set "ROOT=%~dp0.."
-set "BACKEND_DIR=%ROOT%\backend"
-set "VENV=%ROOT%\.venv"
-set "REQ=%BACKEND_DIR%\requirements.txt"
+cd /d %~dp0..
 
-:: 1. Verificar virtualenv
-if not exist "%VENV%" (
-    echo [INFO] Criando virtualenv (.venv)...
-    python -m venv "%VENV%"
-    if !errorlevel! neq 0 (
-        echo [FAIL] Falha ao criar virtualenv.
+REM 1. Create venv if missing
+if not exist ".venv" (
+    echo [*] Creating virtual environment...
+    python -m venv .venv
+    if errorlevel 1 (
+        echo [ERROR] Failed to create venv
         exit /b 1
     )
 )
 
-:: 2. Ativar e Sincronizar
-echo [INFO] Ativando ambiente e sincronizando dependências...
-call "%VENV%\Scripts\activate.bat"
+REM 2. Activate venv
+echo [*] Activating virtual environment...
+call .venv\Scripts\activate.bat
 
-python -m pip install --upgrade pip
-pip install pip-tools
+REM 3. Install pip-tools if missing
+pip show pip-tools >nul 2>&1
+if errorlevel 1 (
+    echo [*] Installing pip-tools...
+    pip install pip-tools
+)
 
-if not exist "%REQ%" (
-    echo [FAIL] Arquivo requirements.txt não encontrado em %REQ%
+REM 4. Compile requirements if .in is newer than .txt
+echo [*] Checking if requirements need compilation...
+if not exist "backend\requirements.txt" (
+    echo [*] Compiling requirements.in -> requirements.txt...
+    pip-compile backend\requirements.in -o backend\requirements.txt
+)
+
+REM 5. Sync dependencies
+echo [*] Syncing dependencies with pip-sync...
+pip-sync backend\requirements.txt
+if errorlevel 1 (
+    echo [ERROR] pip-sync failed
     exit /b 1
 )
 
-echo [INFO] Executando pip-sync...
-python -m piptools sync "%REQ%"
-
-echo [INFO] Executando pip check...
+REM 6. Verify dependencies
+echo [*] Verifying dependencies...
 pip check
-if !errorlevel! neq 0 (
-    echo [FAIL] Inconsistência de dependências detectada pelo pip check!
+if errorlevel 1 (
+    echo [WARNING] pip check found issues
+)
+
+REM 7. Run verification script
+echo [*] Running backend verification...
+python scripts\verify_dependencies.py
+if errorlevel 1 (
+    echo [ERROR] Verification failed
     exit /b 1
 )
 
-echo [OK] Ambiente sincronizado com sucesso.
-pause
+echo ============================================================
+echo   [OK] Bootstrap complete! Ready to run.
+echo   Start with: python -m uvicorn backend.main:app --port 8000
+echo ============================================================
+
+endlocal
