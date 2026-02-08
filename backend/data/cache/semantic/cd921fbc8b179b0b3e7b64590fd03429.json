@@ -1,6 +1,0 @@
-{
-  "type": "text",
-  "result": {
-    "mensagem": "Encontrei um problema técnico ao tentar consultar os dados de vendas para o produto 25. Parece que o nome da coluna de vendas que estou tentando usar não é o correto e por isso não consigo obter os dados para te ajudar.\n\nPara que eu possa fazer a análise, você poderia me dizer qual o nome exato do campo de vendas que devemos considerar? Por exemplo: \"VENDAS_LIQUIDAS\", \"VALOR_TOTAL\", etc."
-  }
-}

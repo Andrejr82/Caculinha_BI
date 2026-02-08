@@ -1,6 +1,0 @@
-{
-  "type": "text",
-  "result": {
-    "mensagem": "O tempo limite de processamento foi excedido (1 minuto). A consulta solicitada é muito complexa. Tente ser mais específico ou dividi-la em partes menores."
-  }
-}
