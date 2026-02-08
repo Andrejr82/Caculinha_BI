@@ -1,9 +1,0 @@
-{
-  "type": "text",
-  "result": {
-    "mensagem": "Não há dados suficientes para responder com os filtros atuais. Tente ampliar os critérios de busca (ex: remover filtros específicos, buscar por categoria ao invés de produto específico).",
-    "sugestao": "Tente ampliar os critérios de busca ou remover filtros específicos"
-  },
-  "system_response": true,
-  "response_type": "no_data"
-}
