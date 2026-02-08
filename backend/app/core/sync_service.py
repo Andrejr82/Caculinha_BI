@@ -4,7 +4,7 @@ import time
 import logging
 import os
 from pathlib import Path
-from app.config.settings import settings
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class SyncService:
             df.to_parquet(parquet_file, index=False)
             
             # Limpar cache do Polars (se houver mecanismo de invalidação)
-            from app.core.parquet_cache import cache
+            from backend.app.core.parquet_cache import cache
             cache.clear()
             
             duration = time.time() - start_time

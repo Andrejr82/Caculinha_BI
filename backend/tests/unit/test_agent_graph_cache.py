@@ -6,8 +6,8 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
-from app.core.cache import AgentGraphCache
-from app.config.settings import Settings
+from backend.app.core.cache import AgentGraphCache
+from backend.app.config.settings import Settings
 
 @pytest.fixture
 def temp_agent_graph_cache_dir(tmp_path):

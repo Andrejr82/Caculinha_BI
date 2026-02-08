@@ -8,12 +8,12 @@ import polars as pl
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.api.dependencies import get_current_active_user
-from app.core.data_scope_service import data_scope_service
-from app.infrastructure.database.models import User
-from app.config.settings import settings
-from app.core.learning.continuous_learner import get_continuous_learner
-from app.core.rag.hybrid_retriever import get_hybrid_retriever
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.core.data_scope_service import data_scope_service
+from backend.app.infrastructure.database.models import User
+from backend.app.config.settings import settings
+from backend.app.core.learning.continuous_learner import get_continuous_learner
+from backend.app.core.rag.hybrid_retriever import get_hybrid_retriever
 
 logger = logging.getLogger(__name__)
 

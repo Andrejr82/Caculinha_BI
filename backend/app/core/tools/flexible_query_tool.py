@@ -21,14 +21,14 @@ import numpy as np
 import logging
 import os
 from typing import Dict, Any, List, Optional, Union
-from app.core.utils.error_handler import error_handler_decorator
+from backend.app.core.utils.error_handler import error_handler_decorator
 
 logger = logging.getLogger(__name__)
 
 # Mapeamento de colunas (lowercase → original)
 # UPDATED 2026-01-06: Refactored to use Centralized Semantic Layer (FieldMapper)
 # This removes hardcoded dictionary and ensures Single Source of Truth
-from app.core.utils.field_mapper import FieldMapper
+from backend.app.core.utils.field_mapper import FieldMapper
 field_mapper = FieldMapper()
 
 def _safe_serialize(value):
@@ -65,14 +65,14 @@ def _find_column(df_dummy: pd.DataFrame, col_name: str) -> Optional[str]:
     return_on_error={"error": "Erro ao consultar dados", "total_resultados": 0, "resultados": []}
 )
 def consultar_dados_flexivel(
-    filtros: Optional[str] = None,  # FIX: JSON String para evitar schema complexo
-    colunas: Optional[str] = None,  # FIX: JSON String para evitar schema complexo (List[str])
+    filtros: Optional[Union[str, Dict[str, Any]]] = None,  # COMPAT: Aceita string JSON OU dict direto
+    colunas: Optional[Union[str, List[str]]] = None,  # COMPAT: Aceita string JSON/CSV OU list direto
     agregacao: Optional[str] = None,
     coluna_agregacao: Optional[str] = None,
-    agrupar_por: Optional[str] = None,  # FIX: JSON String para evitar schema complexo (List[str])
+    agrupar_por: Optional[Union[str, List[str]]] = None,  # COMPAT: Aceita string JSON/CSV OU list direto
     ordenar_por: Optional[str] = None,
-    ordem_desc: Optional[bool] = True,
-    limite: Optional[str] = "100"
+    ordem_desc: Optional[Union[bool, str]] = True,
+    limite: Optional[Union[str, int]] = 100  # COMPAT: Aceita string OU int direto
 ) -> Dict[str, Any]:
     """
     Ferramenta GENÉRICA e FLEXÍVEL para consultar dados do Parquet.
@@ -80,65 +80,79 @@ def consultar_dados_flexivel(
     USE QUANDO: Consultas gerais, listagens, "quais produtos", "verifique estoque",
     "filtre por X", "mostre dados de Y". Ferramenta "coringa" para SQL dinâmico.
     
-    Parâmetros:
-    - filtros: String JSON com dicionário de filtros (ex: '{"NOMESEGMENTO": "ARMARINHO"}').
-    - colunas: String JSON lista de colunas (ex: '["CODIGO", "NOME"]').
+    Parâmetros (COMPATÍVEL com string ou tipos nativos):
+    - filtros: Dict de filtros OU String JSON (ex: '{"NOMESEGMENTO": "ARMARINHO"}').
+    - colunas: List de colunas OU String JSON/CSV (ex: '["CODIGO", "NOME"]' ou 'CODIGO,NOME').
     - agregacao: Tipo de agregação (SUM, AVG, MIN, MAX, COUNT).
     - coluna_agregacao: Coluna para agregar.
-    - agrupar_por: String JSON lista de colunas para agrupar.
+    - agrupar_por: List de colunas OU String JSON para agrupar.
     - ordenar_por: Coluna para ordenar.
-    - ordem_desc: Booleano para ordem decrescente.
-    - limite: Máximo de registros (padrão 100).
+    - ordem_desc: Booleano ou string para ordem decrescente.
+    - limite: Int ou string - máximo de registros (padrão 100).
     
     Garante alta performance usando cache centralizado (DuckDB SQL Push-down).
     """
     import json
     
-    # 1. Parse de Parâmetros JSON Strings
+    # === NORMALIZAÇÃO DE INPUTS (COMPAT: string OU tipo nativo) ===
+    
+    # 1. Normalizar filtros: dict ou string JSON
+
     filtros_dict = None
     if filtros:
-        try:
-            # Tentar parsear como JSON se parecer JSON
-            if filtros.strip().startswith("{"):
-                filtros_dict = json.loads(filtros)
-            else:
-                # Se não for JSON, talvez seja erro do modelo, tentar ignorar ou logar
-                logger.warning(f"Filtros não é JSON válido: {filtros}")
-        except json.JSONDecodeError:
-            logger.warning(f"Erro ao decodificar JSON de filtros: {filtros}")
+        if isinstance(filtros, dict):
+            filtros_dict = filtros
+        elif isinstance(filtros, str):
+            try:
+                # Tentar parsear como JSON se parecer JSON
+                if filtros.strip().startswith("{"):
+                    filtros_dict = json.loads(filtros)
+                else:
+                    # Se não for JSON, talvez seja erro do modelo, tentar ignorar ou logar
+                    logger.warning(f"Filtros não é JSON válido: {filtros}")
+            except json.JSONDecodeError:
+                logger.warning(f"Erro ao decodificar JSON de filtros: {filtros}")
 
     colunas_list = None
     if colunas:
-        try:
-            # Se for string representando lista
-            if colunas.strip().startswith("["):
-                colunas_list = json.loads(colunas)
-            # Se o modelo mandou apenas uma string separada por vírgula (comum)
-            elif "," in colunas:
-                colunas_list = [c.strip() for c in colunas.split(",")]
-            else:
+        if isinstance(colunas, list):
+            colunas_list = colunas
+        elif isinstance(colunas, str):
+            try:
+                # Se for string representando lista
+                if colunas.strip().startswith("["):
+                    colunas_list = json.loads(colunas)
+                # Se o modelo mandou apenas uma string separada por vírgula (comum)
+                elif "," in colunas:
+                    colunas_list = [c.strip() for c in colunas.split(",")]
+                else:
+                    colunas_list = [colunas]
+            except:
+                logger.warning(f"Erro ao parsear colunas: {colunas}")
                 colunas_list = [colunas]
-        except:
-            logger.warning(f"Erro ao parsear colunas: {colunas}")
-            colunas_list = [colunas]
 
     agrupar_por_list = None
     if agrupar_por:
-        try:
-            if agrupar_por.strip().startswith("["):
-                agrupar_por_list = json.loads(agrupar_por)
-            elif "," in agrupar_por:
-                agrupar_por_list = [g.strip() for g in agrupar_por.split(",")]
-            else:
-                agrupar_por_list = [agrupar_por]
-        except:
-             agrupar_por_list = [agrupar_por]
+        if isinstance(agrupar_por, list):
+            agrupar_por_list = agrupar_por
+        elif isinstance(agrupar_por, str):
+            try:
+                if agrupar_por.strip().startswith("["):
+                    agrupar_por_list = json.loads(agrupar_por)
+                elif "," in agrupar_por:
+                    agrupar_por_list = [g.strip() for g in agrupar_por.split(",")]
+                else:
+                    agrupar_por_list = [agrupar_por]
+            except:
+                 agrupar_por_list = [agrupar_por]
 
     try:
         # FIX 2026-01-09: Converter parâmetros que podem vir como string do Groq
         if isinstance(limite, str):
             limite = int(limite) if limite.isdigit() else 100
-        if limite is None:
+        elif isinstance(limite, int):
+            pass
+        elif limite is None:
             limite = 100
             
         if isinstance(ordem_desc, str):
@@ -162,8 +176,8 @@ def consultar_dados_flexivel(
             
         logger.info(f"[QUERY] Consulta flexível otimizada (SQL) - Filtros: {filtros}, Agregação: {agregacao}, Limite: {limite}")
         
-        from app.core.parquet_cache import cache
-        from app.core.context import get_current_user_segments # RLS
+        from backend.app.core.parquet_cache import cache
+        from backend.app.core.context import get_current_user_segments # RLS
         
         # 1. Garantir tabela em memória (Zero-Copy)
         table_name = cache._adapter.get_memory_table("admmat.parquet")
@@ -255,7 +269,7 @@ def consultar_dados_flexivel(
         
         # FIX 2026-02-04: Validar SQL antes de executar (segurança)
         try:
-            from utils.sql_validator import validate_sql
+            from backend.utils.sql_validator import validate_sql
             is_valid, error_msg = validate_sql(sql_query)
             if not is_valid:
                 logger.error(f"[SQL VALIDATOR] Query bloqueada: {error_msg}")

@@ -1,8 +1,8 @@
 import pytest
 import asyncio
-from app.services.chat_service_v3 import ChatServiceV3
-from app.core.utils.session_manager import SessionManager
-from app.services.query_interpreter import IntentType
+from backend.app.services.chat_service_v3 import ChatServiceV3
+from backend.app.core.utils.session_manager import SessionManager
+from backend.app.services.query_interpreter import IntentType
 
 # Mock LLM to avoid API calls during integration tests
 class MockLLMAdapter:
@@ -29,7 +29,7 @@ def chat_service(monkeypatch):
 @pytest.mark.asyncio
 async def test_metrics_calculation_vendas_global():
     """Testa se o cálculo de vendas global retorna números coerentes"""
-    from app.services.metrics_calculator import MetricsCalculator
+    from backend.app.services.metrics_calculator import MetricsCalculator
     
     calc = MetricsCalculator() # Uses real admmat.parquet by default
     
@@ -47,7 +47,7 @@ async def test_metrics_calculation_vendas_global():
 @pytest.mark.asyncio
 async def test_metrics_calculation_loja_especifica():
     """Testa filtro de loja específica"""
-    from app.services.metrics_calculator import MetricsCalculator
+    from backend.app.services.metrics_calculator import MetricsCalculator
     calc = MetricsCalculator()
     
     # Loja 2586 (sabemos que existe do teste anterior)
@@ -65,7 +65,7 @@ async def test_metrics_calculation_loja_especifica():
 @pytest.mark.asyncio
 async def test_metrics_calculation_top_segmentos():
     """Testa se os segmentos são calculados mesmo em intent VENDAS"""
-    from app.services.metrics_calculator import MetricsCalculator
+    from backend.app.services.metrics_calculator import MetricsCalculator
     calc = MetricsCalculator()
     
     result = calc.calculate(
@@ -83,9 +83,9 @@ async def test_metrics_calculation_top_segmentos():
 @pytest.mark.asyncio
 async def test_context_builder_includes_segments():
     """Testa se o ContextBuilder inclui a tabela de segmentos no Markdown"""
-    from app.services.context_builder import ContextBuilder
-    from app.services.metrics_calculator import MetricsResult
-    from app.services.query_interpreter import QueryIntent, IntentType
+    from backend.app.services.context_builder import ContextBuilder
+    from backend.app.services.metrics_calculator import MetricsResult
+    from backend.app.services.query_interpreter import QueryIntent, IntentType
     
     builder = ContextBuilder()
     

@@ -25,12 +25,9 @@ from dotenv import load_dotenv
 _ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(_ENV_PATH)
 
-# Configurar logging
-from backend.services.logging_config import setup_logging
-setup_logging(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    json_format=os.getenv("LOG_FORMAT", "json") == "json",
-)
+# Configurar logging (Observability)
+from backend.app.core.observability.logging import configure_logging
+configure_logging(log_level=os.getenv("LOG_LEVEL", "INFO"))
 
 logger = structlog.get_logger(__name__)
 
@@ -113,19 +110,30 @@ app.add_middleware(
 from backend.api.middleware.auth import AuthMiddleware
 from backend.api.middleware.tenant import TenantMiddleware
 from backend.api.middleware.rate_limit import RateLimitMiddleware
+from backend.app.core.observability.middleware import ObservabilityMiddleware
 
-# Ordem importa: Rate Limit → Tenant → Auth
-app.add_middleware(RateLimitMiddleware)
-app.add_middleware(TenantMiddleware)
+# Ordem de execução (Request):
+# 1. Observability (Start Timer, Request ID)
+# 2. CORS
+# 3. Rate Limit
+# 4. Tenant (Resolve Tenant)
+# 5. Auth (Resolve User)
+
+# Em FastAPI/Starlette, o middleware adicionado POR ÚLTIMO é executado PRIMEIRO na entrada.
 app.add_middleware(AuthMiddleware)
+app.add_middleware(TenantMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(ObservabilityMiddleware) # Envolve todos os outros
 
 
 # =============================================================================
 # ROUTERS
 # =============================================================================
 
+from backend.api.v1.router import api_router as v1_router
 from backend.api.v2 import router as v2_router
 
+app.include_router(v1_router) # Já tem prefixo /api/v1 no router
 app.include_router(v2_router, prefix="/api/v2")
 
 
@@ -149,6 +157,16 @@ async def root():
 async def ping():
     """Endpoint de ping para load balancers."""
     return {"status": "pong"}
+
+
+@app.get("/health")
+async def health():
+    """Endpoint de saúde para orquestração (Docker/K8s)."""
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "llm_model": os.getenv("LLM_MODEL_NAME", "unknown")
+    }
 
 
 # =============================================================================

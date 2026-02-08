@@ -32,6 +32,7 @@ from backend.application.agents.compression_agent import CompressionAgent
 from backend.application.agents.feature_store_agent import FeatureStoreAgent
 from backend.application.agents.sql_agent import SQLAgent
 from backend.application.agents.insight_agent import InsightAgent
+from backend.application.agents.quality_evaluator_agent import QualityEvaluatorAgent
 
 
 logger = structlog.get_logger(__name__)
@@ -66,6 +67,7 @@ class PipelineFactory:
         self._feature_store_agent: Optional[FeatureStoreAgent] = None
         self._sql_agent: Optional[SQLAgent] = None
         self._insight_agent: Optional[InsightAgent] = None
+        self._quality_evaluator_agent: Optional[QualityEvaluatorAgent] = None
         self._orchestrator: Optional[OrchestratorAgent] = None
     
     # =========================================================================
@@ -144,6 +146,11 @@ class PipelineFactory:
             self._insight_agent = InsightAgent(llm_client=self.llm_client)
         return self._insight_agent
     
+    def get_quality_evaluator_agent(self) -> QualityEvaluatorAgent:
+        if self._quality_evaluator_agent is None:
+            self._quality_evaluator_agent = QualityEvaluatorAgent(llm_client=self.llm_client)
+        return self._quality_evaluator_agent
+    
     # =========================================================================
     # ORCHESTRATOR
     # =========================================================================
@@ -159,9 +166,10 @@ class PipelineFactory:
                 compression_agent=self.get_compression_agent(),
                 sql_agent=self.get_sql_agent(),
                 insight_agent=self.get_insight_agent(),
+                quality_evaluator_agent=self.get_quality_evaluator_agent(),
                 llm_client=self.llm_client,
             )
-            logger.info("orchestrator_created", agents=9)
+            logger.info("orchestrator_created", agents=10)
         return self._orchestrator
     
     def create_minimal_orchestrator(self) -> OrchestratorAgent:
@@ -169,6 +177,7 @@ class PipelineFactory:
         return OrchestratorAgent(
             memory_agent=self.get_memory_agent(),
             insight_agent=self.get_insight_agent(),
+            quality_evaluator_agent=self.get_quality_evaluator_agent(),
             llm_client=self.llm_client,
         )
 

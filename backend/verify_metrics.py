@@ -6,7 +6,7 @@ from pathlib import Path
 # Add backend to sys.path
 sys.path.append(str(Path(__file__).parent))
 
-from app.services.metrics_calculator import MetricsCalculator
+from backend.app.services.metrics_calculator import MetricsCalculator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

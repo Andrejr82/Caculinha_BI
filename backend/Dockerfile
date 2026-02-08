@@ -42,14 +42,15 @@ RUN groupadd --gid 1000 appuser && \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copiar código da aplicação
-COPY --chown=appuser:appuser . .
+# Copiar código da aplicação dentro do diretório backend
+COPY --chown=appuser:appuser . backend/
 
 # Variáveis de ambiente padrão
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     ENVIRONMENT=production \
-    PORT=8000
+    PORT=8000 \
+    PYTHONPATH=/app
 
 # Expor porta
 EXPOSE 8000
@@ -59,10 +60,10 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Comando padrão
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # -----------------------------------------------------------------------------
 # STAGE 3: Development (opcional)
@@ -86,4 +87,4 @@ RUN pip install --no-cache-dir \
 USER appuser
 
 # Comando para desenvolvimento com hot-reload
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

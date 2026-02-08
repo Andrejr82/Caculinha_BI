@@ -1,6 +1,6 @@
 from contextvars import ContextVar
 from typing import Optional, List
-from app.infrastructure.database.models import User
+from backend.app.infrastructure.database.models import User
 
 # Context variable to hold the current user for the request duration
 _current_user_context: ContextVar[Optional[User]] = ContextVar("current_user_context", default=None)

@@ -1,0 +1,104 @@
+# Estrutura Oficial — Caculinha BI Enterprise
+# Apenas arquivos nestas pastas são permitidos
+# Gerado em: 2026-02-07
+#============================================================
+
+# RAIZ — Arquivos permitidos
+Dockerfile
+docker-compose.yml
+requirements.txt
+README.md
+.gitignore
+.env
+.env.example
+GEMINI.md
+validate_platform.py
+
+# BACKEND — Arquitetura Hexagonal
+backend/
+backend/main.py
+backend/requirements.txt
+backend/pytest.ini
+backend/__init__.py
+
+# Domain Layer
+backend/domain/
+backend/domain/__init__.py
+backend/domain/entities/
+backend/domain/ports/
+
+# Application Layer
+backend/application/
+backend/application/__init__.py
+backend/application/agents/
+backend/application/use_cases/
+
+# Infrastructure Layer
+backend/infrastructure/
+backend/infrastructure/__init__.py
+backend/infrastructure/adapters/
+
+# API Layer
+backend/api/
+backend/api/__init__.py
+backend/api/v1/
+backend/api/v1/__init__.py
+backend/api/v1/endpoints/
+backend/api/v1/router.py
+
+# Core (Config, Security, Pipeline)
+backend/core/
+backend/core/__init__.py
+backend/core/config.py
+backend/core/config/
+backend/core/security/
+backend/core/pipeline_factory.py
+
+# Data (Parquet, Cache, DB)
+backend/data/
+
+# Tests
+backend/tests/
+backend/tests/__init__.py
+backend/tests/conftest.py
+backend/tests/test_agents.py
+backend/tests/test_adapters.py
+
+# DOCS
+docs/
+docs/architecture.md
+docs/memory.md
+docs/rag.md
+docs/agents.md
+docs/security.md
+docs/roadmap_trimestral.md
+docs/okrs_trimestrais.md
+docs/entregaveis_tecnicos.md
+docs/metricas_sucesso.md
+docs/inventory_current.txt
+docs/allowed_structure.txt
+docs/orphans.txt
+docs/security_review_orphans.md
+docs/post_cleanup_report.md
+
+# TOOLS
+tools/
+tools/audit_files.py
+tools/diff_structure.py
+tools/purge_orphans.py
+
+# AGENT (Antigravity Kit)
+.agent/
+.agent/agents/
+.agent/skills/
+.agent/workflows/
+.agent/scripts/
+
+# FRONTEND (SolidJS)
+frontend-solid/
+frontend-solid/src/
+frontend-solid/public/
+frontend-solid/package.json
+frontend-solid/vite.config.ts
+frontend-solid/tsconfig.json
+frontend-solid/index.html

@@ -11,7 +11,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, status
 import structlog
 
-from app.config.settings import get_settings
+from backend.app.config.settings import get_settings
 
 router = APIRouter()
 logger = structlog.get_logger("agentbi.health")
@@ -129,7 +129,7 @@ async def check_database() -> Dict[str, Any]:
         Status dictionary for database
     """
     try:
-        from app.config.database import engine
+        from backend.app.config.database import engine
 
         # Try to connect with short timeout
         async with asyncio.timeout(2):

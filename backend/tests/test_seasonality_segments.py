@@ -3,7 +3,7 @@ Testes para Seasonality Detector com filtro por segmento
 """
 import pytest
 from datetime import datetime
-from app.core.utils.seasonality_detector import (
+from backend.app.core.utils.seasonality_detector import (
     detect_seasonal_context,
     SEASONAL_SEGMENTS,
     SEASONAL_PERIODS

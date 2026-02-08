@@ -10,8 +10,8 @@ import hashlib
 from pathlib import Path
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from app.api.dependencies import get_current_user
-from app.infrastructure.database.models import User
+from backend.app.api.dependencies import get_current_user
+from backend.app.infrastructure.database.models import User
 
 router = APIRouter(prefix="/insights", tags=["AI Insights"])
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ async def get_proactive_insights(current_user: User = Depends(get_current_user))
     Cache economiza tokens LLM - nova geração apenas 1x por dia por perfil
     """
     try:
-        from app.config.settings import settings
+        from backend.app.config.settings import settings
         import uuid
 
         # Filtros baseados no perfil do usuario
@@ -152,7 +152,7 @@ async def get_proactive_insights(current_user: User = Depends(get_current_user))
         # MODO LLM (Gemini / Groq) e Fallback
         # ------------------------------------------------------------------
         else:
-            from app.services.llm_insights import LLMInsightsService
+            from backend.app.services.llm_insights import LLMInsightsService
 
             logger.info(f"[SEARCH] Filtrando insights para segmentos: {filters.get('segments', 'all')}")
             raw_insights = await LLMInsightsService.generate_proactive_insights(filters=filters)
@@ -207,7 +207,7 @@ async def _generate_offline_insights() -> List[dict]:
     Gera insights determinísticos usando DuckDB diretamente.
     Substitui o LLM no modo offline.
     """
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     import pandas as pd
     
     insights = []

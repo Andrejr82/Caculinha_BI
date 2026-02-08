@@ -22,7 +22,7 @@ import threading
 import logging
 import pandas as pd
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
 
 logger = logging.getLogger(__name__)
 

@@ -2,12 +2,12 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent, FieldMapper, CodeGenAgent
-from app.core.tools.une_tools import (
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent, FieldMapper, CodeGenAgent
+from backend.app.core.tools.une_tools import (
     calcular_abastecimento_une, calcular_mc_produto, calcular_preco_final_une,
     validar_transferencia_produto, sugerir_transferencias_automaticas, encontrar_rupturas_criticas
 )
-from app.core.utils.error_handler import APIError
+from backend.app.core.utils.error_handler import APIError
 
 class MockLLM:
     """A mock LLM that can simulate responses."""

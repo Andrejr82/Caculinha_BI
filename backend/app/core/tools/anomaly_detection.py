@@ -34,8 +34,8 @@ def analisar_anomalias(
         Lista de anomalias detectadas com Z-Score e explicação.
     """
     try:
-        from app.core.parquet_cache import cache
-        from app.core.utils.field_mapper import FieldMapper
+        from backend.app.core.parquet_cache import cache
+        from backend.app.core.utils.field_mapper import FieldMapper
         field_mapper = FieldMapper()
 
         # 1. Mapear colunas

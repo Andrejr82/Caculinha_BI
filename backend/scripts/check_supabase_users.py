@@ -6,7 +6,7 @@ from pathlib import Path
 # Adiciona o diretório backend ao path para importar as configurações
 sys.path.append(os.path.join(os.getcwd(), 'backend'))
 
-from app.config.settings import get_settings
+from backend.app.config.settings import get_settings
 from supabase import create_client, Client
 
 USERS_TO_CHECK = ["lucas.garcia", "hugo.mendes", "fausto.neto"]

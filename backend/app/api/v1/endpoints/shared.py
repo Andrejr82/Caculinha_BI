@@ -13,8 +13,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, get_db
-from app.infrastructure.database.models import SharedConversation, User
+from backend.app.api.dependencies import get_current_user, get_db
+from backend.app.infrastructure.database.models import SharedConversation, User
 
 router = APIRouter(prefix="/shared", tags=["Shared Conversations"])
 

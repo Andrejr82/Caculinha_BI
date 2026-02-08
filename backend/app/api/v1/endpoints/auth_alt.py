@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 import pyodbc
 import bcrypt
-from app.config.security import create_access_token, create_refresh_token
+from backend.app.config.security import create_access_token, create_refresh_token
 
 router_alt = APIRouter(prefix="/auth-alt", tags=["Auth Alternative"])
 

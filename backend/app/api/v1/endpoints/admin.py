@@ -12,13 +12,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from app.api.dependencies import get_db, require_role, get_current_active_user
-from app.config.security import get_password_hash
-from app.infrastructure.database.models import AuditLog, Report, User
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
-from app.core.parquet_cache import cache
-from app.core.sync_service import sync_service
-from app.core.supabase_user_service import supabase_user_service
+from backend.app.api.dependencies import get_db, require_role, get_current_active_user
+from backend.app.config.security import get_password_hash
+from backend.app.infrastructure.database.models import AuditLog, Report, User
+from backend.app.schemas.user import UserCreate, UserResponse, UserUpdate
+from backend.app.core.parquet_cache import cache
+from backend.app.core.sync_service import sync_service
+from backend.app.core.supabase_user_service import supabase_user_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -108,7 +108,7 @@ async def get_users(
     Returns list of users with their profiles and auth status.
     Requires admin role.
     """
-    from app.config.settings import settings
+    from backend.app.config.settings import settings
 
     if settings.USE_SUPABASE_AUTH:
         # Use Supabase user service
@@ -163,7 +163,7 @@ async def create_user(
     Creates user with auto-confirmed email and profile data.
     Requires admin role.
     """
-    from app.config.settings import settings
+    from backend.app.config.settings import settings
 
     if settings.USE_SUPABASE_AUTH:
         try:
@@ -270,7 +270,7 @@ async def update_user(
     Updates user auth data and profile information.
     Requires admin role.
     """
-    from app.config.settings import settings
+    from backend.app.config.settings import settings
 
     if settings.USE_SUPABASE_AUTH:
         try:
@@ -367,7 +367,7 @@ async def delete_user(
     Removes user from auth and profile tables.
     Requires admin role. Cannot delete self.
     """
-    from app.config.settings import settings
+    from backend.app.config.settings import settings
 
     # Prevent self-deletion
     if user_id == str(current_user.id):

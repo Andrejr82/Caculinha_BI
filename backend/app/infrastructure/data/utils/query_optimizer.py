@@ -31,7 +31,7 @@ def _get_essential_columns_map() -> Dict[str, List[str]]:
     Carrega colunas essenciais dinamicamente do column_mapping.py.
     Garante sincronização com o schema expandido (97 colunas).
     """
-    from app.infrastructure.data.config.column_mapping import COLUMN_INFO
+    from backend.app.infrastructure.data.config.column_mapping import COLUMN_INFO
     
     # Construir mapa dinâmico baseado no COLUMN_INFO
     return {

@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, List, Dict, Any
-from app.config.settings import settings
-from app.core.llm_groq_adapter import GroqLLMAdapter
+from backend.app.config.settings import settings
+from backend.app.core.llm_groq_adapter import GroqLLMAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class SmartLLM:
         if self._gemini is None and self._gemini_available:
             try:
                 # FIX 2026-01-24: Migrated to official google-genai SDK
-                from app.core.llm_genai_adapter import GenAILLMAdapter
+                from backend.app.core.llm_genai_adapter import GenAILLMAdapter
                 self._gemini = GenAILLMAdapter()
             except Exception as e:
                 logger.warning(f"GenAI não disponível (API key expirada ou inválida): {e}")

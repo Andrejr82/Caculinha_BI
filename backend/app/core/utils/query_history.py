@@ -130,7 +130,7 @@ class QueryHistory:
 
 # Example usage
 if __name__ == '__main__':
-    from app.config.settings import Settings
+    from backend.app.config.settings import Settings
     temp_settings = Settings()
 
     # Ensure history directory exists for testing

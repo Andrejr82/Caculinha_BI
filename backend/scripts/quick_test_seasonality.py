@@ -9,7 +9,7 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from app.core.utils.seasonality_detector import detect_seasonal_context
+from backend.app.core.utils.seasonality_detector import detect_seasonal_context
 
 print("="*80)
 print("TESTE RÁPIDO - DETECÇÃO DE SAZONALIDADE POR SEGMENTO")

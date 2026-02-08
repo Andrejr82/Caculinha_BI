@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List, Union
 import pandas as pd
 import plotly.graph_objects as go
 from langchain_core.tools import tool
-from app.core.data_source_manager import get_data_manager
+from backend.app.core.data_source_manager import get_data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -184,8 +184,8 @@ def gerar_grafico_universal_v2(
     # Tenta filtrar via SQL antes de carregar para Pandas
     # -------------------------------------------------------------------------
     try:
-        from app.core.parquet_cache import cache
-        from app.core.context import get_current_user_segments # RLS
+        from backend.app.core.parquet_cache import cache
+        from backend.app.core.context import get_current_user_segments # RLS
         
         # 1. Garantir que a tabela está carregada em memória (Zero-Copy)
         table_name = cache._adapter.get_memory_table("admmat.parquet")
@@ -357,8 +357,8 @@ def gerar_grafico_universal_v2(
     # Executa o GROUP BY direto no motor SQL
     # -------------------------------------------------------------------------
     try:
-        from app.core.parquet_cache import cache
-        from app.core.context import get_current_user_segments # RLS
+        from backend.app.core.parquet_cache import cache
+        from backend.app.core.context import get_current_user_segments # RLS
         
         table_name = cache._adapter.get_memory_table("admmat.parquet")
         

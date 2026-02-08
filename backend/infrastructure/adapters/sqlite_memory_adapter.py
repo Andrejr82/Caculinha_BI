@@ -78,11 +78,37 @@ class SQLiteMemoryAdapter(IMemoryRepository):
                 
                 CREATE INDEX IF NOT EXISTS idx_msg_conv 
                     ON messages(conversation_id, timestamp ASC);
+                
+                CREATE TABLE IF NOT EXISTS feedbacks (
+                    request_id TEXT PRIMARY KEY,
+                    rating INTEGER NOT NULL,
+                    comment TEXT,
+                    created_at TEXT NOT NULL
+                );
             """)
             await db.commit()
         
         self._initialized = True
         logger.info("sqlite_memory_initialized", db_path=str(self.db_path))
+    
+    # ... existing code ...
+
+    async def save_feedback(self, request_id: str, rating: int, comment: Optional[str] = None) -> bool:
+        """Salva feedback do usuário no SQLite."""
+        await self._ensure_initialized()
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO feedbacks (request_id, rating, comment, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (
+                request_id,
+                rating,
+                comment,
+                datetime.utcnow().isoformat()
+            ))
+            await db.commit()
+            return True
     
     # =========================================================================
     # CONVERSATION OPERATIONS

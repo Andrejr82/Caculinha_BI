@@ -79,7 +79,7 @@ class TestChatBIResponses:
         ou resposta vazia
         """
         # Mock do agente
-        from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+        from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
         from unittest.mock import MagicMock
         
         mock_llm = MagicMock()
@@ -109,7 +109,7 @@ class TestChatBIResponses:
         Valida que o método _generate_fallback_response sempre
         retorna uma mensagem com conteúdo
         """
-        from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+        from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
         from unittest.mock import MagicMock
         
         mock_llm = MagicMock()

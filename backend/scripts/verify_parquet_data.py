@@ -21,7 +21,7 @@ if sys.platform == 'win32':
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
 
 PARQUET_FILE = Path(__file__).parent.parent / "data" / "parquet" / "admmat.parquet"
 

@@ -5,8 +5,8 @@ import time
 from queue import Queue
 import json # Adicionado para json.dumps
 import os
-from app.core.llm_base import BaseLLMAdapter
-from app.config.settings import settings
+from backend.app.core.llm_base import BaseLLMAdapter
+from backend.app.config.settings import settings
 
 GEMINI_AVAILABLE = False # Assume false until all imports succeed
 LANGCHAIN_GEMINI_AVAILABLE = False

@@ -1,0 +1,68 @@
+# --- Core Framework ---
+fastapi
+uvicorn[standard]
+gunicorn
+pydantic>=2.0
+pydantic-settings
+python-multipart
+python-dotenv
+structlog
+
+# --- Database & Storage ---
+sqlalchemy
+aioodbc
+pyodbc
+duckdb>=1.1.0
+aiosqlite
+pandas
+pyarrow
+polars
+
+# --- AI & LLM ---
+google-genai>=1.60.0
+groq
+openai
+sentence-transformers
+faiss-cpu
+rank-bm25
+whoosh
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langgraph
+
+# --- Security & Auth ---
+python-jose[cryptography]
+bcrypt
+passlib
+supabase
+
+# --- Analytics & Science ---
+numpy
+scipy
+scikit-learn
+statsmodels
+plotly
+
+# --- Observability ---
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp
+prometheus-client
+
+# --- Utilities ---
+jinja2
+httpx
+psutil
+email-validator
+orjson
+slowapi
+
+# --- Dev/Build Tools ---
+pip-tools
+alembic
+pytest
+pytest-asyncio
+pytest-cov

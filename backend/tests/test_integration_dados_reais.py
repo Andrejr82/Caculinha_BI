@@ -18,7 +18,7 @@ def test_produto_369947_tem_35_unes():
     ENTÃO: Deve retornar ~35 UNEs
     """
     # Arrange
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     adapter = get_duckdb_adapter()
     
@@ -53,7 +53,7 @@ def test_limite_100_retorna_100_registros():
     ENTÃO: Deve retornar exatamente 100 registros
     """
     # Arrange
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     adapter = get_duckdb_adapter()
     
@@ -78,7 +78,7 @@ def test_limite_500_retorna_500_registros():
     ENTÃO: Deve retornar exatamente 500 registros
     """
     # Arrange
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     adapter = get_duckdb_adapter()
     
@@ -103,7 +103,7 @@ def test_produto_369947_todas_unes_sem_limite():
     ENTÃO: Deve retornar TODAS as UNEs (não apenas 9-20)
     """
     # Arrange
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     adapter = get_duckdb_adapter()
     
@@ -131,7 +131,7 @@ def test_agregacao_top_10_unes():
     ENTÃO: Deve retornar top 10 UNEs por vendas
     """
     # Arrange
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     adapter = get_duckdb_adapter()
     
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     ENTÃO: Deve retornar todas as 35 UNEs
     """
     # Arrange
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
     
     # Act
     resultado = consultar_dados_flexivel.func(
@@ -244,7 +244,7 @@ def test_limite_100_funciona_com_dados_reais(mock_rls):
     ENTÃO: Deve retornar exatamente 100 resultados
     """
     # Arrange
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
     
     # Act
     resultado = consultar_dados_flexivel.func(
@@ -266,7 +266,7 @@ def test_limite_500_maximo_com_dados_reais(mock_rls):
     ENTÃO: Deve ser cortado para 500 (máximo)
     """
     # Arrange
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
     
     # Act
     resultado = consultar_dados_flexivel.func(
@@ -288,7 +288,7 @@ def test_agregacao_com_limite(mock_rls):
     ENTÃO: Deve retornar top 10 UNEs por vendas
     """
     # Arrange
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
     
     # Act
     resultado = consultar_dados_flexivel.func(
@@ -318,8 +318,8 @@ def test_comparacao_antes_depois_correcao(mock_rls):
     ENTÃO: Deve retornar TODAS as 35 UNEs (não apenas 9-20 como antes)
     """
     # Arrange
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     # Verificar total real no banco
     adapter = get_duckdb_adapter()

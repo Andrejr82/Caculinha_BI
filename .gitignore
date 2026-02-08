@@ -1,8 +1,144 @@
+# ============================================================
+# Caculinha BI Enterprise - .gitignore
+# Atualizado: 2026-02-07 (Pós-Limpeza Arquitetural)
+# ============================================================
+
+# ============ PYTHON ============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# ============ NODE.JS ============
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ============ IDE ============
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ============ OS ============
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+$null
+
+# ============ LOGS ============
+logs/
+*.log
+
+# ============ DADOS E CACHE (NÃO VERSIONAR) ============
+data/cache/
+data/learning/
+data/query_history/
+data/transferencias/
+data/input/
+storage/
+
+# ============ SESSÕES ============
+app/data/sessions/
+app/data/sessions_test/
+
+# ============ ARQUIVOS TEMPORÁRIOS ============
+*.tmp
+*.temp
+*.bak
+debug_*.json
+*_latest.json
+*_report.json
+*_report.txt
+
+# ============ DUMPS ============
 repo_dump.txt
 *.dump
-*.log
-*.txt
-/data/
 /dumps/
 /exports/
 /artifacts/
+
+# ============ TESTES E COBERTURA ============
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ============ LEGACY (REMOVIDO) ============
+scripts/legacy/
+scripts/legacy_tests/
+scripts/debug_*
+scripts/verify_*
+config/prometheus/
+
+# ============ AMBIENTE ============
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ============ BUILDS ============
+.next/
+out/
+*.tsbuildinfo
+
+# ============ QUARENTENA (LIMPEZA) ============
+legacy_quarantine/
+
+# ============ ARQUIVOS GRANDES (>50MB) ============
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.tgz
+
+# ============ BACKUPS E DUPLICATAS ============
+*.bak
+*.old
+*.orig
+*_backup*
+*_copy*
+backup*
+migrated*
+deprecated*
+
+# ============ OUTPUTS DE TESTE ============
+*_output.txt
+*_results.txt
+test_*.html

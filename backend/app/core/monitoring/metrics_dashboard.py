@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional
 from collections import defaultdict
 from pathlib import Path
 
-from app.config.settings import settings
-from app.core.utils.query_history import QueryHistory # To get query data
-from app.core.utils.response_cache import ResponseCache # To query cache stats
+from backend.app.config.settings import settings
+from backend.app.core.utils.query_history import QueryHistory # To get query data
+from backend.app.core.utils.response_cache import ResponseCache # To query cache stats
 
 class MetricsDashboard:
     """
@@ -134,7 +134,7 @@ class MetricsDashboard:
         return [{"query": q, "count": count} for q, count in top_queries[:limit]]
 
 if __name__ == '__main__':
-    from app.config.settings import Settings
+    from backend.app.config.settings import Settings
     temp_settings = Settings()
     os.makedirs(temp_settings.LEARNING_FEEDBACK_PATH, exist_ok=True) # Ensure dir exists for feedback.jsonl
     os.makedirs(temp_settings.LEARNING_EXAMPLES_PATH, exist_ok=True) # Ensure dir exists for query_history
