@@ -9,8 +9,8 @@ import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.config.settings import get_settings
-from app.infrastructure.database.models import User
+from backend.app.config.settings import get_settings
+from backend.app.infrastructure.database.models import User
 
 settings = get_settings()
 logger = logging.getLogger(__name__) # General logger
@@ -182,7 +182,7 @@ class AuthService:
     ) -> Optional[dict]:
         """Authenticate from Supabase Auth using email"""
         try:
-            from app.core.supabase_client import get_supabase_client
+            from backend.app.core.supabase_client import get_supabase_client
             from supabase import AuthApiError
 
             try:

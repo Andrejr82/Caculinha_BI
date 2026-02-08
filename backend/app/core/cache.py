@@ -10,7 +10,7 @@ import hashlib
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from app.config.settings import settings
+from backend.app.config.settings import settings
 
 class AgentGraphCache:
     """

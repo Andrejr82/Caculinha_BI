@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # Add parent dir to path to import settings
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.config.settings import get_settings
+from backend.app.config.settings import get_settings
 
 def create_database():
     load_dotenv()

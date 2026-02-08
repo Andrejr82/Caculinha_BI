@@ -3,8 +3,8 @@ Script para verificar e corrigir usuário admin no Supabase
 """
 import sys
 import asyncio
-from app.config.settings import get_settings
-from app.core.supabase_client import get_supabase_client, get_supabase_admin_client
+from backend.app.config.settings import get_settings
+from backend.app.core.supabase_client import get_supabase_client, get_supabase_admin_client
 
 settings = get_settings()
 

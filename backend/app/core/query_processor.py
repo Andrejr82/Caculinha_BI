@@ -2,14 +2,14 @@
 import logging
 
 try:
-    from app.core.agents.supervisor_agent import SupervisorAgent
+    from backend.app.core.agents.supervisor_agent import SupervisorAgent
 except ImportError as e:
     logging.getLogger(__name__).warning(f"Failed to import SupervisorAgent: {e}")
     SupervisorAgent = None
 
-from app.core.factory.component_factory import ComponentFactory
-from app.core.llm_factory import LLMFactory
-from app.core.cache import Cache
+from backend.app.core.factory.component_factory import ComponentFactory
+from backend.app.core.llm_factory import LLMFactory
+from backend.app.core.cache import Cache
 
 
 class QueryProcessor:
@@ -26,8 +26,8 @@ class QueryProcessor:
         
         # ⚡ OTIMIZAÇÃO: Inicializar sistema de resposta rápida (usando Polars diretamente)
         try:
-            from app.core.tools.quick_response import create_quick_response_system
-            from app.core.parquet_cache import cache
+            from backend.app.core.tools.quick_response import create_quick_response_system
+            from backend.app.core.parquet_cache import cache
 
             # [OK] Usar Polars DataFrame diretamente (sem conversão para Pandas)
             df_polars = cache.get_dataframe("admmat.parquet")

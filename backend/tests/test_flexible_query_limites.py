@@ -17,7 +17,7 @@ def test_limite_padrao_e_100():
     ENTÃO: Deve ser 100
     """
     # Arrange & Act
-    from app.core.tools import flexible_query_tool
+    from backend.app.core.tools import flexible_query_tool
     import inspect
     
     # A ferramenta é um StructuredTool, precisamos acessar a função real
@@ -45,7 +45,7 @@ def test_limite_maximo_e_500():
     ENTÃO: Deve cortar em 500
     """
     # Arrange & Act
-    from app.core.tools import flexible_query_tool
+    from backend.app.core.tools import flexible_query_tool
     import inspect
     
     # Acessar função real
@@ -68,7 +68,7 @@ def test_conversao_string_para_int():
     ENTÃO: Deve converter limite string para int
     """
     # Arrange & Act
-    from app.core.tools import flexible_query_tool
+    from backend.app.core.tools import flexible_query_tool
     import inspect
     
     tool = flexible_query_tool.consultar_dados_flexivel
@@ -87,7 +87,7 @@ def test_produto_369947_dados_reais():
     ENTÃO: Deve retornar ~35 UNEs
     """
     # Arrange
-    from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+    from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
     
     adapter = get_duckdb_adapter()
     
@@ -113,7 +113,7 @@ def test_limite_antigo_removido():
     ENTÃO: NÃO deve conter "if limite > 50"
     """
     # Arrange & Act
-    from app.core.tools import flexible_query_tool
+    from backend.app.core.tools import flexible_query_tool
     import inspect
     
     tool = flexible_query_tool.consultar_dados_flexivel

@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from main import app
-from app.config.settings import settings
+from backend.app.config.settings import settings
 
 client = TestClient(app)
 

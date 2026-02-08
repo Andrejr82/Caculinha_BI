@@ -4,7 +4,7 @@ Singleton instance for Supabase authentication and database access
 """
 
 from supabase import create_client, Client
-from app.config.settings import get_settings
+from backend.app.config.settings import get_settings
 
 settings = get_settings()
 

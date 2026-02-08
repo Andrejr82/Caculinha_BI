@@ -10,7 +10,7 @@ from sqlalchemy import DateTime, String, Uuid, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
-from app.config.database import Base
+from backend.app.config.database import Base
 
 
 class UserPreference(Base):

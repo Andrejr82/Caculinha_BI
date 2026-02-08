@@ -62,7 +62,7 @@ class FieldMapper:
         Ensures 100% coverage of all 97 columns.
         """
         try:
-            from app.infrastructure.data.config.column_mapping import COLUMN_MAP, COLUMN_INFO
+            from backend.app.infrastructure.data.config.column_mapping import COLUMN_MAP, COLUMN_INFO
             
             catalog = {}
             
@@ -188,7 +188,7 @@ class FieldMapper:
         FIX 2026-01-27: Added missing method to prevent AttributeError.
         """
         try:
-            from app.infrastructure.data.config.column_mapping import get_essential_columns
+            from backend.app.infrastructure.data.config.column_mapping import get_essential_columns
             return get_essential_columns()
         except ImportError:
             # Fallback to basic essential columns if column_mapping not available

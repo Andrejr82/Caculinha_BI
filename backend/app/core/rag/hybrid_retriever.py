@@ -22,8 +22,8 @@ from pathlib import Path
 
 import polars as pl
 
-from app.config.settings import settings
-from app.core.rag.example_collector import ExampleCollector
+from backend.app.config.settings import settings
+from backend.app.core.rag.example_collector import ExampleCollector
 
 logger = logging.getLogger(__name__)
 

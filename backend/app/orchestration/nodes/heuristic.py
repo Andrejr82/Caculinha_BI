@@ -4,8 +4,8 @@ import logging
 import uuid
 from typing import Dict, Any, List
 from langchain_core.messages import AIMessage
-from app.orchestration.state import AgentState
-from app.orchestration.nodes.patterns import HEURISTIC_PATTERNS
+from backend.app.orchestration.state import AgentState
+from backend.app.orchestration.nodes.patterns import HEURISTIC_PATTERNS
 
 logger = logging.getLogger(__name__)
 

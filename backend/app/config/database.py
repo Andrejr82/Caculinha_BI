@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
-from app.config.settings import get_settings
+from backend.app.config.settings import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)

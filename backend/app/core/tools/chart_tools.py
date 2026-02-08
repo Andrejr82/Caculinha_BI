@@ -8,8 +8,8 @@ from typing import Dict, Any
 import pandas as pd
 import plotly.graph_objects as go
 from langchain_core.tools import tool
-from app.core.data_source_manager import get_data_manager
-from app.core.visualization.advanced_charts import AdvancedChartGenerator
+from backend.app.core.data_source_manager import get_data_manager
+from backend.app.core.visualization.advanced_charts import AdvancedChartGenerator
 
 logger = logging.getLogger(__name__)
 

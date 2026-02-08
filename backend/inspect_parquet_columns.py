@@ -1,6 +1,6 @@
 import duckdb
 import os
-from app.config.settings import get_settings
+from backend.app.config.settings import get_settings
 
 settings = get_settings()
 parquet_path = settings.PARQUET_FILE_PATH

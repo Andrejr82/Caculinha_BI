@@ -7,7 +7,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from app.core.parquet_cache import cache
+from backend.app.core.parquet_cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class ParquetDataSource:
         df = self._load_data()
         
         # SECURITY: Apply RLS - Filter by user segments
-        from app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments
         
         allowed_segments = get_current_user_segments()
         
@@ -153,7 +153,7 @@ class ParquetDataSource:
     def get_columns(self) -> List[str]:
         """Retorna lista de colunas de forma otimizada (sem carregar dados)."""
         try:
-            from app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
+            from backend.app.infrastructure.data.duckdb_enhanced_adapter import get_duckdb_adapter
             adapter = get_duckdb_adapter()
             # Usar DESCRIBE SELECT * para pegar colunas sem materializar
             path = str(self.file_path).replace("\\", "/")

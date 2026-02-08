@@ -7,7 +7,7 @@ FIX 2026-01-17: Migrado para usar column_mapping.py expandido (97 colunas) dinam
 from langchain_core.tools import tool
 import logging
 from typing import Dict, Any, List, Optional
-from app.core.data_source_manager import get_data_manager
+from backend.app.core.data_source_manager import get_data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def _get_column_dictionary() -> Dict[str, str]:
     Carrega o dicionário de colunas dinamicamente do column_mapping.py.
     Garante que sempre use a versão mais atualizada (97 colunas).
     """
-    from app.infrastructure.data.config.column_mapping import list_all_columns
+    from backend.app.infrastructure.data.config.column_mapping import list_all_columns
     
     all_columns = list_all_columns()
     return {name: desc for name, desc in all_columns}

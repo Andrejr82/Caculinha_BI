@@ -6,9 +6,9 @@ Valida que as ferramentas de compras funcionam corretamente com Gemini.
 
 import pytest
 import asyncio
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-from app.adapters.llm.gemini_adapter import GeminiLLMAdapter
-from app.core.utils.field_mapper import FieldMapper
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+from backend.app.adapters.llm.gemini_adapter import GeminiLLMAdapter
+from backend.app.core.utils.field_mapper import FieldMapper
 
 
 @pytest.mark.asyncio
@@ -57,7 +57,7 @@ class TestGeminiFunctionCalling:
     
     async def test_schema_conversion(self):
         """Testa conversão de schema para formato Gemini"""
-        from app.core.tools.purchasing_tools import calcular_eoq
+        from backend.app.core.tools.purchasing_tools import calcular_eoq
         
         # Obter schema da ferramenta
         tool_schema = calcular_eoq.args_schema.schema() if hasattr(calcular_eoq, 'args_schema') else {}

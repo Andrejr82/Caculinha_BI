@@ -8,8 +8,8 @@ from typing import Optional
 from datetime import datetime
 
 # Use ADMIN client for user management (requires service_role key)
-from app.core.supabase_client import get_supabase_admin_client
-from app.config.settings import get_settings
+from backend.app.core.supabase_client import get_supabase_admin_client
+from backend.app.config.settings import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)

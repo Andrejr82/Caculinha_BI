@@ -7,11 +7,11 @@ import polars as pl
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import require_role, get_current_active_user
-from app.core.data_scope_service import data_scope_service
-from app.infrastructure.database.models import User
-from app.config.settings import settings
-from app.core.llm_gemini_adapter import GeminiLLMAdapter
+from backend.app.api.dependencies import require_role, get_current_active_user
+from backend.app.core.data_scope_service import data_scope_service
+from backend.app.infrastructure.database.models import User
+from backend.app.config.settings import settings
+from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
 
 logger = logging.getLogger(__name__)
 

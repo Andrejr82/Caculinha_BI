@@ -14,11 +14,11 @@ Baseado nas recomendações do Code Archaeologist.
 import pytest
 import asyncio
 from datetime import datetime
-from app.middleware.rate_limit import limiter, get_rate_limit
-from app.schemas.validation import ChatRequest, ChartRequest, EOQRequest
-from app.services.audit_log import get_audit_logger, AuditAction
-from app.infrastructure.resilience.circuit_breaker import CircuitBreaker, CircuitState
-from app.services.background_tasks import get_task_manager, TaskStatus
+from backend.app.middleware.rate_limit import limiter, get_rate_limit
+from backend.app.schemas.validation import ChatRequest, ChartRequest, EOQRequest
+from backend.app.services.audit_log import get_audit_logger, AuditAction
+from backend.app.infrastructure.resilience.circuit_breaker import CircuitBreaker, CircuitState
+from backend.app.services.background_tasks import get_task_manager, TaskStatus
 
 
 class TestRateLimiting:
@@ -190,7 +190,7 @@ class TestCircuitBreaker:
             pass
         
         # Deve rejeitar próxima chamada
-        from app.infrastructure.resilience.circuit_breaker import CircuitBreakerOpenError
+        from backend.app.infrastructure.resilience.circuit_breaker import CircuitBreakerOpenError
         with pytest.raises(CircuitBreakerOpenError):
             breaker.call(failing_func)
     

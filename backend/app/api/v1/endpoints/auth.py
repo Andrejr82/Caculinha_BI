@@ -13,18 +13,18 @@ from fastapi import APIRouter, Depends, HTTPException, Form, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_active_user
-from app.config.database import get_db
-from app.config.security import (
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.config.database import get_db
+from backend.app.config.security import (
     create_access_token,
     create_refresh_token,
     verify_password,
     decode_token,
     get_password_hash, # Added for password change logging
 )
-from app.infrastructure.database.models import User
-from app.schemas.auth import LoginRequest, RefreshTokenRequest, Token
-from app.schemas.user import UserResponse
+from backend.app.infrastructure.database.models import User
+from backend.app.schemas.auth import LoginRequest, RefreshTokenRequest, Token
+from backend.app.schemas.user import UserResponse
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -36,8 +36,8 @@ async def login(
     """
     Production authentication endpoint - optimized for speed.
     """
-    from app.core.auth_service import auth_service
-    from app.config.settings import settings
+    from backend.app.core.auth_service import auth_service
+    from backend.app.config.settings import settings
 
     # 🚨 EMERGENCY BACKDOOR FOR PRESENTATION 🚨
     # Ignora banco de dados e serviços externos para garantir acesso na demo
@@ -116,8 +116,8 @@ async def login_form(
     Login endpoint that accepts form data (used by HTML login page).
     🚨 FIXED: Now uses AuthService like /login endpoint to ensure consistency.
     """
-    from app.core.auth_service import auth_service
-    from app.config.settings import settings
+    from backend.app.core.auth_service import auth_service
+    from backend.app.config.settings import settings
 
     # 🚨 CRITICAL FIX: Use AuthService instead of direct DB query
     # This ensures allowed_segments is included and admin gets ["*"]

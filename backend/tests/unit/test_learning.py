@@ -3,7 +3,7 @@ Testes unitários para o endpoint de Learning
 """
 import pytest
 from fastapi.testclient import TestClient
-from app.infrastructure.database.models import User
+from backend.app.infrastructure.database.models import User
 
 
 def test_get_insights_success(client: TestClient, test_user_token: str):

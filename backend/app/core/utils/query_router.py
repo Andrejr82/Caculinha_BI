@@ -11,7 +11,7 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 
-from app.core.utils.intent_classifier import IntentType
+from backend.app.core.utils.intent_classifier import IntentType
 
 logger = logging.getLogger(__name__)
 

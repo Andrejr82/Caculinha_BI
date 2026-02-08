@@ -11,15 +11,15 @@ sys.path.append(backend_root)
 from dotenv import load_dotenv
 load_dotenv(os.path.join(backend_root, ".env"))
 
-from app.config.settings import settings
-from app.core.llm_gemini_adapter import GeminiLLMAdapter
-from app.core.utils.field_mapper import FieldMapper
-from app.core.rag.query_retriever import QueryRetriever
-from app.core.learning.pattern_matcher import PatternMatcher
-from app.core.utils.response_cache import ResponseCache
-from app.core.utils.query_history import QueryHistory
-from app.core.agents.code_gen_agent import CodeGenAgent
-from app.core.agents.caculinha_bi_agent import CaculinhaBIAgent, SYSTEM_PROMPT
+from backend.app.config.settings import settings
+from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
+from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.rag.query_retriever import QueryRetriever
+from backend.app.core.learning.pattern_matcher import PatternMatcher
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.app.core.utils.query_history import QueryHistory
+from backend.app.core.agents.code_gen_agent import CodeGenAgent
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent, SYSTEM_PROMPT
 
 async def test_graph_generation():
     print("--- Iniciando Teste de Geração de Gráfico (UNE 2365) ---")

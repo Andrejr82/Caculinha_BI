@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append(os.getcwd())
 
-from app.infrastructure.data.config.column_mapping import list_all_columns
+from backend.app.infrastructure.data.config.column_mapping import list_all_columns
 
 def validate_schema_knowledge():
     """Valida se todas as colunas estão sendo injetadas corretamente"""

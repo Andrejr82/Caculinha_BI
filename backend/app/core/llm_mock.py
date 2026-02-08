@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
-from app.core.llm_langchain_adapter import CustomLangChainLLM
+from backend.app.core.llm_langchain_adapter import CustomLangChainLLM
 
 class MockLLM(CustomLangChainLLM):
     """

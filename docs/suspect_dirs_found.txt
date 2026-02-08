@@ -1,0 +1,41 @@
+# Diretórios Suspeitos Encontrados
+# Data: 2026-02-07
+# Padrões buscados: migrat*, legacy*, backup*, archive*, dump*, deprecated*, old*, tmp*, temp*, output*
+
+## ATENÇÃO: Diretórios em node_modules/ são dependências e NÃO devem ser removidos
+
+========================================
+DIRETÓRIOS MIGRAT* (Candidatos à análise)
+========================================
+docs/migration/                                  # DOCS MIGRAÇÃO - ANALISAR
+backend/app/infrastructure/database/migrations/  # ALEMBIC - MANTER (infra ativa)
+backend/app/infrastructure/database/migrations/versions/
+backend/migrations/                              # SQL SCRIPTS - ANALISAR
+frontend-solid/src/migrated-components/          # COMPONENTES MIGRADOS - VERIFICAR USO
+
+========================================
+DIRETÓRIOS LEGACY* (Maioria já isolada)
+========================================
+legacy_quarantine/                               # JÁ EM QUARENTENA
+legacy_quarantine/backend/tests/archive/
+legacy_quarantine/backend/tests/archive/legacy/
+docs/legacy/                                     # DOCS LEGACY MOVIDOS
+
+========================================
+DIRETÓRIOS BACKUP* (Candidatos à remoção)
+========================================
+docs/archive/app_root_backup/                    # BACKUP ANTIGO - REMOVER
+backend/app/data/sessions_backup/                # SESSÕES BACKUP - REMOVER
+
+========================================
+DIRETÓRIOS ARCHIVE* (Em quarentena)
+========================================
+legacy_quarantine/backend/tests/archive/         # JÁ EM QUARENTENA
+docs/archive/                                    # ARCHIVE DOCS - ANALISAR
+
+========================================
+RESUMO
+========================================
+- Diretórios em node_modules/: IGNORAR (dependências)
+- Diretórios em legacy_quarantine/: JÁ ISOLADOS
+- Diretórios a analisar: 5-6 pastas principais

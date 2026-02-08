@@ -20,7 +20,7 @@ print("=" * 80)
 # Test 1: consultar_dados_flexivel com filtro de produto
 print("\n[1/3] Testando consultar_dados_flexivel com filtro de PRODUTO...")
 try:
-    from app.core.tools.flexible_query_tool import consultar_dados_flexivel
+    from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
 
     # Testar com produto específico (SKU 369946 - TNT 40GRS)
     result = consultar_dados_flexivel.invoke({
@@ -49,7 +49,7 @@ except Exception as e:
 # Test 2: gerar_grafico_universal_v2 com filtro_produto
 print("\n[2/3] Testando gerar_grafico_universal_v2 com filtro_produto...")
 try:
-    from app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
+    from backend.app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
 
     # Tentar gerar gráfico de vendas mensais do produto
     result = gerar_grafico_universal_v2.invoke({
@@ -80,7 +80,7 @@ except Exception as e:
 # Test 3: buscar_produtos_inteligente (RAG) - OPCIONAL
 print("\n[3/3] Testando buscar_produtos_inteligente (RAG)...")
 try:
-    from app.core.tools.semantic_search_tool import buscar_produtos_inteligente
+    from backend.app.core.tools.semantic_search_tool import buscar_produtos_inteligente
 
     # Buscar produto por descrição similar
     result = buscar_produtos_inteligente.invoke({

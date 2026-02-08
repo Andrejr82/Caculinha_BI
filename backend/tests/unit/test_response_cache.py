@@ -6,8 +6,8 @@ import json
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
-from app.core.utils.response_cache import ResponseCache
-from app.config.settings import Settings
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.app.config.settings import Settings
 
 @pytest.fixture
 def temp_cache_dir(tmp_path):

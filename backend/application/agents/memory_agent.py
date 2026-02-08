@@ -58,3 +58,7 @@ class MemoryAgent(BaseAgent):
     async def delete_conversation(self, conversation_id: str) -> bool:
         """Deleta conversa."""
         return await self.memory.delete_conversation(conversation_id)
+
+    async def save_feedback(self, request_id: str, rating: int, comment: Optional[str] = None) -> bool:
+        """Salva feedback do usuário."""
+        return await self.memory.save_feedback(request_id, rating, comment)

@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_active_user, get_db, require_permission
-from app.infrastructure.database.models import Report, User
-from app.schemas.report import ReportCreate, ReportListResponse, ReportResponse, ReportUpdate
+from backend.app.api.dependencies import get_current_active_user, get_db, require_permission
+from backend.app.infrastructure.database.models import Report, User
+from backend.app.schemas.report import ReportCreate, ReportListResponse, ReportResponse, ReportUpdate
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 

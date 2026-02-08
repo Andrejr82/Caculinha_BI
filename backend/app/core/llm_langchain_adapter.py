@@ -3,7 +3,7 @@ from typing import Any, List, Optional, Dict
 import json
 import logging
 
-from app.core.llm_base import BaseLLMAdapter
+from backend.app.core.llm_base import BaseLLMAdapter
 
 logger = logging.getLogger(__name__)
 
