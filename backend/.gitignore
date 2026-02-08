@@ -10,7 +10,7 @@ Desktop.ini
 *.tmp
 
 ############################
-# Python bytecode / cache
+# Python cache / bytecode
 ############################
 __pycache__/
 *.py[cod]
@@ -19,7 +19,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .cache/
-pip-wheel-metadata/
 
 ############################
 # Build / packaging
@@ -60,7 +59,6 @@ venv.bak/
 *_output.txt
 *_result.txt
 success*.txt
-deep_knowledge_test_output*.txt
 diagnostico*.txt
 import_trace.txt
 startup_log.txt
@@ -88,54 +86,29 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-dist/
-build/
 .vite/
 .vite-cache/
+dist/
+build/
 
 ############################
-# Coverage / test reports
-############################
-htmlcov/
-coverage.xml
-.coverage
-.coverage.*
-*.cover
-
-############################
-# Jupyter / notebooks
-############################
-.ipynb_checkpoints/
-
-############################
-# Sphinx / docs build
+# Docs build
 ############################
 docs/_build/
 site/
 
 ############################
-# PROJECT-SPECIFIC RUNTIME DATA (CRÍTICO)
+# Project-specific runtime data (CRÍTICO)
 ############################
-
-# Backend runtime data (DuckDB, parquet, cache, feedback, learning)
 backend/data/
 backend/app/data/
-backend/app/data/**
-
-# Session backups / generated artifacts
-backend/app/data/sessions_backup/
-backend/app/data/**/sessions_backup/
-
-# Diagnostic & generated reports (NÃO VERSIONAR)
-backend/reports/
-
-# Local spill / temp dirs
+data/
 **/duckdb_spill/
 **/tmp/
 **/temp/
 
 ############################
-# Optional: IDE folders
+# IDE
 ############################
 .vscode/
 .idea/
