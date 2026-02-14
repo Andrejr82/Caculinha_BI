@@ -1,55 +1,55 @@
 ---
 name: architecture
-description: Framework de tomada de decisão arquitetural. Análise de requisitos, avaliação de trade-offs, documentação ADR. Use ao tomar decisões de arquitetura ou analisar o design do sistema.
+description: Architectural decision-making framework. Requirements analysis, trade-off evaluation, ADR documentation. Use when making architecture decisions or analyzing system design.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Framework de Decisão de Arquitetura
+# Architecture Decision Framework
 
-> "Requisitos direcionam a arquitetura. Trade-offs informam decisões. ADRs capturam a lógica."
+> "Requirements drive architecture. Trade-offs inform decisions. ADRs capture rationale."
 
-## 🎯 Regra de Leitura Seletiva
+## 🎯 Selective Reading Rule
 
-**Leia APENAS os arquivos relevantes para o pedido!** Verifique o mapa de conteúdo, encontre o que precisa.
+**Read ONLY files relevant to the request!** Check the content map, find what you need.
 
-| Arquivo | Descrição | Quando Ler |
-|---------|-----------|------------|
-| `context-discovery.md` | Perguntas a fazer, classificação do projeto | Iniciando design de arquitetura |
-| `trade-off-analysis.md` | Templates de ADR, framework de trade-off | Documentando decisões |
-| `pattern-selection.md` | Árvores de decisão, anti-padrões | Escolhendo padrões |
-| `examples.md` | Exemplos MVP, SaaS, Enterprise | Implementações de referência |
-| `patterns-reference.md` | Busca rápida por padrões | Comparação de padrões |
-
----
-
-## 🔗 Skills Relacionadas
-
-| Skill | Use Para |
-|-------|----------|
-| `@[skills/database-design]` | Design de schema de banco de dados |
-| `@[skills/api-patterns]` | Padrões de design de API |
-| `@[skills/deployment-procedures]` | Arquitetura de deploy |
+| File | Description | When to Read |
+|------|-------------|--------------|
+| `context-discovery.md` | Questions to ask, project classification | Starting architecture design |
+| `trade-off-analysis.md` | ADR templates, trade-off framework | Documenting decisions |
+| `pattern-selection.md` | Decision trees, anti-patterns | Choosing patterns |
+| `examples.md` | MVP, SaaS, Enterprise examples | Reference implementations |
+| `patterns-reference.md` | Quick lookup for patterns | Pattern comparison |
 
 ---
 
-## Princípio Core
+## 🔗 Related Skills
 
-**"Simplicidade é a sofisticação máxima."**
-
-- Comece simples
-- Adicione complexidade APENAS quando provado necessário
-- Você sempre pode adicionar padrões depois
-- Remover complexidade é MUITO mais difícil do que adicioná-la
+| Skill | Use For |
+|-------|---------|
+| `@[skills/database-design]` | Database schema design |
+| `@[skills/api-patterns]` | API design patterns |
+| `@[skills/deployment-procedures]` | Deployment architecture |
 
 ---
 
-## Checklist de Validação
+## Core Principle
 
-Antes de finalizar a arquitetura:
+**"Simplicity is the ultimate sophistication."**
 
-- [ ] Requisitos claramente compreendidos
-- [ ] Restrições identificadas
-- [ ] Cada decisão tem análise de trade-off
-- [ ] Alternativas mais simples consideradas
-- [ ] ADRs escritos para decisões significativas
-- [ ] Expertise do time combina com os padrões escolhidos
+- Start simple
+- Add complexity ONLY when proven necessary
+- You can always add patterns later
+- Removing complexity is MUCH harder than adding it
+
+---
+
+## Validation Checklist
+
+Before finalizing architecture:
+
+- [ ] Requirements clearly understood
+- [ ] Constraints identified
+- [ ] Each decision has trade-off analysis
+- [ ] Simpler alternatives considered
+- [ ] ADRs written for significant decisions
+- [ ] Team expertise matches chosen patterns

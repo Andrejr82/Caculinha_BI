@@ -38,6 +38,23 @@ class InsightsListResponse(BaseModel):
     cache_age_hours: float = 0.0
 
 
+def _is_degraded_insight_item(item: dict) -> bool:
+    text = f"{item.get('title', '')} {item.get('description', '')}".lower()
+    markers = [
+        "sistema de insights em manutenção",
+        "falha após",
+        "resource_exhausted",
+        "quota",
+        "you exceeded your current quota",
+    ]
+    return any(m in text for m in markers)
+
+
+def _is_degraded_cached_payload(cached: dict) -> bool:
+    insights = cached.get("insights", []) if isinstance(cached, dict) else []
+    return any(_is_degraded_insight_item(item) for item in insights if isinstance(item, dict))
+
+
 def _get_cache_key(filters: dict) -> str:
     """Generate cache key based on filters"""
     filter_str = json.dumps(filters or {}, sort_keys=True)
@@ -114,7 +131,7 @@ async def get_proactive_insights(current_user: User = Depends(get_current_user))
 
         # Try cache first
         cached = _get_cached_insights(cache_key)
-        if cached:
+        if cached and not _is_degraded_cached_payload(cached):
             insights = []
             for i, item in enumerate(cached['insights']):
                 insights.append(InsightResponse(
@@ -135,6 +152,8 @@ async def get_proactive_insights(current_user: User = Depends(get_current_user))
                 cached=True,
                 cache_age_hours=cached['cache_age_hours']
             )
+        elif cached:
+            logger.info("[CACHE] Degraded insights cache detected. Forcing fresh regeneration.")
 
         # Cache miss - generate new insights
         logger.info(f"[RETRY] Cache MISS - Generating new insights via LLM (will consume tokens)")
@@ -144,7 +163,7 @@ async def get_proactive_insights(current_user: User = Depends(get_current_user))
         # ------------------------------------------------------------------
         # MODO OFFLINE (Mock / LangGraph Local)
         # ------------------------------------------------------------------
-        if settings.LLM_PROVIDER == "mock":
+        if settings.LLM_PROVIDER == "mock" or settings.DEV_FAST_MODE:
             logger.info("⚡ [INSIGHTS] Gerando insights via Heurística (Offline Mode)")
             raw_insights = await _generate_offline_insights()
 

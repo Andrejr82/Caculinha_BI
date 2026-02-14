@@ -1,145 +1,143 @@
 ---
 name: performance-profiling
-description: Princípios de análise de performance (profiling). Técnicas de medição, análise e otimização.
+description: Performance profiling principles. Measurement, analysis, and optimization techniques.
 allowed-tools: Read, Glob, Grep, Bash
 ---
 
-# Perfil de Performance (Profiling)
+# Performance Profiling
 
-> Medir, analisar, otimizar - nessa ordem.
+> Measure, analyze, optimize - in that order.
 
----
+## 🔧 Runtime Scripts
 
-## 🔧 Scripts de Execução
+**Execute these for automated profiling:**
 
-**Execute-os para profiling automatizado:**
-
-| Script | Propósito | Uso |
-|--------|-----------|-----|
-| `scripts/lighthouse_audit.py` | Auditoria de performance Lighthouse | `python scripts/lighthouse_audit.py https://exemplo.com` |
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `scripts/lighthouse_audit.py` | Lighthouse performance audit | `python scripts/lighthouse_audit.py https://example.com` |
 
 ---
 
 ## 1. Core Web Vitals
 
-### Alvos
+### Targets
 
-| Métrica | Bom | Ruim | Mede |
-|---------|-----|------|------|
-| **LCP** | < 2.5s | > 4.0s | Carregamento |
-| **INP** | < 200ms | > 500ms | Interatividade |
-| **CLS** | < 0.1 | > 0.25 | Estabilidade visual |
+| Metric | Good | Poor | Measures |
+|--------|------|------|----------|
+| **LCP** | < 2.5s | > 4.0s | Loading |
+| **INP** | < 200ms | > 500ms | Interactivity |
+| **CLS** | < 0.1 | > 0.25 | Stability |
 
-### Quando Medir
+### When to Measure
 
-| Estágio | Ferramenta |
-|---------|------------|
-| Desenvolvimento | Lighthouse local |
+| Stage | Tool |
+|-------|------|
+| Development | Local Lighthouse |
 | CI/CD | Lighthouse CI |
-| Produção | RUM (Real User Monitoring) |
+| Production | RUM (Real User Monitoring) |
 
 ---
 
-## 2. Fluxo de Profiling
+## 2. Profiling Workflow
 
-### O Processo de 4 Passos
+### The 4-Step Process
 
 ```
-1. LINHA DE BASE (BASELINE) → Medir o estado atual
-2. IDENTIFICAR → Encontrar o gargalo
-3. CORRIGIR → Realizar mudança direcionada
-4. VALIDAR → Confirmar a melhoria
+1. BASELINE → Measure current state
+2. IDENTIFY → Find the bottleneck
+3. FIX → Make targeted change
+4. VALIDATE → Confirm improvement
 ```
 
-### Seleção de Ferramenta de Profiling
+### Profiling Tool Selection
 
-| Problema | Ferramenta |
-|----------|------------|
-| Carregamento da página | Lighthouse |
-| Tamanho do bundle | Bundle analyzer |
+| Problem | Tool |
+|---------|------|
+| Page load | Lighthouse |
+| Bundle size | Bundle analyzer |
 | Runtime | DevTools Performance |
-| Memória | DevTools Memory |
-| Rede | DevTools Network |
+| Memory | DevTools Memory |
+| Network | DevTools Network |
 
 ---
 
-## 3. Análise de Bundle
+## 3. Bundle Analysis
 
-### O que procurar
+### What to Look For
 
-| Problema | Indicador |
-|----------|-----------|
-| Dependências grandes | Topo do bundle |
-| Código duplicado | Múltiplos chunks |
-| Código não utilizado | Baixa cobertura |
-| Divisões (splits) ausentes | Chunk único e grande |
+| Issue | Indicator |
+|-------|-----------|
+| Large dependencies | Top of bundle |
+| Duplicate code | Multiple chunks |
+| Unused code | Low coverage |
+| Missing splits | Single large chunk |
 
-### Ações de Otimização
+### Optimization Actions
 
-| Descoberta | Ação |
-|------------|------|
-| Biblioteca grande | Importar módulos específicos |
-| Dependências duplicadas | Deduplicar, atualizar versões |
-| Rota no bundle principal | Code splitting (divisão de código) |
-| Exports não utilizados | Tree shaking |
-
----
-
-## 4. Profiling de Runtime
-
-### Análise da aba Performance
-
-| Padrão | Significado |
-|--------|-------------|
-| Tarefas longas (>50ms) | Bloqueio de UI |
-| Muitas tarefas pequenas | Possível oportunidade de lote (batching) |
-| Layout/paint | Gargalo de renderização |
-| Script | Execução de JavaScript |
-
-### Análise da aba Memória
-
-| Padrão | Significado |
-|--------|-------------|
-| Heap crescente | Possível vazamento (leak) |
-| Retenção grande | Verificar referências |
-| DOM órfão (detached) | Não foi limpo corretamente |
+| Finding | Action |
+|---------|--------|
+| Big library | Import specific modules |
+| Duplicate deps | Dedupe, update versions |
+| Route in main | Code split |
+| Unused exports | Tree shake |
 
 ---
 
-## 5. Gargalos Comuns
+## 4. Runtime Profiling
 
-### Por Sintoma
+### Performance Tab Analysis
 
-| Sintoma | Causa Provável |
-|---------|----------------|
-| Carregamento inicial lento | JS grande, bloqueio de renderização |
-| Interações lentas | Manipuladores de evento pesados |
-| "Jank" durante o scroll | Thrashing de layout |
-| Memória crescente | Vazamentos, referências retidas |
+| Pattern | Meaning |
+|---------|---------|
+| Long tasks (>50ms) | UI blocking |
+| Many small tasks | Possible batching opportunity |
+| Layout/paint | Rendering bottleneck |
+| Script | JavaScript execution |
 
----
+### Memory Tab Analysis
 
-## 6. Prioridades de "Ganhos Rápidos" (Quick Wins)
-
-| Prioridade | Ação | Impacto |
-|------------|------|---------|
-| 1 | Habilitar compressão | Alto |
-| 2 | Lazy loading de imagens | Alto |
-| 3 | Code splitting de rotas | Alto |
-| 4 | Cache de ativos estáticos | Médio |
-| 5 | Otimizar imagens | Médio |
+| Pattern | Meaning |
+|---------|---------|
+| Growing heap | Possible leak |
+| Large retained | Check references |
+| Detached DOM | Not cleaned up |
 
 ---
 
-## 7. Anti-Padrões
+## 5. Common Bottlenecks
 
-| ❌ NÃO FAÇA | ✅ FAÇA |
-|-------------|---------|
-| Palpitar sobre problemas | Fazer profiling primeiro |
-| Micro-otimizar | Corrigir o maior problema |
-| Otimizar precocemente | Otimizar quando necessário |
-| Ignorar usuários reais | Usar dados de RUM |
+### By Symptom
+
+| Symptom | Likely Cause |
+|---------|--------------|
+| Slow initial load | Large JS, render blocking |
+| Slow interactions | Heavy event handlers |
+| Jank during scroll | Layout thrashing |
+| Growing memory | Leaks, retained refs |
 
 ---
 
-> **Lembre-se:** O código mais rápido é aquele que não é executado. Remova antes de otimizar.
+## 6. Quick Win Priorities
+
+| Priority | Action | Impact |
+|----------|--------|--------|
+| 1 | Enable compression | High |
+| 2 | Lazy load images | High |
+| 3 | Code split routes | High |
+| 4 | Cache static assets | Medium |
+| 5 | Optimize images | Medium |
+
+---
+
+## 7. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Guess at problems | Profile first |
+| Micro-optimize | Fix biggest issue |
+| Optimize early | Optimize when needed |
+| Ignore real users | Use RUM data |
+
+---
+
+> **Remember:** The fastest code is code that doesn't run. Remove before optimizing.

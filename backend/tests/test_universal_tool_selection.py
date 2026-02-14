@@ -120,7 +120,7 @@ class TestQueryRouter:
         
         assert selection.tool_params["filtro_une"] == "1685"  # String
         assert selection.tool_params["filtro_segmento"] == "PAPELARIA"  # String
-        assert selection.tool_params["limite"] == 5  # Int
+        assert selection.tool_params["limite"] == "5"  # String (compat provider strict schema)
 
 
 class TestEndToEnd:
@@ -144,6 +144,27 @@ class TestEndToEnd:
         assert selection.tool_params["filtro_une"] == "520"
         assert "ranking" in selection.tool_params["descricao"].lower()
         assert selection.tool_params["tipo_grafico"] == "bar"
+
+    def test_ruptura_query_routes_to_specialized_tool(self):
+        """Perguntas de ruptura devem usar ferramenta dedicada."""
+        query = "quais grupos estão com maior porcentagem de rupturas?"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "encontrar_rupturas_criticas"
+        assert "limite" in selection.tool_params
+
+    def test_negative_sales_with_typo_routes_without_generic_error_path(self):
+        """Perguntas com typo sobre vendas ruins devem cair em rota acionável."""
+        query = "quais grupos estão com as vendaas ruins?"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "consultar_dados_flexivel"
+        assert selection.tool_params.get("agregacao") == "SUM"
+        assert selection.tool_params.get("coluna_agregacao") == "VENDA_30DD"
+        assert "NOMEGRUPO" in selection.tool_params.get("agrupar_por", [])
+        assert selection.confidence >= 0.80
 
 
 if __name__ == "__main__":

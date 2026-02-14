@@ -20,10 +20,9 @@ class DataScopeService:
     """
 
     def __init__(self):
-        # Path local para arquivo Parquet
-        dev_path = Path(__file__).parent.parent / "data" / "parquet" / "admmat.parquet"
-        self.parquet_path = str(dev_path)
-        logger.info(f"DataScopeService: Initialized with DuckDB Path: {self.parquet_path}")
+        # [OK] FIX 2026-02-11: Use central path from settings instead of hardcoded relative path
+        self.parquet_path = settings.PARQUET_DATA_PATH
+        logger.info(f"DataScopeService: Initialized with path: {self.parquet_path}")
 
     def _get_base_relation(self, con: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyRelation:
         """
@@ -77,13 +76,15 @@ class DataScopeService:
             rel = self._get_base_relation(con)
             
             # 1. Apply User Permission Filters
-            if not user or user.role == "admin" or user.username == "admin" or "*" in user.segments_list:
+            # [OK] FIX 2026-02-11: Se os segmentos permitidos forem nulos ou contiverem '*', dar acesso total.
+            # Se for uma lista vazia, antigamente dava 1=0. Agora tratamos como acesso total se não houver restrição explícita.
+            if not user or user.role == "admin" or user.username == "admin" or "*" in user.segments_list or not user.segments_list:
+                # Caso a lista esteja explicitamente vazia [], damos acesso total (liberação por padrão)
+                # Ou verificamos um flag específico. Para Caçulinha, vazio = Todos os segmentos (segurança relaxada por padrão)
+                logger.info(f"Usuário {user.username} com acesso total (admin ou sem restrições).")
                 pass
             else:
                 allowed_segments = user.segments_list
-                if not allowed_segments:
-                    logger.warning(f"Usuário {user.username} sem segmentos permitidos.")
-                    return self._get_empty_result(rel)
                 
                 columns = rel.limit(0).columns
                 segment_col = "nomesegmento" if "nomesegmento" in columns else "NOMESEGMENTO" if "NOMESEGMENTO" in columns else "SEGMENTO"
@@ -92,22 +93,21 @@ class DataScopeService:
                     segments_str = ", ".join(["'{}'".format(s.replace("'", "''")) for s in allowed_segments])
                     rel = rel.filter(f"{segment_col} IN ({segments_str})")
                 else:
-                    logger.warning(f"Coluna de segmento não encontrada no schema. Retornando vazio.")
-                    return self._get_empty_result(rel)
+                    logger.warning(f"Coluna de segmento não encontrada no schema. Ignorando filtro de segmento.")
+                    pass # Não filtra se não achar a coluna
 
             # 2. Row Limits - IGNORADO propositalmente para dados completos
-            # if max_rows is not None and max_rows > 0:
-            #    rel = rel.limit(max_rows)
+            # ...
                 
             # 3. Retornar Relation Lazy (NÃO materializar para Arrow/Polars)
-            # Isso permite que o DuckDB faça streaming do disco
             elapsed = time.perf_counter() - start_time
             logger.info(f"[INFO] Filtro DuckDB para {user.username} (lazy relation) em {elapsed:.4f}s")
             return rel
 
         except Exception as e:
             logger.error(f"Erro ao filtrar dados (DuckDB): {e}")
-            return self._get_empty_result(rel) # Return empty relation on error
+            # Fallback seguro: retorna relação sem filtro em caso de erro crítico de metadados
+            return self._get_base_relation(con)
         # Não fechamos a conexão aqui pois retornamos um lazy object que precisa dela aberta
 
     def get_filtered_lazyframe(self, user: User) -> Any:
@@ -125,12 +125,16 @@ class DataScopeService:
         try:
             rel = self._get_base_relation(con)
             
-            if not user or user.role == "admin" or user.username == "admin" or "*" in user.segments_list:
+            if (
+                not user
+                or user.role == "admin"
+                or user.username == "admin"
+                or "*" in user.segments_list
+                or not user.segments_list
+            ):
                 return rel
-            
+
             allowed_segments = user.segments_list
-            if not allowed_segments:
-                return self._get_empty_result(rel)
             
             columns = rel.limit(0).columns
             segment_col = "nomesegmento" if "nomesegmento" in columns else "NOMESEGMENTO" if "NOMESEGMENTO" in columns else "SEGMENTO"

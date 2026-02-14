@@ -1,113 +1,109 @@
 ---
 name: systematic-debugging
-description: Metodologia de depuração sistemática em 4 fases com análise de causa raiz e verificação baseada em evidências. Use ao depurar problemas complexos.
+description: 4-phase systematic debugging methodology with root cause analysis and evidence-based verification. Use when debugging complex issues.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Depuração Sistemática
+# Systematic Debugging
 
-> Fonte: obra/superpowers
+> Source: obra/superpowers
 
-## Visão Geral
-Esta skill fornece uma abordagem estruturada para depuração que evita palpites aleatórios e garante que os problemas sejam devidamente compreendidos antes de serem resolvidos.
+## Overview
+This skill provides a structured approach to debugging that prevents random guessing and ensures problems are properly understood before solving.
 
-## Processo de Depuração em 4 Fases
+## 4-Phase Debugging Process
 
-### Fase 1: Reproduzir
-Antes de corrigir, reproduza o problema de forma confiável.
-
-```markdown
-## Passos de Reprodução
-1. [Passo exato para reproduzir]
-2. [Próximo passo]
-3. [Resultado esperado vs resultado real]
-
-## Taxa de Reprodução
-- [ ] Sempre (100%)
-- [ ] Frequentemente (50-90%)
-- [ ] Às vezes (10-50%)
-- [ ] Raro (<10%)
-```
-
-### Fase 2: Isolar
-Estreite a busca pela fonte do problema.
+### Phase 1: Reproduce
+Before fixing, reliably reproduce the issue.
 
 ```markdown
-## Perguntas de Isolamento
-- Quando isso começou a acontecer?
-- O que mudou recentemente?
-- Isso acontece em todos os ambientes?
-- Podemos reproduzir com o mínimo de código?
-- Qual é a menor mudança que dispara o erro?
+## Reproduction Steps
+1. [Exact step to reproduce]
+2. [Next step]
+3. [Expected vs actual result]
+
+## Reproduction Rate
+- [ ] Always (100%)
+- [ ] Often (50-90%)
+- [ ] Sometimes (10-50%)
+- [ ] Rare (<10%)
 ```
 
-### Fase 3: Compreender
-Encontre a causa raiz, não apenas os sintomas.
+### Phase 2: Isolate
+Narrow down the source.
 
 ```markdown
-## Análise de Causa Raiz
-### Os 5 Porquês
-1. Por que: [Primeira observação]
-2. Por que: [Razão mais profunda]
-3. Por que: [Ainda mais profunda]
-4. Por que: [Chegando perto]
-5. Por que: [Causa raiz]
+## Isolation Questions
+- When did this start happening?
+- What changed recently?
+- Does it happen in all environments?
+- Can we reproduce with minimal code?
+- What's the smallest change that triggers it?
 ```
 
-### Fase 4: Corrigir e Verificar
-Corrija e certifique-se de que está realmente resolvido.
+### Phase 3: Understand
+Find the root cause, not just symptoms.
 
 ```markdown
-## Verificação da Correção
-- [ ] O bug não se reproduz mais
-- [ ] Funcionalidades relacionadas ainda funcionam
-- [ ] Nenhum novo problema foi introduzido
-- [ ] Teste adicionado para evitar regressão
+## Root Cause Analysis
+### The 5 Whys
+1. Why: [First observation]
+2. Why: [Deeper reason]
+3. Why: [Still deeper]
+4. Why: [Getting closer]
+5. Why: [Root cause]
 ```
 
-## Checklist de Depuração
+### Phase 4: Fix & Verify
+Fix and verify it's truly fixed.
 
 ```markdown
-## Antes de Iniciar
-- [ ] Consigo reproduzir consistentemente
-- [ ] Tenho um caso de reprodução mínima
-- [ ] Entendo o comportamento esperado
-
-## Durante a Investigação
-- [ ] Verificar mudanças recentes (git log)
-- [ ] Verificar logs em busca de erros
-- [ ] Adicionar logs se necessário
-- [ ] Usar debugger/breakpoints
-
-## Após a Correção
-- [ ] Causa raiz documentada
-- [ ] Correção verificada
-- [ ] Teste de regressão adicionado
-- [ ] Códigos similares verificados
+## Fix Verification
+- [ ] Bug no longer reproduces
+- [ ] Related functionality still works
+- [ ] No new issues introduced
+- [ ] Test added to prevent regression
 ```
 
-## Comandos Comuns de Depuração
+## Debugging Checklist
+
+```markdown
+## Before Starting
+- [ ] Can reproduce consistently
+- [ ] Have minimal reproduction case
+- [ ] Understand expected behavior
+
+## During Investigation
+- [ ] Check recent changes (git log)
+- [ ] Check logs for errors
+- [ ] Add logging if needed
+- [ ] Use debugger/breakpoints
+
+## After Fix
+- [ ] Root cause documented
+- [ ] Fix verified
+- [ ] Regression test added
+- [ ] Similar code checked
+```
+
+## Common Debugging Commands
 
 ```bash
-# Mudanças recentes
+# Recent changes
 git log --oneline -20
 git diff HEAD~5
 
-# Buscar por um padrão
-grep -r "padraoDoErro" --include="*.ts"
+# Search for pattern
+grep -r "errorPattern" --include="*.ts"
 
-# Verificar logs
-pm2 logs nome-do-app --err --lines 100
+# Check logs
+pm2 logs app-name --err --lines 100
 ```
 
-## Anti-Padrões
+## Anti-Patterns
 
-❌ **Mudanças aleatórias** - "Talvez se eu mudar isso..."
-❌ **Ignorar evidências** - "Isso não pode ser a causa"
-❌ **Pressupor** - "Deve ser X" sem provas
-❌ **Não reproduzir primeiro** - Corrigir às cegas
-❌ **Parar nos sintomas** - Não encontrar a causa raiz
-
----
-
-> **Lembre-se:** A depuração sistemática trata de coletar evidências. Se você não consegue explicar o PORQUÊ da correção funcionar, você não terminou.
+❌ **Random changes** - "Maybe if I change this..."
+❌ **Ignoring evidence** - "That can't be the cause"
+❌ **Assuming** - "It must be X" without proof
+❌ **Not reproducing first** - Fixing blindly
+❌ **Stopping at symptoms** - Not finding root cause

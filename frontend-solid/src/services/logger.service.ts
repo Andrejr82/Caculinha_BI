@@ -275,9 +275,9 @@ class Logger {
 
     const consoleMethod =
       entry.level >= LogLevel.ERROR ? console.error :
-      entry.level === LogLevel.WARN ? console.warn :
-      entry.level === LogLevel.INFO ? console.info :
-      console.debug;
+        entry.level === LogLevel.WARN ? console.warn :
+          entry.level === LogLevel.INFO ? console.info :
+            console.debug;
 
     consoleMethod(
       `%c${prefix}`,

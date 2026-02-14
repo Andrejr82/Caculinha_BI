@@ -1,86 +1,86 @@
 ---
-description: Exibir status do agente e do projeto. Acompanhamento de progresso e quadro de status.
+description: Display agent and project status. Progress tracking and status board.
 ---
 
-# /status - Mostrar Status
+# /status - Show Status
 
 $ARGUMENTS
 
 ---
 
-## Tarefa
+## Task
 
-Mostrar o status atual do projeto e dos agentes.
+Show current project and agent status.
 
-### O Que Ele Exibe
+### What It Shows
 
-1. **Informações do Projeto**
-   - Nome e caminho do projeto
+1. **Project Info**
+   - Project name and path
    - Tech stack
-   - Funcionalidades atuais
+   - Current features
 
-2. **Quadro de Status dos Agentes**
-   - Quais agentes estão rodando
-   - Quais tarefas estão concluídas
-   - Trabalho pendente
+2. **Agent Status Board**
+   - Which agents are running
+   - Which tasks are completed
+   - Pending work
 
-3. **Estatísticas de Arquivos**
-   - Contagem de arquivos criados
-   - Contagem de arquivos modificados
+3. **File Statistics**
+   - Files created count
+   - Files modified count
 
-4. **Status do Preview**
-   - O servidor está rodando
+4. **Preview Status**
+   - Is server running
    - URL
-   - Health check (verificação de saúde)
+   - Health check
 
 ---
 
-## Exemplo de Saída
+## Example Output
 
 ```
-=== Status do Projeto ===
+=== Project Status ===
 
-📁 Projeto: meu-ecommerce
-📂 Caminho: C:/projetos/meu-ecommerce
-🏷️ Tipo: nextjs-ecommerce
-📊 Status: ativo
+📁 Project: my-ecommerce
+📂 Path: C:/projects/my-ecommerce
+🏷️ Type: nextjs-ecommerce
+📊 Status: active
 
 🔧 Tech Stack:
    Framework: next.js
-   Banco de Dados: postgresql
+   Database: postgresql
    Auth: clerk
-   Pagamento: stripe
+   Payment: stripe
 
-✅ Recursos (5):
-   • listagem-de-produtos
-   • carrinho
+✅ Features (5):
+   • product-listing
+   • cart
    • checkout
-   • auth-de-usuario
-   • historico-de-pedidos
+   • user-auth
+   • order-history
 
-⏳ Pendente (2):
-   • painel-admin
-   • notificacoes-email
+⏳ Pending (2):
+   • admin-panel
+   • email-notifications
 
-📄 Arquivos: 73 criados, 12 modificados
+📄 Files: 73 created, 12 modified
 
-=== Status dos Agentes ===
+=== Agent Status ===
 
-✅ database-architect → Concluído
-✅ backend-specialist → Concluído
-🔄 frontend-specialist → Componentes do Dashboard (60%)
-⏳ test-engineer → Aguardando
+✅ database-architect → Completed
+✅ backend-specialist → Completed
+🔄 frontend-specialist → Dashboard components (60%)
+⏳ test-engineer → Waiting
 
 === Preview ===
 
 🌐 URL: http://localhost:3000
-💚 Saúde: OK
+💚 Health: OK
 ```
 
 ---
 
-## Técnico
+## Technical
 
-O status usa estes scripts:
-- `session_manager.py status`
-- `auto_preview.py status`
+Status uses these scripts:
+- `python .agent/scripts/session_manager.py status`
+- `python .agent/scripts/auto_preview.py status`

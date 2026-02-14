@@ -1,1 +1,2 @@
-# API V1 Endpoints
+"""Legacy endpoint compatibility package."""
+

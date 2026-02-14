@@ -1,52 +1,52 @@
 ---
 name: database-design
-description: Princípios de design de banco de dados e tomada de decisão. Design de schema, estratégia de indexação, seleção de ORM, bancos de dados serverless.
+description: Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases.
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 
-# Design de Banco de Dados
+# Database Design
 
-> **Aprenda a PENSAR, não a copiar padrões SQL.**
+> **Learn to THINK, not copy SQL patterns.**
 
-## 🎯 Regra de Leitura Seletiva
+## 🎯 Selective Reading Rule
 
-**Leia APENAS os arquivos relevantes para o pedido!** Verifique o mapa de conteúdo, encontre o que precisa.
+**Read ONLY files relevant to the request!** Check the content map, find what you need.
 
-| Arquivo | Descrição | Quando Ler |
-|---------|-----------|------------|
-| `database-selection.md` | PostgreSQL vs Neon vs Turso vs SQLite | Escolhendo banco de dados |
-| `orm-selection.md` | Drizzle vs Prisma vs Kysely | Escolhendo ORM |
-| `schema-design.md` | Normalização, PKs, relacionamentos | Projetando o schema |
-| `indexing.md` | Tipos de índice, índices compostos | Ajuste de performance |
-| `optimization.md` | N+1, EXPLAIN ANALYZE | Otimização de queries |
-| `migrations.md` | Migrações seguras, bancos serverless | Mudanças de schema |
-
----
-
-## ⚠️ Princípio Core
-
-- PERGUNTE ao usuário as preferências de banco de dados quando não estiver claro
-- Escolha o banco/ORM baseado no CONTEXTO
-- Não use PostgreSQL como padrão para tudo
+| File | Description | When to Read |
+|------|-------------|--------------|
+| `database-selection.md` | PostgreSQL vs Neon vs Turso vs SQLite | Choosing database |
+| `orm-selection.md` | Drizzle vs Prisma vs Kysely | Choosing ORM |
+| `schema-design.md` | Normalization, PKs, relationships | Designing schema |
+| `indexing.md` | Index types, composite indexes | Performance tuning |
+| `optimization.md` | N+1, EXPLAIN ANALYZE | Query optimization |
+| `migrations.md` | Safe migrations, serverless DBs | Schema changes |
 
 ---
 
-## Checklist de Decisão
+## ⚠️ Core Principle
 
-Antes de projetar o schema:
-
-- [ ] Perguntou ao usuário sobre a preferência de banco de dados?
-- [ ] Escolheu o banco para ESTE contexto?
-- [ ] Considerou o ambiente de deploy?
-- [ ] Planejou a estratégia de índices?
-- [ ] Definiu os tipos de relacionamento?
+- ASK user for database preferences when unclear
+- Choose database/ORM based on CONTEXT
+- Don't default to PostgreSQL for everything
 
 ---
 
-## Anti-Padrões
+## Decision Checklist
 
-❌ Usar PostgreSQL por padrão para apps simples (SQLite pode bastar)
-❌ Pular a criação de índices
-❌ Usar SELECT * em produção
-❌ Armazenar JSON quando dados estruturados seriam melhores
-❌ Ignorar queries N+1
+Before designing schema:
+
+- [ ] Asked user about database preference?
+- [ ] Chosen database for THIS context?
+- [ ] Considered deployment environment?
+- [ ] Planned index strategy?
+- [ ] Defined relationship types?
+
+---
+
+## Anti-Patterns
+
+❌ Default to PostgreSQL for simple apps (SQLite may suffice)
+❌ Skip indexing
+❌ Use SELECT * in production
+❌ Store JSON when structured data is better
+❌ Ignore N+1 queries

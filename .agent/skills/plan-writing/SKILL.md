@@ -1,148 +1,152 @@
 ---
 name: plan-writing
-description: Planejamento estruturado de tarefas com detalhamento claro, dependências e critérios de verificação. Use ao implementar recursos, refatorar ou em qualquer trabalho de múltiplas etapas.
+description: Structured task planning with clear breakdowns, dependencies, and verification criteria. Use when implementing features, refactoring, or any multi-step work.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Escrita de Planos
+# Plan Writing
 
-> Fonte: obra/superpowers
+> Source: obra/superpowers
 
-## Visão Geral
-Esta skill fornece um framework para dividir o trabalho em tarefas claras e acionáveis com critérios de verificação.
+## Overview
+This skill provides a framework for breaking down work into clear, actionable tasks with verification criteria.
 
-## Princípios de Detalhamento de Tarefas
+## Task Breakdown Principles
 
-### 1. Tarefas Pequenas e Focadas
-- Cada tarefa deve levar de 2 a 5 minutos
-- Um resultado claro por tarefa
-- Verificável de forma independente
+### 1. Small, Focused Tasks
+- Each task should take 2-5 minutes
+- One clear outcome per task
+- Independently verifiable
 
-### 2. Verificação Clara
-- Como você sabe que está concluído?
-- O que você pode checar/testar?
-- Qual é a saída esperada?
+### 2. Clear Verification
+- How do you know it's done?
+- What can you check/test?
+- What's the expected output?
 
-### 3. Ordenação Lógica
-- Dependências identificadas
-- Trabalho paralelo onde possível
-- Caminho crítico destacado
-- **Fase X: Verificação é sempre a ÚLTIMA**
+### 3. Logical Ordering
+- Dependencies identified
+- Parallel work where possible
+- Critical path highlighted
+- **Phase X: Verification is always LAST**
 
-### 4. Nomenclatura Dinâmica na Raiz do Projeto
-- Arquivos de plano são salvos como `{task-slug}.md` na RAIZ DO PROJETO
-- Nome derivado da tarefa (ex: "add auth" → `auth-feature.md`)
-- **NUNCA** dentro de `.claude/`, `docs/` ou pastas temporárias
+### 4. Dynamic Naming in Project Root
+- Plan files are saved as `{task-slug}.md` in the PROJECT ROOT
+- Name derived from task (e.g., "add auth" → `auth-feature.md`)
+- **NEVER** inside `.claude/`, `docs/`, or temp folders
 
-## Princípios de Planejamento (NÃO Templates!)
+## Planning Principles (NOT Templates!)
 
-> 🔴 **SEM templates fixos. Cada plano é ÚNICO para a tarefa.**
+> 🔴 **NO fixed templates. Each plan is UNIQUE to the task.**
 
-### Princípio 1: Mantenha CURTO
+### Principle 1: Keep It SHORT
 
-| ❌ Errado | ✅ Certo |
-|-----------|----------|
-| 50 tarefas com sub-sub-tarefas | Máximo de 5-10 tarefas claras |
-| Cada micro-passo listado | Apenas itens acionáveis |
-| Descrições verbosas | Uma linha por tarefa |
+| ❌ Wrong | ✅ Right |
+|----------|----------|
+| 50 tasks with sub-sub-tasks | 5-10 clear tasks max |
+| Every micro-step listed | Only actionable items |
+| Verbose descriptions | One-line per task |
 
-> **Regra:** Se o plano for maior que 1 página, está muito longo. Simplifique.
-
----
-
-### Princípio 2: Seja ESPECÍFICO, Não Genérico
-
-| ❌ Errado | ✅ Certo |
-|-----------|----------|
-| "Configurar projeto" | "Executar `npx create-next-app`" |
-| "Adicionar autenticação"| "Instalar next-auth, criar `/api/auth/[...nextauth].ts`" |
-| "Estilizar a UI" | "Adicionar classes Tailwind ao `Header.tsx`" |
-
-> **Regra:** Cada tarefa deve ter um resultado claro e verificável.
+> **Rule:** If plan is longer than 1 page, it's too long. Simplify.
 
 ---
 
-### Princípio 3: Conteúdo Dinâmico Baseado no Tipo de Projeto
+### Principle 2: Be SPECIFIC, Not Generic
 
-**Para NOVO PROJETO:**
-- Qual stack tecnológica? (decida primeiro)
-- Qual o MVP? (recursos mínimos)
-- Qual a estrutura de arquivos?
+| ❌ Wrong | ✅ Right |
+|----------|----------|
+| "Set up project" | "Run `npx create-next-app`" |
+| "Add authentication" | "Install next-auth, create `/api/auth/[...nextauth].ts`" |
+| "Style the UI" | "Add Tailwind classes to `Header.tsx`" |
 
-**Para ADIÇÃO DE RECURSOS:**
-- Quais arquivos serão afetados?
-- Quais dependências são necessárias?
-- Como verificar se funciona?
-
-**Para CORREÇÃO DE BUG:**
-- Qual a causa raiz?
-- Qual arquivo/linha mudar?
-- Como testar a correção?
+> **Rule:** Each task should have a clear, verifiable outcome.
 
 ---
 
-### Princípio 4: Scripts São Específicos do Projeto
+### Principle 3: Dynamic Content Based on Project Type
 
-> 🔴 **NÃO copie e cole comandos de script. Escolha com base no tipo de projeto.**
+**For NEW PROJECT:**
+- What tech stack? (decide first)
+- What's the MVP? (minimal features)
+- What's the file structure?
 
-| Tipo de Projeto | Scripts Relevantes |
-|-----------------|--------------------|
+**For FEATURE ADDITION:**
+- Which files are affected?
+- What dependencies needed?
+- How to verify it works?
+
+**For BUG FIX:**
+- What's the root cause?
+- What file/line to change?
+- How to test the fix?
+
+---
+
+### Principle 4: Scripts Are Project-Specific
+
+> 🔴 **DO NOT copy-paste script commands. Choose based on project type.**
+
+| Project Type | Relevant Scripts |
+|--------------|------------------|
 | Frontend/React | `ux_audit.py`, `accessibility_checker.py` |
 | Backend/API | `api_validator.py`, `security_scan.py` |
 | Mobile | `mobile_audit.py` |
-| Banco de Dados | `schema_validator.py` |
-| Full-stack | Mistura dos itens acima baseada no que foi alterado |
+| Database | `schema_validator.py` |
+| Full-stack | Mix of above based on what you touched |
 
-**Errado:** Adicionar todos os scripts em todos os planos
-**Certo:** Apenas scripts relevantes para ESTA tarefa
-
----
-
-### Princípio 5: Verificação é Simples
-
-| ❌ Errado | ✅ Certo |
-|-----------|----------|
-| "Verificar se o componente funciona" | "Rodar `npm run dev`, clicar no botão, ver o toast" |
-| "Testar a API" | "curl localhost:3000/api/users retorna 200" |
-| "Checar estilos" | "Abrir navegador, verificar o toggle do modo escuro" |
+**Wrong:** Adding all scripts to every plan
+**Right:** Only scripts relevant to THIS task
 
 ---
 
-## Estrutura do Plano (Flexível, Não Fixa!)
+### Principle 5: Verification is Simple
 
-```markdown
-# [Nome da Tarefa]
+| ❌ Wrong | ✅ Right |
+|----------|----------|
+| "Verify the component works correctly" | "Run `npm run dev`, click button, see toast" |
+| "Test the API" | "curl localhost:3000/api/users returns 200" |
+| "Check styles" | "Open browser, verify dark mode toggle works" |
 
-## Objetivo
-Uma frase: O que estamos construindo/corrigindo?
+---
 
-## Tarefas
-- [ ] Tarefa 1: [Ação específica] → Verificar: [Como checar]
-- [ ] Tarefa 2: [Ação específica] → Verificar: [Como checar]
-- [ ] Tarefa 3: [Ação específica] → Verificar: [Como checar]
+## Plan Structure (Flexible, Not Fixed!)
 
-## Concluído Quando
-- [ ] [Principal critério de sucesso]
+```
+# [Task Name]
+
+## Goal
+One sentence: What are we building/fixing?
+
+## Tasks
+- [ ] Task 1: [Specific action] → Verify: [How to check]
+- [ ] Task 2: [Specific action] → Verify: [How to check]
+- [ ] Task 3: [Specific action] → Verify: [How to check]
+
+## Done When
+- [ ] [Main success criteria]
 ```
 
-> **É só isso.** Sem fases, sem subseções a menos que seja realmente necessário.
-> Mantenha o mínimo. Adicione complexidade apenas quando exigido.
+> **That's it.** No phases, no sub-sections unless truly needed.
+> Keep it minimal. Add complexity only when required.
+
+## Notes
+[Any important considerations]
+```
 
 ---
 
-## Melhores Práticas (Referência Rápida)
+## Best Practices (Quick Reference)
 
-1. **Comece com o objetivo** - O que estamos construindo/corrigindo?
-2. **Máximo de 10 tarefas** - Se houver mais, divida em múltiplos planos
-3. **Cada tarefa verificável** - Critério de "concluído" claro
-4. **Específico do projeto** - Nada de templates de copiar e colar
-5. **Atualize conforme avança** - Marque com `[x]` quando concluir
+1. **Start with goal** - What are we building/fixing?
+2. **Max 10 tasks** - If more, break into multiple plans
+3. **Each task verifiable** - Clear "done" criteria
+4. **Project-specific** - No copy-paste templates
+5. **Update as you go** - Mark `[x]` when complete
 
 ---
 
-## Quando Usar
+## When to Use
 
-- Novo projeto do zero
-- Adição de um recurso
-- Correção de um bug (se for complexo)
-- Refatoração de múltiplos arquivos
+- New project from scratch
+- Adding a feature
+- Fixing a bug (if complex)
+- Refactoring multiple files

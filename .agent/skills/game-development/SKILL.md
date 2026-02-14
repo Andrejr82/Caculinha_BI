@@ -1,167 +1,167 @@
 ---
 name: game-development
-description: Orquestrador de desenvolvimento de jogos. Encaminha para skills específicas de plataforma com base nas necessidades do projeto.
+description: Game development orchestrator. Routes to platform-specific skills based on project needs.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Desenvolvimento de Jogos
+# Game Development
 
-> **Skill orquestradora** que fornece princípios core e direciona para sub-skills especializadas.
-
----
-
-## Quando Usar Esta Skill
-
-Você está trabalhando em um projeto de desenvolvimento de jogos. Esta skill ensina os PRINCÍPIOS do desenvolvimento de jogos e o direciona para a sub-skill correta baseada no contexto.
+> **Orchestrator skill** that provides core principles and routes to specialized sub-skills.
 
 ---
 
-## Roteamento de Sub-Skills
+## When to Use This Skill
 
-### Seleção de Plataforma
+You are working on a game development project. This skill teaches the PRINCIPLES of game development and directs you to the right sub-skill based on context.
 
-| Se o jogo visa... | Use a Sub-Skill |
-|-------------------|-----------------|
-| Navegadores web (HTML5, WebGL) | `game-development/web-games` |
+---
+
+## Sub-Skill Routing
+
+### Platform Selection
+
+| If the game targets... | Use Sub-Skill |
+|------------------------|---------------|
+| Web browsers (HTML5, WebGL) | `game-development/web-games` |
 | Mobile (iOS, Android) | `game-development/mobile-games` |
 | PC (Steam, Desktop) | `game-development/pc-games` |
-| Headsets de VR/AR | `game-development/vr-ar` |
+| VR/AR headsets | `game-development/vr-ar` |
 
-### Seleção de Dimensão
+### Dimension Selection
 
-| Se o jogo é... | Use a Sub-Skill |
-|----------------|-----------------|
+| If the game is... | Use Sub-Skill |
+|-------------------|---------------|
 | 2D (sprites, tilemaps) | `game-development/2d-games` |
 | 3D (meshes, shaders) | `game-development/3d-games` |
 
-### Áreas de Especialidade
+### Specialty Areas
 
-| Se você precisa de... | Use a Sub-Skill |
-|-----------------------|-----------------|
-| GDD, balanceamento, psicologia do jogador | `game-development/game-design` |
-| Multiplayer, rede | `game-development/multiplayer` |
-| Estilo visual, pipeline de assets, animação | `game-development/game-art` |
-| Design de som, música, áudio adaptativo | `game-development/game-audio` |
-
----
-
-## Princípios Core (Todas as Plataformas)
-
-### 1. O Game Loop (Loop do Jogo)
-
-Todo jogo, independente da plataforma, segue este padrão:
-
-```
-INPUT  → Ler ações do jogador
-UPDATE → Processar lógica do jogo (fixed timestep)
-RENDER → Desenhar o frame (interpolado)
-```
-
-**Regra do Timestep Fixo:**
-- Física/lógica: Taxa fixa (ex: 50Hz)
-- Renderização: O mais rápido possível
-- Interpolar entre estados para visuais suaves
+| If you need... | Use Sub-Skill |
+|----------------|---------------|
+| GDD, balancing, player psychology | `game-development/game-design` |
+| Multiplayer, networking | `game-development/multiplayer` |
+| Visual style, asset pipeline, animation | `game-development/game-art` |
+| Sound design, music, adaptive audio | `game-development/game-audio` |
 
 ---
 
-### 2. Matriz de Seleção de Padrões
+## Core Principles (All Platforms)
 
-| Padrão | Use Quando | Exemplo |
-|--------|------------|---------|
-| **State Machine** | 3-5 estados discretos | Jogador: Idle→Walk→Jump |
-| **Object Pooling** | Criação/destruição frequente | Balas, partículas |
-| **Observer/Events** | Comunicação entre sistemas | Atualizações de Vida→UI |
-| **ECS** | Milhares de entidades similares | Unidades de RTS, partículas |
-| **Command** | Desfazer, replay, rede | Gravação de input |
-| **Behavior Tree** | Decisões complexas de IA | IA de Inimigo |
+### 1. The Game Loop
 
-**Regra de Decisão:** Comece com State Machine. Adicione ECS apenas quando a performance exigir.
+Every game, regardless of platform, follows this pattern:
+
+```
+INPUT  → Read player actions
+UPDATE → Process game logic (fixed timestep)
+RENDER → Draw the frame (interpolated)
+```
+
+**Fixed Timestep Rule:**
+- Physics/logic: Fixed rate (e.g., 50Hz)
+- Rendering: As fast as possible
+- Interpolate between states for smooth visuals
 
 ---
 
-### 3. Abstração de Input
+### 2. Pattern Selection Matrix
 
-Abstraia os inputs em AÇÕES, não em teclas brutas:
+| Pattern | Use When | Example |
+|---------|----------|---------|
+| **State Machine** | 3-5 discrete states | Player: Idle→Walk→Jump |
+| **Object Pooling** | Frequent spawn/destroy | Bullets, particles |
+| **Observer/Events** | Cross-system communication | Health→UI updates |
+| **ECS** | Thousands of similar entities | RTS units, particles |
+| **Command** | Undo, replay, networking | Input recording |
+| **Behavior Tree** | Complex AI decisions | Enemy AI |
 
-```
-"pular"  → Espaço, Gamepad A, Toque na tela
-"mover"  → WASD, Stick esquerdo, Joystick virtual
-```
-
-**Por que:** Permite controles remapeáveis e multiplataforma.
+**Decision Rule:** Start with State Machine. Add ECS only when performance demands.
 
 ---
 
-### 4. Orçamento de Performance (60 FPS = 16.67ms)
+### 3. Input Abstraction
 
-| Sistema | Orçamento |
-|---------|-----------|
+Abstract input into ACTIONS, not raw keys:
+
+```
+"jump"  → Space, Gamepad A, Touch tap
+"move"  → WASD, Left stick, Virtual joystick
+```
+
+**Why:** Enables multi-platform, rebindable controls.
+
+---
+
+### 4. Performance Budget (60 FPS = 16.67ms)
+
+| System | Budget |
+|--------|--------|
 | Input | 1ms |
-| Física | 3ms |
-| IA | 2ms |
-| Lógica do Jogo | 4ms |
-| Renderização | 5ms |
+| Physics | 3ms |
+| AI | 2ms |
+| Game Logic | 4ms |
+| Rendering | 5ms |
 | Buffer | 1.67ms |
 
-**Prioridade de Otimização:**
-1. Algoritmo (O(n²) → O(n log n))
-2. Batching (reduzir draw calls)
-3. Pooling (evitar picos de GC)
-4. LOD (detalhe por distância)
-5. Culling (pular o que é invisível)
+**Optimization Priority:**
+1. Algorithm (O(n²) → O(n log n))
+2. Batching (reduce draw calls)
+3. Pooling (avoid GC spikes)
+4. LOD (detail by distance)
+5. Culling (skip invisible)
 
 ---
 
-### 5. Seleção de IA por Complexidade
+### 5. AI Selection by Complexity
 
-| Tipo de IA | Complexidade | Use Quando |
-|------------|--------------|------------|
-| **FSM** | Simples | 3-5 estados, comportamento previsível |
-| **Behavior Tree** | Média | Modular, amigável para designers |
-| **GOAP** | Alta | Emergente, baseado em planejamento |
-| **Utility AI** | Alta | Decisões baseadas em pontuação (scoring) |
-
----
-
-### 6. Estratégia de Colisão
-
-| Tipo | Melhor Para |
-|------|-------------|
-| **AABB** | Retângulos, verificações rápidas |
-| **Circle** | Objetos redondos, barato |
-| **Spatial Hash** | Muitos objetos de tamanho similar |
-| **Quadtree** | Mundos grandes, tamanhos variados |
+| AI Type | Complexity | Use When |
+|---------|------------|----------|
+| **FSM** | Simple | 3-5 states, predictable behavior |
+| **Behavior Tree** | Medium | Modular, designer-friendly |
+| **GOAP** | High | Emergent, planning-based |
+| **Utility AI** | High | Scoring-based decisions |
 
 ---
 
-## Anti-Padrões (Universais)
+### 6. Collision Strategy
 
-| NÃO FAÇA | FAÇA |
-|----------|------|
-| Atualizar tudo a cada frame | Use eventos, flags de sujeira (dirty) |
-| Criar objetos em loops críticos (hot loops) | Object pooling |
-| Não usar cache | Cache de referências |
-| Otimizar sem profiling | Fazer profiling primeiro |
-| Misturar input com lógica | Abstrair camada de input |
-
----
-
-## Exemplos de Roteamento
-
-### Exemplo 1: "Quero fazer um jogo de plataforma 2D para navegador"
-→ Comece com `game-development/web-games` para seleção de framework
-→ Depois `game-development/2d-games` para padrões de sprite/tilemap
-→ Referencie `game-development/game-design` para design de níveis
-
-### Exemplo 2: "Jogo de puzzle mobile para iOS e Android"
-→ Comece com `game-development/mobile-games` para input de toque e lojas
-→ Use `game-development/game-design` para balanceamento do puzzle
-
-### Exemplo 3: "Shooter em VR multiplayer"
-→ `game-development/vr-ar` para conforto e imersão
-→ `game-development/3d-games` para renderização
-→ `game-development/multiplayer` para rede
+| Type | Best For |
+|------|----------|
+| **AABB** | Rectangles, fast checks |
+| **Circle** | Round objects, cheap |
+| **Spatial Hash** | Many similar-sized objects |
+| **Quadtree** | Large worlds, varying sizes |
 
 ---
 
-> **Lembre-se:** Grandes jogos vêm da iteração, não da perfeição. Prototipe rápido, depois refine.
+## Anti-Patterns (Universal)
+
+| Don't | Do |
+|-------|-----|
+| Update everything every frame | Use events, dirty flags |
+| Create objects in hot loops | Object pooling |
+| Cache nothing | Cache references |
+| Optimize without profiling | Profile first |
+| Mix input with logic | Abstract input layer |
+
+---
+
+## Routing Examples
+
+### Example 1: "I want to make a browser-based 2D platformer"
+→ Start with `game-development/web-games` for framework selection
+→ Then `game-development/2d-games` for sprite/tilemap patterns
+→ Reference `game-development/game-design` for level design
+
+### Example 2: "Mobile puzzle game for iOS and Android"
+→ Start with `game-development/mobile-games` for touch input and stores
+→ Use `game-development/game-design` for puzzle balancing
+
+### Example 3: "Multiplayer VR shooter"
+→ `game-development/vr-ar` for comfort and immersion
+→ `game-development/3d-games` for rendering
+→ `game-development/multiplayer` for networking
+
+---
+
+> **Remember:** Great games come from iteration, not perfection. Prototype fast, then polish.

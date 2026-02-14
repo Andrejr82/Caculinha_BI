@@ -1,189 +1,187 @@
 ---
 name: webapp-testing
-description: Princípios de teste de aplicações web. E2E, Playwright, estratégias de auditoria profunda.
+description: Web application testing principles. E2E, Playwright, deep audit strategies.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Teste de Web App
+# Web App Testing
 
-> Descubra e teste tudo. Não deixe nenhuma rota sem teste.
+> Discover and test everything. Leave no route untested.
 
----
+## 🔧 Runtime Scripts
 
-## 🔧 Scripts de Execução
+**Execute these for automated browser testing:**
 
-**Execute estes para testes de navegador automatizados:**
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `scripts/playwright_runner.py` | Basic browser test | `python scripts/playwright_runner.py https://example.com` |
+| | With screenshot | `python scripts/playwright_runner.py <url> --screenshot` |
+| | Accessibility check | `python scripts/playwright_runner.py <url> --a11y` |
 
-| Script | Propósito | Uso |
-|--------|-----------|-----|
-| `scripts/playwright_runner.py` | Teste de navegador básico | `python scripts/playwright_runner.py https://exemplo.com` |
-| | Com screenshot | `python scripts/playwright_runner.py <url> --screenshot` |
-| | Verificação de acessibilidade | `python scripts/playwright_runner.py <url> --a11y` |
-
-**Requer:** `pip install playwright && playwright install chromium`
+**Requires:** `pip install playwright && playwright install chromium`
 
 ---
 
-## 1. Abordagem de Auditoria Profunda
+## 1. Deep Audit Approach
 
-### Descoberta Primeiro
+### Discovery First
 
-| Alvo | Como encontrar |
-|------|----------------|
-| Rotas | Escanear arquivos em app/, pages/, router |
-| Endpoints de API | Buscar (grep) por métodos HTTP |
-| Componentes | Encontrar diretórios de componentes |
-| Recursos (Features) | Ler a documentação |
+| Target | How to Find |
+|--------|-------------|
+| Routes | Scan app/, pages/, router files |
+| API endpoints | Grep for HTTP methods |
+| Components | Find component directories |
+| Features | Read documentation |
 
-### Teste Sistemático
+### Systematic Testing
 
-1. **Mapear** - Listar todas as rotas/APIs
-2. **Escanear** - Verificar se elas respondem
-3. **Testar** - Cobrir caminhos críticos
+1. **Map** - List all routes/APIs
+2. **Scan** - Verify they respond
+3. **Test** - Cover critical paths
 
 ---
 
-## 2. Pirâmide de Testes para Web
+## 2. Testing Pyramid for Web
 
 ```
-        /\          E2E (Poucos)
-       /  \         Fluxos críticos do usuário
+        /\          E2E (Few)
+       /  \         Critical user flows
       /----\
-     /      \       Integração (Alguns)
-    /--------\      API, fluxo de dados
+     /      \       Integration (Some)
+    /--------\      API, data flow
    /          \
-  /------------\    Componente (Muitos)
-                    Peças de UI individuais
+  /------------\    Component (Many)
+                    Individual UI pieces
 ```
 
 ---
 
-## 3. Princípios de Teste E2E
+## 3. E2E Test Principles
 
-### O que Testar
+### What to Test
 
-| Prioridade | Testes |
-|------------|--------|
-| 1 | Fluxos de usuário do caminho feliz |
-| 2 | Fluxos de autenticação |
-| 3 | Ações críticas de negócio |
-| 4 | Tratamento de erros |
+| Priority | Tests |
+|----------|-------|
+| 1 | Happy path user flows |
+| 2 | Authentication flows |
+| 3 | Critical business actions |
+| 4 | Error handling |
 
-### Melhores Práticas de E2E
+### E2E Best Practices
 
-| Prática | Por que |
-|---------|---------|
-| Usar data-testid | Seletores estáveis |
-| Esperar por elementos | Evitar testes instáveis (flaky) |
-| Estado limpo | Testes independentes |
-| Evitar detalhes de implementação | Testar o comportamento do usuário |
+| Practice | Why |
+|----------|-----|
+| Use data-testid | Stable selectors |
+| Wait for elements | Avoid flaky tests |
+| Clean state | Independent tests |
+| Avoid implementation details | Test user behavior |
 
 ---
 
-## 4. Princípios de Playwright
+## 4. Playwright Principles
 
-### Conceitos Core
+### Core Concepts
 
-| Conceito | Uso |
-|----------|-----|
-| Page Object Model | Encapsular lógica da página |
-| Fixtures | Configuração de teste reutilizável |
-| Assertions | Auto-espera (auto-wait) integrada |
-| Trace Viewer | Depurar falhas |
+| Concept | Use |
+|---------|-----|
+| Page Object Model | Encapsulate page logic |
+| Fixtures | Reusable test setup |
+| Assertions | Built-in auto-wait |
+| Trace Viewer | Debug failures |
 
-### Configuração
+### Configuration
 
-| Configuração | Recomendação |
-|--------------|--------------|
-| Retentativas (Retries) | 2 no CI |
+| Setting | Recommendation |
+|---------|----------------|
+| Retries | 2 on CI |
 | Trace | on-first-retry |
 | Screenshots | on-failure |
-| Vídeo | retain-on-failure |
+| Video | retain-on-failure |
 
 ---
 
-## 5. Testes Visuais
+## 5. Visual Testing
 
-### Quando Usar
+### When to Use
 
-| Cenário | Valor |
-|---------|-------|
-| Sistema de design | Alto |
-| Páginas de marketing | Alto |
-| Biblioteca de componentes | Médio |
-| Conteúdo dinâmico | Baixo |
+| Scenario | Value |
+|----------|-------|
+| Design system | High |
+| Marketing pages | High |
+| Component library | Medium |
+| Dynamic content | Lower |
 
-### Estratégia
+### Strategy
 
-- Screenshots de linha de base (baseline)
-- Comparar nas mudanças
-- Revisar diferenças visuais
-- Atualizar mudanças intencionais
-
----
-
-## 6. Princípios de Teste de API
-
-### Áreas de Cobertura
-
-| Área | Testes |
-|------|--------|
-| Códigos de status | 200, 400, 404, 500 |
-| Formato da resposta | Corresponde ao schema |
-| Mensagens de erro | Amigáveis ao usuário |
-| Casos de borda | Vazio, grande, caracteres especiais |
+- Baseline screenshots
+- Compare on changes
+- Review visual diffs
+- Update intentional changes
 
 ---
 
-## 7. Organização de Testes
+## 6. API Testing Principles
 
-### Estrutura de Arquivos
+### Coverage Areas
+
+| Area | Tests |
+|------|-------|
+| Status codes | 200, 400, 404, 500 |
+| Response shape | Matches schema |
+| Error messages | User-friendly |
+| Edge cases | Empty, large, special chars |
+
+---
+
+## 7. Test Organization
+
+### File Structure
 
 ```
 tests/
-├── e2e/           # Fluxos de usuário completos
-├── integration/   # API, dados
-├── component/     # Unidades de UI
-└── fixtures/      # Dados compartilhados
+├── e2e/           # Full user flows
+├── integration/   # API, data
+├── component/     # UI units
+└── fixtures/      # Shared data
 ```
 
-### Convenção de Nomenclatura
+### Naming Convention
 
-| Padrão | Exemplo |
-|--------|---------|
-| Baseado em feature | `login.spec.ts` |
-| Descritivo | `user-can-checkout.spec.ts` |
-
----
-
-## 8. Integração com CI
-
-### Passos do Pipeline
-
-1. Instalar dependências
-2. Instalar navegadores
-3. Executar testes
-4. Fazer upload de artefatos (traces, screenshots)
-
-### Paralelização
-
-| Estratégia | Uso |
-|------------|-----|
-| Por arquivo | Playwright default |
-| Fragmentação (Sharding)| Suítes grandes |
-| Workers | Múltiplos navegadores |
+| Pattern | Example |
+|---------|---------|
+| Feature-based | `login.spec.ts` |
+| Descriptive | `user-can-checkout.spec.ts` |
 
 ---
 
-## 9. Anti-Padrões
+## 8. CI Integration
 
-| ❌ Não faça | ✅ Faça |
-|-------------|---------|
-| Testar implementação | Testar comportamento |
-| Esperas fixas (hardcode) | Use auto-espera |
-| Pular a limpeza | Isole os testes |
-| Ignorar testes instáveis | Corrigir a causa raiz |
+### Pipeline Steps
+
+1. Install dependencies
+2. Install browsers
+3. Run tests
+4. Upload artifacts (traces, screenshots)
+
+### Parallelization
+
+| Strategy | Use |
+|----------|-----|
+| Per file | Playwright default |
+| Sharding | Large suites |
+| Workers | Multiple browsers |
 
 ---
 
-> **Lembre-se:** Testes E2E são caros. Use-os apenas para caminhos críticos.
+## 9. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Test implementation | Test behavior |
+| Hardcode waits | Use auto-wait |
+| Skip cleanup | Isolate tests |
+| Ignore flaky tests | Fix root cause |
+
+---
+
+> **Remember:** E2E tests are expensive. Use them for critical paths only.

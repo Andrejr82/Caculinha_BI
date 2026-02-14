@@ -49,16 +49,14 @@ async def playground_stream(
     from fastapi.responses import StreamingResponse
     
     if not settings.GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY missing")
+        async def disabled_generator():
+            yield f"data: {json.dumps({'type': 'start', 'model': settings.LLM_MODEL_NAME})}\n\n"
+            yield f"data: {json.dumps({'type': 'degraded', 'text': 'Playground em modo degradado: GEMINI_API_KEY nao configurada no ambiente atual.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return StreamingResponse(disabled_generator(), media_type="text/event-stream")
 
-    model_name = request.model or settings.LLM_MODEL_NAME
-    
-    # Initialize adapter with request-specific settings
-    llm_adapter = GeminiLLMAdapter(
-        model_name=model_name,
-        gemini_api_key=settings.GEMINI_API_KEY,
-        system_instruction=request.system_instruction
-    )
+    # Canonical model source of truth: settings.LLM_MODEL_NAME
+    model_name = settings.LLM_MODEL_NAME
 
     # Prepare messages
     messages = []
@@ -68,7 +66,15 @@ async def playground_stream(
     messages.append({"role": "user", "content": request.message})
 
     async def event_generator():
+        llm_adapter = None
         try:
+            # Initialize adapter inside generator to avoid hard 500 on SDK incompatibilities.
+            llm_adapter = GeminiLLMAdapter(
+                model_name=model_name,
+                gemini_api_key=settings.GEMINI_API_KEY,
+                system_instruction=request.system_instruction
+            )
+
             # Yield start event
             yield f"data: {json.dumps({'type': 'start', 'model': model_name})}\n\n"
             
@@ -94,7 +100,11 @@ async def playground_stream(
                     full_text += text
                     yield f"data: {json.dumps({'type': 'token', 'text': text})}\n\n"
                 elif "error" in chunk:
-                    yield f"data: {json.dumps({'type': 'error', 'text': chunk['error']})}\n\n"
+                    lower = str(chunk["error"]).lower()
+                    if any(key in lower for key in ["429", "quota", "rate", "resource_exhausted"]):
+                        yield f"data: {json.dumps({'type': 'degraded', 'text': 'Quota estourada / configure billing / tente depois'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'text': 'Falha temporaria no Playground. Tente novamente em instantes.'})}\n\n"
             
             duration = (datetime.now() - start_time).total_seconds()
             
@@ -103,7 +113,12 @@ async def playground_stream(
             
         except Exception as e:
             logger.error(f"Playground stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+            lower = str(e).lower()
+            if any(key in lower for key in ["429", "quota", "rate", "resource_exhausted"]):
+                yield f"data: {json.dumps({'type': 'degraded', 'text': 'Quota estourada / configure billing / tente depois'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'text': 'Falha temporaria no Playground. Tente novamente em instantes.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -135,7 +150,7 @@ async def execute_query(
             "columns": result.columns
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Falha ao executar consulta no Playground.")
 
 
 @router.post("/chat")
@@ -158,7 +173,7 @@ async def playground_chat(
         if not settings.GEMINI_API_KEY:
             raise HTTPException(
                 status_code=500,
-                detail="GEMINI_API_KEY não configurada no servidor"
+                detail="Playground indisponivel: GEMINI_API_KEY nao configurada no servidor."
             )
 
         # Configurar LLM com parâmetros customizados usando GeminiLLMAdapter
@@ -218,7 +233,7 @@ async def playground_chat(
         logger.error(f"Erro no playground chat: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao processar mensagem: {str(e)}"
+            detail="Nao foi possivel processar a mensagem no Playground agora."
         )
 
 

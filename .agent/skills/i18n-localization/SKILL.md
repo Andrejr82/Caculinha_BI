@@ -1,48 +1,48 @@
 ---
 name: i18n-localization
-description: Padrões de internacionalização e localização. Detecção de strings estáticas (hardcoded), gerenciamento de traduções, arquivos de locale, suporte a RTL.
+description: Internationalization and localization patterns. Detecting hardcoded strings, managing translations, locale files, RTL support.
 allowed-tools: Read, Glob, Grep
 ---
 
-# i18n & Localização
+# i18n & Localization
 
-> Melhores práticas de Internacionalização (i18n) e Localização (L10n).
-
----
-
-## 1. Conceitos Core
-
-| Termo | Significado |
-|-------|-------------|
-| **i18n** | Internacionalização - tornar o app traduzível |
-| **L10n** | Localização - as traduções reais |
-| **Locale** | Idioma + Região (en-US, pt-BR) |
-| **RTL** | Idiomas da direita para a esquerda (Árabe, Hebraico) |
+> Internationalization (i18n) and Localization (L10n) best practices.
 
 ---
 
-## 2. Quando Usar i18n
+## 1. Core Concepts
 
-| Tipo de Projeto | i18n Necessário? |
-|-----------------|-------------------|
-| Web app público | ✅ Sim |
-| Produto SaaS | ✅ Sim |
-| Ferramenta interna | ⚠️ Talvez |
-| App de região única | ⚠️ Considere o futuro |
-| Projeto pessoal | ❌ Opcional |
+| Term | Meaning |
+|------|---------|
+| **i18n** | Internationalization - making app translatable |
+| **L10n** | Localization - actual translations |
+| **Locale** | Language + Region (en-US, tr-TR) |
+| **RTL** | Right-to-left languages (Arabic, Hebrew) |
 
 ---
 
-## 3. Padrões de Implementação
+## 2. When to Use i18n
+
+| Project Type | i18n Needed? |
+|--------------|--------------|
+| Public web app | ✅ Yes |
+| SaaS product | ✅ Yes |
+| Internal tool | ⚠️ Maybe |
+| Single-region app | ⚠️ Consider future |
+| Personal project | ❌ Optional |
+
+---
+
+## 3. Implementation Patterns
 
 ### React (react-i18next)
 
 ```tsx
 import { useTranslation } from 'react-i18next';
 
-function BoasVindas() {
+function Welcome() {
   const { t } = useTranslation();
-  return <h1>{t('boas_vindas.titulo')}</h1>;
+  return <h1>{t('welcome.title')}</h1>;
 }
 ```
 
@@ -51,9 +51,9 @@ function BoasVindas() {
 ```tsx
 import { useTranslations } from 'next-intl';
 
-export default function Pagina() {
+export default function Page() {
   const t = useTranslations('Home');
-  return <h1>{t('titulo')}</h1>;
+  return <h1>{t('title')}</h1>;
 }
 ```
 
@@ -62,12 +62,12 @@ export default function Pagina() {
 ```python
 from gettext import gettext as _
 
-print(_("Bem-vindo ao nosso aplicativo"))
+print(_("Welcome to our app"))
 ```
 
 ---
 
-## 4. Estrutura de Arquivos
+## 4. File Structure
 
 ```
 locales/
@@ -75,7 +75,7 @@ locales/
 │   ├── common.json
 │   ├── auth.json
 │   └── errors.json
-├── pt/
+├── tr/
 │   ├── common.json
 │   ├── auth.json
 │   └── errors.json
@@ -85,46 +85,46 @@ locales/
 
 ---
 
-## 5. Melhores Práticas
+## 5. Best Practices
 
-### FAÇA ✅
+### DO ✅
 
-- Use chaves de tradução, não texto bruto (hardcoded)
-- Use namespaces para traduções por funcionalidade
-- Suporte a pluralização
-- Lide com formatos de data/número por localidade
-- Planeje suporte para RTL desde o início
-- Use o formato de mensagem ICU para strings complexas
+- Use translation keys, not raw text
+- Namespace translations by feature
+- Support pluralization
+- Handle date/number formats per locale
+- Plan for RTL from the start
+- Use ICU message format for complex strings
 
-### NÃO FAÇA ❌
+### DON'T ❌
 
-- Escrever strings estáticas nos componentes
-- Concatenar strings traduzidas
-- Assumir o comprimento do texto (o Alemão é 30% mais longo que o Inglês)
-- Esquecer o layout RTL
-- Misturar idiomas no mesmo arquivo
-
----
-
-## 6. Problemas Comuns
-
-| Problema | Solução |
-|----------|---------|
-| Tradução ausente | Use o idioma padrão como fallback |
-| Strings estáticas (hardcoded) | Use um script de verificação/linter |
-| Formato de data | Use Intl.DateTimeFormat |
-| Formato de número | Use Intl.NumberFormat |
-| Pluralização | Use o formato de mensagem ICU |
+- Hardcode strings in components
+- Concatenate translated strings
+- Assume text length (German is 30% longer)
+- Forget about RTL layout
+- Mix languages in same file
 
 ---
 
-## 7. Suporte a RTL
+## 6. Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Missing translation | Fallback to default language |
+| Hardcoded strings | Use linter/checker script |
+| Date format | Use Intl.DateTimeFormat |
+| Number format | Use Intl.NumberFormat |
+| Pluralization | Use ICU message format |
+
+---
+
+## 7. RTL Support
 
 ```css
-/* Propriedades Lógicas de CSS */
+/* CSS Logical Properties */
 .container {
-  margin-inline-start: 1rem;  /* Em vez de margin-left */
-  padding-inline-end: 1rem;   /* Em vez de padding-right */
+  margin-inline-start: 1rem;  /* Not margin-left */
+  padding-inline-end: 1rem;   /* Not padding-right */
 }
 
 [dir="rtl"] .icon {
@@ -136,19 +136,19 @@ locales/
 
 ## 8. Checklist
 
-Antes de entregar:
+Before shipping:
 
-- [ ] Todas as strings voltadas ao usuário usam chaves de tradução
-- [ ] Os arquivos de localidade existem para todos os idiomas suportados
-- [ ] A formatação de data/número usa a API Intl
-- [ ] Layout RTL testado (se aplicável)
-- [ ] Idioma de fallback configurado
-- [ ] Sem strings estáticas nos componentes
+- [ ] All user-facing strings use translation keys
+- [ ] Locale files exist for all supported languages
+- [ ] Date/number formatting uses Intl API
+- [ ] RTL layout tested (if applicable)
+- [ ] Fallback language configured
+- [ ] No hardcoded strings in components
 
 ---
 
 ## Script
 
-| Script | Propósito | Comando |
-|--------|-----------|---------|
-| `scripts/i18n_checker.py` | Detecta strings estáticas e traduções ausentes | `python scripts/i18n_checker.py <caminho_projeto>` |
+| Script | Purpose | Command |
+|--------|---------|---------|
+| `scripts/i18n_checker.py` | Detect hardcoded strings & missing translations | `python scripts/i18n_checker.py <project_path>` |

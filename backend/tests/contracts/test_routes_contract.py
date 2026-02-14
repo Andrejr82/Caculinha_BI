@@ -15,15 +15,18 @@ Expected behavior:
 """
 
 import pytest
-import requests
 import jwt
-import os
 from datetime import datetime, timedelta
+from fastapi.testclient import TestClient
 
-# Use environment variable or default
-BASE_URL = os.getenv("TEST_BASE_URL", "http://127.0.0.1:8000")
-JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+from backend.main import app
+from backend.app.api.middleware.auth import JWT_SECRET, JWT_ALGORITHM
+
 ADMIN_EMAIL = "user@agentbi.com"
+
+@pytest.fixture(scope="module")
+def client():
+    return TestClient(app)
 
 
 def create_token(role: str = "user", username: str = "test_user") -> str:
@@ -35,7 +38,7 @@ def create_token(role: str = "user", username: str = "test_user") -> str:
         "role": role,
         "tenant_id": "default",
         "exp": datetime.utcnow() + timedelta(hours=1)
-    }, JWT_SECRET, algorithm="HS256")
+    }, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 # =============================================================================
@@ -51,12 +54,12 @@ PUBLIC_ROUTES = [
 ]
 
 @pytest.mark.parametrize("method,path", PUBLIC_ROUTES)
-def test_public_routes_not_404(method, path):
+def test_public_routes_not_404(client, method, path):
     """Public routes should never return 404."""
     if method == "GET":
-        r = requests.get(f"{BASE_URL}{path}", timeout=5)
+        r = client.get(path)
     elif method == "POST":
-        r = requests.post(f"{BASE_URL}{path}", json={}, timeout=5)
+        r = client.post(path, json={})
     
     assert r.status_code != 404, f"{method} {path} returned 404 - route not registered"
 
@@ -70,10 +73,10 @@ AUTH_ROUTES = [
 ]
 
 @pytest.mark.parametrize("method,path,body,valid_codes", AUTH_ROUTES)
-def test_auth_routes_not_404(method, path, body, valid_codes):
+def test_auth_routes_not_404(client, method, path, body, valid_codes):
     """Auth routes should exist and return expected codes."""
     if method == "POST":
-        r = requests.post(f"{BASE_URL}{path}", json=body, timeout=5)
+        r = client.post(path, json=body)
     
     assert r.status_code != 404, f"{method} {path} returned 404"
     assert r.status_code in valid_codes, f"{method} {path} returned unexpected {r.status_code}"
@@ -90,10 +93,10 @@ PROTECTED_ROUTES = [
 ]
 
 @pytest.mark.parametrize("method,path", PROTECTED_ROUTES)
-def test_protected_routes_require_auth(method, path):
+def test_protected_routes_require_auth(client, method, path):
     """Protected routes should return 401/403 without auth, not 404."""
     if method == "GET":
-        r = requests.get(f"{BASE_URL}{path}", timeout=5)
+        r = client.get(path)
     
     assert r.status_code != 404, f"{method} {path} returned 404 - route not registered"
     assert r.status_code in [401, 403], f"Expected 401/403, got {r.status_code}"
@@ -112,26 +115,26 @@ ADMIN_ROUTES = [
 ]
 
 @pytest.mark.parametrize("method,path", ADMIN_ROUTES)
-def test_admin_routes_accessible_to_admin(method, path):
+def test_admin_routes_accessible_to_admin(client, method, path):
     """Admin routes should return 200 for admin users."""
     token = create_token(role="admin", username=ADMIN_EMAIL)
     headers = {"Authorization": f"Bearer {token}"}
     
     if method == "GET":
-        r = requests.get(f"{BASE_URL}{path}", headers=headers, timeout=5)
+        r = client.get(path, headers=headers)
     
     assert r.status_code != 404, f"{method} {path} returned 404 - route not registered"
     assert r.status_code == 200, f"Admin should get 200, got {r.status_code}"
 
 
 @pytest.mark.parametrize("method,path", ADMIN_ROUTES)
-def test_admin_routes_blocked_for_non_admin(method, path):
+def test_admin_routes_blocked_for_non_admin(client, method, path):
     """Admin routes should return 403 for non-admin users."""
     token = create_token(role="user", username="regular@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     
     if method == "GET":
-        r = requests.get(f"{BASE_URL}{path}", headers=headers, timeout=5)
+        r = client.get(path, headers=headers)
     
     assert r.status_code != 404, f"{method} {path} returned 404 - route not registered"
     assert r.status_code == 403, f"Non-admin should get 403, got {r.status_code}"
@@ -155,13 +158,13 @@ FRONTEND_EXPECTED_ROUTES = [
 ]
 
 @pytest.mark.parametrize("method,path", FRONTEND_EXPECTED_ROUTES)
-def test_frontend_expected_routes_not_404(method, path):
+def test_frontend_expected_routes_not_404(client, method, path):
     """Routes expected by frontend should NOT return 404."""
     token = create_token(role="admin", username=ADMIN_EMAIL)
     headers = {"Authorization": f"Bearer {token}"}
     
     if method == "GET":
-        r = requests.get(f"{BASE_URL}{path}", headers=headers, timeout=5)
+        r = client.get(path, headers=headers)
     
     # Allow any code except 404 (route must exist)
     assert r.status_code != 404, f"""

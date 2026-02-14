@@ -19,7 +19,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.app.api.dependencies import require_role
+from backend.app.api.dependencies import require_role, get_token_from_header_or_query
 from backend.app.infrastructure.database.models import User
 from backend.app.core.code_rag_service import get_code_rag_service
 
@@ -76,16 +76,13 @@ class IndexStats(BaseModel):
 # Endpoints
 # ============================================================================
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import json
 
 @router.get("/stream")
 async def stream_code_chat(
     q: str,
-    token: str,
-    current_user: Annotated[User, Depends(require_role("admin"))] # In real SSE, auth is via token param usually, but here we can rely on dependency if client sends header? 
-    # SSE clients (EventSource) don't send headers easily. We usually pass token in query param.
-    # But for this existing project structure, let's look at chat.py: it uses `token` param and `get_current_user_from_token`.
+    token: Annotated[str, Depends(get_token_from_header_or_query)],
 ):
     """
     Streaming endpoint for code chat.
@@ -95,16 +92,28 @@ async def stream_code_chat(
     # Manual auth check for SSE
     try:
         user = await get_current_user_from_token(token)
-        if user.role != "admin": # Enforce admin role for code chat
-             raise HTTPException(status_code=403, detail="Not authorized")
     except Exception as e:
         logger.error(f"SSE Auth failed: {e}")
-        # Return strict error event
-        async def error_gen():
-            yield f"data: {json.dumps({'type': 'error', 'content': 'Authentication failed'})}\n\n"
-        return StreamingResponse(error_gen(), media_type="text/event-stream")
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Sessao invalida ou expirada. Faca login novamente."},
+        )
 
-    rag_service = get_code_rag_service()
+    if user.role != "admin":
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Acesso restrito a administradores."},
+        )
+
+    try:
+        rag_service = get_code_rag_service()
+    except Exception as e:
+        message = str(e)
+        logger.error(f"Code index unavailable: {message}")
+        async def index_error_gen():
+            yield f"data: {json.dumps({'type': 'error', 'content': 'index missing; run scripts/index_codebase.py'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return StreamingResponse(index_error_gen(), media_type="text/event-stream")
     
     async def event_generator():
         try:
@@ -123,6 +132,17 @@ async def stream_code_chat(
             iterator = rag_service.stream_query(message=q, history=history)
             
             for chunk in iterator:
+                if chunk.get("type") == "error":
+                    msg = str(chunk.get("content", ""))
+                    lower_message = msg.lower()
+                    if any(k in lower_message for k in ["index", "not initialized", "missing", "not found"]):
+                        yield f"data: {json.dumps({'type': 'error', 'content': 'index missing; run scripts/index_codebase.py'})}\n\n"
+                    elif "gemini_api_key" in lower_message or "configure gemini" in lower_message:
+                        yield f"data: {json.dumps({'type': 'error', 'content': 'Code Chat indisponivel no ambiente atual; configure GEMINI_API_KEY para habilitar.'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'content': 'Nao foi possivel processar a pergunta agora. Tente novamente em instantes.'})}\n\n"
+                    continue
+
                 # If references found, notify UI
                 if chunk['type'] == 'references':
                     yield f"data: {json.dumps({'type': 'progress', 'step': 'analyzing', 'message': 'Analyzing code...'})}\n\n"
@@ -134,8 +154,13 @@ async def stream_code_chat(
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             
         except Exception as e:
-            logger.error(f"Stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            message = str(e)
+            logger.error(f"Stream error: {message}")
+            lower_message = message.lower()
+            if any(k in lower_message for k in ["index", "not found", "no such file", "missing"]):
+                yield f"data: {json.dumps({'type': 'error', 'content': 'index missing; run scripts/index_codebase.py'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Falha temporaria no Code Chat. Tente novamente em instantes.'})}\n\n"
 
     return StreamingResponse(
         event_generator(),

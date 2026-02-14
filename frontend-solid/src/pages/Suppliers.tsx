@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, For, createEffect } from "solid-js";
 import { PlotlyChart } from "../components/PlotlyChart";
+import { dashboardApi } from "../lib/api";
 import type { Component } from "solid-js";
 
 interface SegmentMetrics {
@@ -109,8 +110,8 @@ const Suppliers: Component = () => {
     const loadSegments = async () => {
         setLoading(true);
         try {
-            const response = await fetch("/api/v1/dashboard/suppliers/metrics");
-            const data = await response.json();
+            const response = await dashboardApi.getSupplierMetrics();
+            const data = response.data;
             const segs = data.suppliers || [];
             setSegments(segs);
             generateTreemap(segs);
@@ -123,10 +124,9 @@ const Suppliers: Component = () => {
 
     const loadSegmentOptions = async () => {
         try {
-            const response = await fetch("/api/v1/dashboard/metadata/segments");
-            if (response.ok) {
-                const data = await response.json();
-                setSegmentOptions(data || []);
+            const response = await dashboardApi.getMetadataSegments();
+            if (response.status === 200) {
+                setSegmentOptions(response.data || []);
             }
         } catch (err) {
             console.error("Erro ao carregar opções de segmentos:", err);
@@ -137,10 +137,9 @@ const Suppliers: Component = () => {
         if (!segmento) return;
         setLoadingGroups(true);
         try {
-            const response = await fetch(`/api/v1/dashboard/suppliers/groups?segmento=${encodeURIComponent(segmento)}`);
-            if (response.ok) {
-                const data = await response.json();
-                setGroups(data.groups || []);
+            const response = await dashboardApi.getSupplierGroups(segmento);
+            if (response.status === 200) {
+                setGroups(response.data.groups || []);
             }
         } catch (err) {
             console.error("Erro ao carregar grupos:", err);

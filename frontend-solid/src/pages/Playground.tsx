@@ -1,7 +1,6 @@
 import { createSignal, For, Show, onMount, createEffect } from 'solid-js';
 import { Terminal, Send, Trash2, Settings, Zap, Activity, Clock, Cpu, Info, Code, FileJson, Save, Play, X, ChevronDown, ChevronRight, Pencil, Split, LayoutTemplate } from 'lucide-solid';
-
-import api from '../lib/api';
+import { playgroundApi, authApi } from '../lib/api';
 import { MessageActions } from '../components/MessageActions';
 import 'github-markdown-css/github-markdown.css';
 import './chat-markdown.css';
@@ -45,14 +44,14 @@ interface ChatResponse {
 export default function Playground() {
    // Panel A State
    const [messagesA, setMessagesA] = createSignal<Message[]>([]);
-   const [modelA, setModelA] = createSignal('gemini-2.5-flash-lite');
+   const [modelA, setModelA] = createSignal('server-default');
    const [responseTimeA, setResponseTimeA] = createSignal(0);
    const [loadingA, setLoadingA] = createSignal(false);
 
    // Panel B State (Compare Mode)
    const [compareMode, setCompareMode] = createSignal(false);
    const [messagesB, setMessagesB] = createSignal<Message[]>([]);
-   const [modelB, setModelB] = createSignal('gemini-2.0-flash-exp');
+   const [modelB, setModelB] = createSignal('server-default');
    const [responseTimeB, setResponseTimeB] = createSignal(0);
    const [loadingB, setLoadingB] = createSignal(false);
 
@@ -72,17 +71,14 @@ export default function Playground() {
 
    // Available models (Mock for now, could fetch from backend)
    const models = [
-      { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
-      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)' },
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-      { id: 'gemini-3-flash-preview', name: 'Gemini 3.0 Preview' }
+      { id: 'server-default', name: 'Server Default (settings.LLM_MODEL_NAME)' }
    ];
 
    const [modelInfo, setModelInfo] = createSignal<ModelInfo | null>(null);
 
    onMount(async () => {
       try {
-         const response = await api.get('/playground/info');
+         const response = await playgroundApi.getInfo();
          setModelInfo(response.data);
          if (response.data.model) setModelA(response.data.model);
       } catch (error) {
@@ -96,7 +92,7 @@ export default function Playground() {
    });
 
    const streamRequest = async (
-      modelName: string,
+      _modelName: string,
       currentHistory: Message[],
       setMessages: (msgs: Message[]) => void,
       setLoading: (l: boolean) => void,
@@ -114,6 +110,13 @@ export default function Playground() {
       }];
       setMessages(initialMsgs);
 
+      // Proactive Token Refresh
+      try {
+         await authApi.getMe();
+      } catch (e) {
+         console.warn("⚠️ Falha ao renovar token no playground:", e);
+      }
+
       try {
          const response = await fetch('/api/v1/playground/stream', {
             method: 'POST',
@@ -122,20 +125,20 @@ export default function Playground() {
                'Authorization': `Bearer ${sessionStorage.getItem('token')}` // Auth fix: use sessionStorage like rest of app
             },
             body: JSON.stringify({
-               message: currentHistory[currentHistory.length - 1].content, // User message is last in history passed here? No, history excludes last user msg usually.
-               // Fix: sendMessage passes FULL history including new user message
-               // But backend expects history + message. 
-               // Let's pass last message as 'message' and rest as 'history'
                message: currentHistory[currentHistory.length - 1].content,
                history: currentHistory.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
                system_instruction: systemInstruction(),
                temperature: temperature(),
                max_tokens: maxTokens(),
                json_mode: jsonMode(),
-               stream: true,
-               model: modelName
+               stream: true
             })
          });
+
+         if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errText}`);
+         }
 
          const reader = response.body?.getReader();
          const decoder = new TextDecoder();
@@ -159,10 +162,15 @@ export default function Playground() {
                         setMessages(initialMsgs.map(m =>
                            m.id === assistantId ? { ...m, content: accumulatedText } : m
                         ));
+                     } else if (data.type === 'degraded') {
+                        accumulatedText += (accumulatedText ? '\n\n' : '') + `⚠️ Modo degradado: ${data.text}`;
+                        setMessages(initialMsgs.map(m =>
+                           m.id === assistantId ? { ...m, content: accumulatedText || `⚠️ Modo degradado: ${data.text}` } : m
+                        ));
                      } else if (data.type === 'done') {
                         setResponseTime(data.metrics.time);
                      } else if (data.type === 'error') {
-                        accumulatedText += `\n[Erro: ${data.text}]`;
+                        accumulatedText += `\n\n⚠️ Não foi possível concluir no Playground: ${data.text}`;
                         setMessages(initialMsgs.map(m =>
                            m.id === assistantId ? { ...m, content: accumulatedText } : m
                         ));
@@ -176,7 +184,7 @@ export default function Playground() {
 
       } catch (e: any) {
          setMessages(initialMsgs.map(m =>
-            m.id === assistantId ? { ...m, content: `Erro de conexão: ${e.message}` } : m
+            m.id === assistantId ? { ...m, content: `⚠️ Falha de conexão com o Playground: ${e.message}` } : m
          ));
       } finally {
          setLoading(false);

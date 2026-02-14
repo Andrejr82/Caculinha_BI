@@ -1,199 +1,199 @@
 ---
 name: red-team-tactics
-description: Princípios de táticas de red team baseados no MITRE ATT&CK. Fases de ataque, evasão de detecção, relatórios.
+description: Red team tactics principles based on MITRE ATT&CK. Attack phases, detection evasion, reporting.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Táticas de Red Team
+# Red Team Tactics
 
-> Princípios de simulação de adversário baseados no framework MITRE ATT&CK.
-
----
-
-## 1. Fases do MITRE ATT&CK
-
-### Ciclo de Vida do Ataque
-
-```
-RECONHECIMENTO → ACESSO INICIAL → EXECUÇÃO → PERSISTÊNCIA
-       ↓               ↓              ↓             ↓
-ESC. PRIVILÉGIO → EVASÃO DE DEFESA → ACESSO CRED → DESCOBERTA
-       ↓               ↓              ↓             ↓
-MOV. LATERAL → COLETA → C2 (COMANDO) → EXFILTRAÇÃO → IMPACTO
-```
-
-### Objetivos das Fases
-
-| Fase | Objetivo |
-|------|----------|
-| **Reconhecimento** | Mapear a superfície de ataque |
-| **Acesso Inicial** | Obter a primeira base (foothold) |
-| **Execução** | Rodar código no alvo |
-| **Persistência** | Sobreviver a reinicializações |
-| **Escalonamento de Privilégio** | Obter acesso admin/root |
-| **Evasão de Defesa** | Evitar detecção |
-| **Acesso a Credenciais** | Coletar credenciais |
-| **Descoberta** | Mapear a rede interna |
-| **Movimentação Lateral** | Espalhar-se para outros sistemas |
-| **Coleta** | Reunir dados do alvo |
-| **C2 (Comando e Controle)** | Manter canal de comando |
-| **Exfiltração** | Extrair os dados |
+> Adversary simulation principles based on MITRE ATT&CK framework.
 
 ---
 
-## 2. Princípios de Reconhecimento
+## 1. MITRE ATT&CK Phases
 
-### Passivo vs Ativo
+### Attack Lifecycle
 
-| Tipo | Trade-off |
+```
+RECONNAISSANCE → INITIAL ACCESS → EXECUTION → PERSISTENCE
+       ↓              ↓              ↓            ↓
+   PRIVILEGE ESC → DEFENSE EVASION → CRED ACCESS → DISCOVERY
+       ↓              ↓              ↓            ↓
+LATERAL MOVEMENT → COLLECTION → C2 → EXFILTRATION → IMPACT
+```
+
+### Phase Objectives
+
+| Phase | Objective |
+|-------|-----------|
+| **Recon** | Map attack surface |
+| **Initial Access** | Get first foothold |
+| **Execution** | Run code on target |
+| **Persistence** | Survive reboots |
+| **Privilege Escalation** | Get admin/root |
+| **Defense Evasion** | Avoid detection |
+| **Credential Access** | Harvest credentials |
+| **Discovery** | Map internal network |
+| **Lateral Movement** | Spread to other systems |
+| **Collection** | Gather target data |
+| **C2** | Maintain command channel |
+| **Exfiltration** | Extract data |
+
+---
+
+## 2. Reconnaissance Principles
+
+### Passive vs Active
+
+| Type | Trade-off |
 |------|-----------|
-| **Passivo** | Sem contato com o alvo, informações limitadas |
-| **Ativo** | Contato direto, maior risco de detecção |
+| **Passive** | No target contact, limited info |
+| **Active** | Direct contact, more detection risk |
 
-### Alvos de Informação
+### Information Targets
 
-| Categoria | Valor |
-|-----------|-------|
-| Stack tecnológica | Seleção do vetor de ataque |
-| Informação de funcionários | Engenharia social |
-| Faixas de rede | Escopo de escaneamento |
-| Terceiros | Ataque de cadeia de suprimentos |
+| Category | Value |
+|----------|-------|
+| Technology stack | Attack vector selection |
+| Employee info | Social engineering |
+| Network ranges | Scanning scope |
+| Third parties | Supply chain attack |
 
 ---
 
-## 3. Vetores de Acesso Inicial
+## 3. Initial Access Vectors
 
-### Critérios de Seleção
+### Selection Criteria
 
-| Vetor | Quando Usar |
+| Vector | When to Use |
+|--------|-------------|
+| **Phishing** | Human target, email access |
+| **Public exploits** | Vulnerable services exposed |
+| **Valid credentials** | Leaked or cracked |
+| **Supply chain** | Third-party access |
+
+---
+
+## 4. Privilege Escalation Principles
+
+### Windows Targets
+
+| Check | Opportunity |
 |-------|-------------|
-| **Phishing** | Alvo humano, acesso a e-mail |
-| **Exploits públicos** | Serviços vulneráveis expostos |
-| **Credenciais válidas** | Vazadas ou quebradas (cracked) |
-| **Cadeia de suprimentos**| Acesso via terceiro |
+| Unquoted service paths | Write to path |
+| Weak service permissions | Modify service |
+| Token privileges | Abuse SeDebug, etc. |
+| Stored credentials | Harvest |
+
+### Linux Targets
+
+| Check | Opportunity |
+|-------|-------------|
+| SUID binaries | Execute as owner |
+| Sudo misconfiguration | Command execution |
+| Kernel vulnerabilities | Kernel exploits |
+| Cron jobs | Writable scripts |
 
 ---
 
-## 4. Princípios de Escalonamento de Privilégio
+## 5. Defense Evasion Principles
 
-### Alvos Windows
+### Key Techniques
 
-| Verificação | Oportunidade |
-|-------------|--------------|
-| Unquoted service paths | Escrita no caminho do serviço |
-| Permissões de serviço fracas| Modificar o serviço |
-| Privilégios de token | Abusar de SeDebug, etc. |
-| Credenciais armazenadas | Coleta |
+| Technique | Purpose |
+|-----------|---------|
+| LOLBins | Use legitimate tools |
+| Obfuscation | Hide malicious code |
+| Timestomping | Hide file modifications |
+| Log clearing | Remove evidence |
 
-### Alvos Linux
+### Operational Security
 
-| Verificação | Oportunidade |
-|-------------|--------------|
-| Binários SUID | Executar como dono (owner) |
-| Configuração incorreta de Sudo| Execução de comando |
-| Vulnerabilidades de Kernel | Exploits de kernel |
-| Tarefas Cron | Scripts com permissão de escrita |
+- Work during business hours
+- Mimic legitimate traffic patterns
+- Use encrypted channels
+- Blend with normal behavior
 
 ---
 
-## 5. Princípios de Evasão de Defesa
+## 6. Lateral Movement Principles
 
-### Técnicas Chave
+### Credential Types
 
-| Técnica | Propósito |
-|---------|-----------|
-| LOLBins | Usar ferramentas legítimas do sistema |
-| Ofuscação | Esconder código malicioso |
-| Timestomping | Esconder modificações de arquivos |
-| Limpeza de logs | Remover evidências |
-
-### Segurança Operacional (OpSec)
-
-- Trabalhar durante o horário comercial
-- Imitar padrões de tráfego legítimos
-- Usar canais criptografados
-- Misturar-se com o comportamento normal
-
----
-
-## 6. Princípios de Movimentação Lateral
-
-### Tipos de Credenciais
-
-| Tipo | Uso |
+| Type | Use |
 |------|-----|
-| Senha | Autenticação padrão |
+| Password | Standard auth |
 | Hash | Pass-the-hash |
 | Ticket | Pass-the-ticket |
-| Certificado | Autenticação por certificado |
+| Certificate | Certificate auth |
 
-### Caminhos de Movimentação
+### Movement Paths
 
-- Compartilhamentos administrativos
-- Serviços remotos (RDP, SSH, WinRM)
-- Exploração de serviços internos
-
----
-
-## 7. Ataques ao Active Directory
-
-### Categorias de Ataque
-
-| Ataque | Alvo |
-|--------|------|
-| Kerberoasting | Senhas de contas de serviço |
-| AS-REP Roasting | Contas sem pré-auth |
-| DCSync | Credenciais de domínio |
-| Golden Ticket | Acesso persistente ao domínio |
+- Admin shares
+- Remote services (RDP, SSH, WinRM)
+- Exploitation of internal services
 
 ---
 
-## 8. Princípios de Relatório
+## 7. Active Directory Attacks
 
-### Narrativa de Ataque
+### Attack Categories
 
-Documente a cadeia de ataque completa:
-1. Como o acesso inicial foi obtido
-2. Quais técnicas foram usadas
-3. Quais objetivos foram alcançados
-4. Onde a detecção falhou
-
-### Lacunas de Detecção
-
-Para cada técnica bem-sucedida:
-- O que deveria ter detectado isso?
-- Por que a detecção não funcionou?
-- Como melhorar a detecção.
+| Attack | Target |
+|--------|--------|
+| Kerberoasting | Service account passwords |
+| AS-REP Roasting | Accounts without pre-auth |
+| DCSync | Domain credentials |
+| Golden Ticket | Persistent domain access |
 
 ---
 
-## 9. Fronteiras Éticas
+## 8. Reporting Principles
 
-### Sempre
+### Attack Narrative
 
-- Fique dentro do escopo
-- Minimize o impacto
-- Reporte imediatamente se encontrar uma ameaça real
-- Documente todas as ações
+Document the full attack chain:
+1. How initial access was gained
+2. What techniques were used
+3. What objectives were achieved
+4. Where detection failed
 
-### Nunca
+### Detection Gaps
 
-- Destrua dados de produção
-- Cause negação de serviço (a menos que esteja no escopo)
-- Acesse além da prova de conceito
-- Retenha dados sensíveis
-
----
-
-## 10. Anti-Padrões
-
-| ❌ NÃO FAÇA | ✅ FAÇA |
-|-------------|---------|
-| Apressar a exploração | Siga a metodologia |
-| Causar danos | Minimize o impacto |
-| Pular o relatório | Documente tudo |
-| Ignorar o escopo | Fique dentro dos limites |
+For each successful technique:
+- What should have detected it?
+- Why didn't detection work?
+- How to improve detection
 
 ---
 
-> **Lembre-se:** O red team simula atacantes para melhorar as defesas, não para causar danos.
+## 9. Ethical Boundaries
+
+### Always
+
+- Stay within scope
+- Minimize impact
+- Report immediately if real threat found
+- Document all actions
+
+### Never
+
+- Destroy production data
+- Cause denial of service (unless scoped)
+- Access beyond proof of concept
+- Retain sensitive data
+
+---
+
+## 10. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Rush to exploitation | Follow methodology |
+| Cause damage | Minimize impact |
+| Skip reporting | Document everything |
+| Ignore scope | Stay within boundaries |
+
+---
+
+> **Remember:** Red team simulates attackers to improve defenses, not to cause harm.

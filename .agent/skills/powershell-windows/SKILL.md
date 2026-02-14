@@ -1,167 +1,167 @@
 ---
 name: powershell-windows
-description: Padrões do PowerShell Windows. Armadilhas críticas, sintaxe de operadores, tratamento de erros.
+description: PowerShell Windows patterns. Critical pitfalls, operator syntax, error handling.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Padrões de PowerShell Windows
+# PowerShell Windows Patterns
 
-> Padrões críticos e armadilhas para o Windows PowerShell.
+> Critical patterns and pitfalls for Windows PowerShell.
 
 ---
 
-## 1. Regras de Sintaxe de Operadores
+## 1. Operator Syntax Rules
 
-### CRÍTICO: Parênteses Obrigatórios
+### CRITICAL: Parentheses Required
 
-| ❌ Errado | ✅ Correto |
-|-----------|------------|
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
 | `if (Test-Path "a" -or Test-Path "b")` | `if ((Test-Path "a") -or (Test-Path "b"))` |
 | `if (Get-Item $x -and $y -eq 5)` | `if ((Get-Item $x) -and ($y -eq 5))` |
 
-**Regra:** Cada chamada de cmdlet DEVE estar entre parênteses ao usar operadores lógicos.
+**Rule:** Each cmdlet call MUST be in parentheses when using logical operators.
 
 ---
 
-## 2. Restrição de Unicode/Emoji
+## 2. Unicode/Emoji Restriction
 
-### CRÍTICO: Sem Unicode em Scripts
+### CRITICAL: No Unicode in Scripts
 
-| Propósito | ❌ Não Use | ✅ Use |
-|-----------|------------|--------|
-| Sucesso | ✅ ✓ | [OK] [+] |
-| Erro | ❌ ✗ 🔴 | [!] [X] |
-| Aviso (Warning) | ⚠️ 🟡 | [*] [WARN] |
+| Purpose | ❌ Don't Use | ✅ Use |
+|---------|-------------|--------|
+| Success | ✅ ✓ | [OK] [+] |
+| Error | ❌ ✗ 🔴 | [!] [X] |
+| Warning | ⚠️ 🟡 | [*] [WARN] |
 | Info | ℹ️ 🔵 | [i] [INFO] |
-| Progresso | ⏳ | [...] |
+| Progress | ⏳ | [...] |
 
-**Regra:** Use apenas caracteres ASCII em scripts do PowerShell.
+**Rule:** Use ASCII characters only in PowerShell scripts.
 
 ---
 
-## 3. Padrões de Verificação de Nulo
+## 3. Null Check Patterns
 
-### Sempre Verifique Antes de Acessar
+### Always Check Before Access
 
-| ❌ Errado | ✅ Correto |
-|-----------|------------|
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
 | `$array.Count -gt 0` | `$array -and $array.Count -gt 0` |
-| `$texto.Length` | `if ($texto) { $texto.Length }` |
+| `$text.Length` | `if ($text) { $text.Length }` |
 
 ---
 
-## 4. Interpolação de Strings
+## 4. String Interpolation
 
-### Expressões Complexas
+### Complex Expressions
 
-| ❌ Errado | ✅ Correto |
-|-----------|------------|
-| `"Valor: $($obj.prop.sub)"` | Armazene na variável primeiro |
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
+| `"Value: $($obj.prop.sub)"` | Store in variable first |
 
-**Padrão:**
-```powershell
-$valor = $obj.prop.sub
-Write-Output "Valor: $valor"
+**Pattern:**
+```
+$value = $obj.prop.sub
+Write-Output "Value: $value"
 ```
 
 ---
 
-## 5. Tratamento de Erros
+## 5. Error Handling
 
 ### ErrorActionPreference
 
-| Valor | Uso |
+| Value | Use |
 |-------|-----|
-| Stop | Desenvolvimento (falhe rápido) |
-| Continue | Scripts de produção |
-| SilentlyContinue | Quando erros são esperados |
+| Stop | Development (fail fast) |
+| Continue | Production scripts |
+| SilentlyContinue | When errors expected |
 
-### Padrão Try/Catch
+### Try/Catch Pattern
 
-- Não use return dentro do bloco try
-- Use o bloco finally para limpeza (cleanup)
-- Retorne após o try/catch
-
----
-
-## 6. Caminhos de Arquivo (File Paths)
-
-### Regras de Caminho no Windows
-
-| Padrão | Uso |
-|--------|-----|
-| Caminho literal | `C:\Users\Usuario\arquivo.txt` |
-| Caminho variável | `Join-Path $env:USERPROFILE "arquivo.txt"` |
-| Relativo | `Join-Path $ScriptDir "dados"` |
-
-**Regra:** Use Join-Path para segurança entre plataformas.
+- Don't return inside try block
+- Use finally for cleanup
+- Return after try/catch
 
 ---
 
-## 7. Operações com Array
+## 6. File Paths
 
-### Padrões Corretos
+### Windows Path Rules
 
-| Operação | Sintaxe |
-|----------|---------|
-| Array vazio | `$array = @()` |
-| Adicionar item | `$array += $item` |
+| Pattern | Use |
+|---------|-----|
+| Literal path | `C:\Users\User\file.txt` |
+| Variable path | `Join-Path $env:USERPROFILE "file.txt"` |
+| Relative | `Join-Path $ScriptDir "data"` |
+
+**Rule:** Use Join-Path for cross-platform safety.
+
+---
+
+## 7. Array Operations
+
+### Correct Patterns
+
+| Operation | Syntax |
+|-----------|--------|
+| Empty array | `$array = @()` |
+| Add item | `$array += $item` |
 | ArrayList add | `$list.Add($item) | Out-Null` |
 
 ---
 
-## 8. Operações JSON
+## 8. JSON Operations
 
-### CRÍTICO: Parâmetro Depth
+### CRITICAL: Depth Parameter
 
-| ❌ Errado | ✅ Correto |
-|-----------|------------|
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
 | `ConvertTo-Json` | `ConvertTo-Json -Depth 10` |
 
-**Regra:** Sempre especifique `-Depth` para objetos aninhados.
+**Rule:** Always specify `-Depth` for nested objects.
 
-### Operações de Arquivo
+### File Operations
 
-| Operação | Padrão |
-|----------|--------|
-| Ler | `Get-Content "arquivo.json" -Raw | ConvertFrom-Json` |
-| Escrever | `$dados | ConvertTo-Json -Depth 10 | Out-File "arquivo.json" -Encoding UTF8` |
-
----
-
-## 9. Erros Comuns
-
-| Mensagem de Erro | Causa | Correção |
-|------------------|-------|----------|
-| "parameter 'or'" | Falta de parênteses | Envolva os cmdlets em () |
-| "Unexpected token"| Caractere Unicode | Use apenas ASCII |
-| "Cannot find property" | Objeto nulo | Verifique nulo primeiro |
-| "Cannot convert" | Tipo incompatível | Use .ToString() |
+| Operation | Pattern |
+|-----------|---------|
+| Read | `Get-Content "file.json" -Raw | ConvertFrom-Json` |
+| Write | `$data | ConvertTo-Json -Depth 10 | Out-File "file.json" -Encoding UTF8` |
 
 ---
 
-## 10. Template de Script
+## 9. Common Errors
+
+| Error Message | Cause | Fix |
+|---------------|-------|-----|
+| "parameter 'or'" | Missing parentheses | Wrap cmdlets in () |
+| "Unexpected token" | Unicode character | Use ASCII only |
+| "Cannot find property" | Null object | Check null first |
+| "Cannot convert" | Type mismatch | Use .ToString() |
+
+---
+
+## 10. Script Template
 
 ```powershell
-# Modo estrito
+# Strict mode
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Continue"
 
-# Caminhos
+# Paths
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Principal
+# Main
 try {
-    # Lógica aqui
-    Write-Output "[OK] Concluído"
+    # Logic here
+    Write-Output "[OK] Done"
     exit 0
 }
 catch {
-    Write-Warning "Erro: $_"
+    Write-Warning "Error: $_"
     exit 1
 }
 ```
 
 ---
 
-> **Lembre-se:** O PowerShell tem regras de sintaxe únicas. Parênteses, caracteres apenas ASCII e verificações de nulo são inegociáveis.
+> **Remember:** PowerShell has unique syntax rules. Parentheses, ASCII-only, and null checks are non-negotiable.

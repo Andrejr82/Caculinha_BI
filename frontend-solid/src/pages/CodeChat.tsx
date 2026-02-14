@@ -1,6 +1,6 @@
 import { createSignal, For, Show, onMount, createEffect, onCleanup } from 'solid-js';
 import { Code, Send, Trash2, FileCode, Database, Zap, Clock, Info, BookOpen, Search, ChevronDown, ChevronRight, Loader2, StopCircle } from 'lucide-solid';
-import api from '../lib/api';
+import { codeChatApi, authApi } from '../lib/api';
 import auth from '@/store/auth'; // Import auth store
 import { MessageActions } from '../components/MessageActions';
 import 'github-markdown-css/github-markdown.css';
@@ -24,6 +24,7 @@ interface CodeReference {
 
 interface IndexStats {
   status: string;
+  reason?: string;
   total_files: number;
   total_functions: number;
   total_classes: number;
@@ -38,7 +39,7 @@ export default function CodeChat() {
   const [loading, setLoading] = createSignal(false);
   const [indexStats, setIndexStats] = createSignal<IndexStats | null>(null);
   const [examplesExpanded, setExamplesExpanded] = createSignal(true);
-  
+
   // Streaming states
   const [currentStatus, setCurrentStatus] = createSignal<string>('');
   const [eventSource, setEventSource] = createSignal<EventSource | null>(null);
@@ -68,18 +69,31 @@ export default function CodeChat() {
   onMount(async () => {
     // Load index stats
     try {
-      const response = await api.get('/code-chat/stats');
+      const response = await codeChatApi.getStats();
       setIndexStats(response.data);
-      
-      // Welcome message
-      const welcomeMsg: Message = {
-        id: '0',
-        role: 'assistant',
-        content: `🤖 **Olá! Sou seu Agente Fullstack de Código.**\n\nPosso responder qualquer pergunta sobre este projeto:\n\n- 📁 **${response.data.total_files.toLocaleString()}** arquivos indexados\n- 📝 **${response.data.total_functions.toLocaleString()}** funções\n- 🏗️ **${response.data.total_classes.toLocaleString()}** classes\n- 💻 **${response.data.languages.join(', ')}**\n\nFaça uma pergunta sobre o código!`,
-        timestamp: new Date().toISOString()
-      };
-      setMessages([welcomeMsg]);
-      
+
+      if (response.data.status === 'ready') {
+        const welcomeMsg: Message = {
+          id: '0',
+          role: 'assistant',
+          content: `🤖 **Olá! Sou seu Agente Fullstack de Código.**\n\nPosso responder qualquer pergunta sobre este projeto:\n\n- 📁 **${response.data.total_files.toLocaleString()}** arquivos indexados\n- 📝 **${response.data.total_functions.toLocaleString()}** funções\n- 🏗️ **${response.data.total_classes.toLocaleString()}** classes\n- 💻 **${response.data.languages.join(', ')}**\n\nFaça uma pergunta sobre o código!`,
+          timestamp: new Date().toISOString()
+        };
+        setMessages([welcomeMsg]);
+      } else {
+        const reason = response.data.reason || 'index_missing';
+        const reasonText =
+          reason === 'gemini_api_key_missing'
+            ? 'Configure `GEMINI_API_KEY` para ativar o Code Chat.'
+            : 'Execute `python scripts/index_codebase.py` para gerar o índice de código.';
+        setMessages([{
+          id: '0',
+          role: 'assistant',
+          content: `⚠️ **Code Chat indisponível no momento**\n\n${reasonText}\n\nAssim que o índice estiver pronto, eu volto a responder perguntas sobre arquitetura, APIs e autenticação.`,
+          timestamp: new Date().toISOString()
+        }]);
+      }
+
     } catch (error: any) {
       console.error('Erro ao carregar stats:', error);
       const errorMsg: Message = {
@@ -110,12 +124,12 @@ export default function CodeChat() {
       setEventSource(null);
       setLoading(false);
       setCurrentStatus('');
-      
+
       // Add cancellation note
       setMessages(prev => {
         const last = prev[prev.length - 1];
         if (last.role === 'assistant') {
-           return [...prev.slice(0, -1), { ...last, content: last.content + '\n\n_[Geração interrompida]_', isStreaming: false }];
+          return [...prev.slice(0, -1), { ...last, content: last.content + '\n\n_[Geração interrompida]_', isStreaming: false }];
         }
         return prev;
       });
@@ -125,6 +139,15 @@ export default function CodeChat() {
   const sendMessage = async (e?: Event) => {
     e?.preventDefault();
     if (!input().trim() || loading()) return;
+    if (indexStats() && indexStats()!.status !== 'ready') {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '⚠️ Code Chat ainda não está pronto.\n\nGere o índice com `python scripts/index_codebase.py` e tente novamente.',
+        timestamp: new Date().toISOString()
+      }]);
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -149,11 +172,34 @@ export default function CodeChat() {
       isStreaming: true
     }]);
 
+    // Proactive Token Refresh: Garantir que o token não expire durante o stream.
     try {
-      const token = auth.token();
+      await authApi.getMe();
+    } catch (e) {
+      console.warn("⚠️ Falha ao validar/renovar token antes do stream:", e);
+      setLoading(false);
+      setCurrentStatus('Erro na autenticação');
+      return;
+    }
+
+    const token = sessionStorage.getItem('token') || auth.token();
+
+    try {
       if (!token) throw new Error("Not authenticated");
 
-      const es = new EventSource(`/api/v1/code-chat/stream?q=${encodeURIComponent(prompt)}&token=${encodeURIComponent(token)}`);
+      // Auth Hardening: Pass token in query param for SSE
+      const currentToken = sessionStorage.getItem('token');
+      if (!currentToken) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: '⚠️ Sessão inválida. Faça login novamente para continuar.',
+          timestamp: new Date().toISOString()
+        }]);
+        setLoading(false);
+        return;
+      }
+      const es = new EventSource(`/api/v1/code-chat/stream?q=${encodeURIComponent(prompt)}&token=${encodeURIComponent(currentToken)}`);
       setEventSource(es);
 
       es.onmessage = (event) => {
@@ -161,45 +207,47 @@ export default function CodeChat() {
           const data = JSON.parse(event.data);
 
           if (data.type === 'progress') {
-             setCurrentStatus(data.message);
+            setCurrentStatus(data.message);
           } else if (data.type === 'references') {
-             setMessages(prev => prev.map(msg => 
-               msg.id === assistantId ? { ...msg, code_references: data.references } : msg
-             ));
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId ? { ...msg, code_references: data.references } : msg
+            ));
           } else if (data.type === 'token') {
-             setMessages(prev => prev.map(msg => 
-               msg.id === assistantId ? { ...msg, content: msg.content + data.text } : msg
-             ));
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId ? { ...msg, content: msg.content + data.text } : msg
+            ));
           } else if (data.type === 'done') {
-             setLoading(false);
-             setCurrentStatus('');
-             setMessages(prev => prev.map(msg => 
-               msg.id === assistantId ? { ...msg, isStreaming: false } : msg
-             ));
-             es.close();
-             setEventSource(null);
+            setLoading(false);
+            setCurrentStatus('');
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId ? { ...msg, isStreaming: false } : msg
+            ));
+            es.close();
+            setEventSource(null);
           } else if (data.type === 'error') {
-             throw new Error(data.content);
+            throw new Error(data.content);
           }
-          
+
         } catch (err) {
-           console.error("SSE Error:", err);
-           setMessages(prev => prev.map(msg => 
-               msg.id === assistantId ? { ...msg, content: msg.content + `\n\n❌ Erro: ${err}` } : msg
-           ));
-           es.close();
-           setLoading(false);
+          console.error("SSE Error:", err);
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantId
+              ? { ...msg, content: msg.content + `\n\n⚠️ Não foi possível concluir a análise de código. Detalhe: ${err}` }
+              : msg
+          ));
+          es.close();
+          setLoading(false);
         }
       };
 
       es.onerror = (err) => {
-         console.error("SSE Connection Error:", err);
-         es.close();
-         setLoading(false);
-         setEventSource(null);
-         setMessages(prev => prev.map(msg => 
-            msg.id === assistantId ? { ...msg, isStreaming: false } : msg
-         ));
+        console.error("SSE Connection Error:", err);
+        es.close();
+        setLoading(false);
+        setEventSource(null);
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantId ? { ...msg, isStreaming: false } : msg
+        ));
       };
 
     } catch (error: any) {
@@ -274,11 +322,10 @@ export default function CodeChat() {
               {(message) => (
                 <div class={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
                   <div
-                    class={`max-w-[85%] rounded-2xl p-5 shadow-sm ${
-                      message.role === 'user'
-                        ? 'bg-primary/10 border border-primary/20 text-foreground rounded-tr-none'
-                        : 'bg-card border text-card-foreground rounded-tl-none'
-                    }`}
+                    class={`max-w-[85%] rounded-2xl p-5 shadow-sm ${message.role === 'user'
+                      ? 'bg-primary/10 border border-primary/20 text-foreground rounded-tr-none'
+                      : 'bg-card border text-card-foreground rounded-tl-none'
+                      }`}
                   >
                     <div class="flex items-center gap-2 mb-2 opacity-70 border-b border-border/10 pb-2">
                       <span class="text-xs font-bold uppercase tracking-wider">
@@ -326,10 +373,10 @@ export default function CodeChat() {
             <Show when={loading()}>
               <div class="flex justify-start">
                 <div class="bg-card border rounded-2xl rounded-tl-none p-4 flex items-center gap-3">
-                   {/* Thought Process Indicator */}
+                  {/* Thought Process Indicator */}
                   <div class="flex items-center gap-2 text-xs text-muted font-medium animate-pulse">
-                     <Loader2 size={14} class="animate-spin text-primary" />
-                     {currentStatus() || 'Processando...'}
+                    <Loader2 size={14} class="animate-spin text-primary" />
+                    {currentStatus() || 'Processando...'}
                   </div>
                 </div>
               </div>
@@ -361,21 +408,21 @@ export default function CodeChat() {
               </div>
 
               <Show when={loading()} fallback={
-                  <button
-                    type="submit"
-                    class="btn btn-primary shadow-md hover:shadow-lg transition-all"
-                    disabled={!input().trim()}
-                  >
-                    <Send size={20} />
-                  </button>
+                <button
+                  type="submit"
+                  class="btn btn-primary shadow-md hover:shadow-lg transition-all"
+                  disabled={!input().trim()}
+                >
+                  <Send size={20} />
+                </button>
               }>
-                 <button
-                    type="button"
-                    onClick={stopGeneration}
-                    class="btn btn-destructive shadow-md hover:shadow-lg transition-all"
-                  >
-                    <StopCircle size={20} />
-                  </button>
+                <button
+                  type="button"
+                  onClick={stopGeneration}
+                  class="btn btn-destructive shadow-md hover:shadow-lg transition-all"
+                >
+                  <StopCircle size={20} />
+                </button>
               </Show>
             </form>
           </div>
@@ -445,7 +492,7 @@ export default function CodeChat() {
                 Dicas de Uso
               </div>
               <p class="text-xs text-muted leading-relaxed">
-                Faça perguntas específicas sobre o código, arquitetura, ou funcionalidades. 
+                Faça perguntas específicas sobre o código, arquitetura, ou funcionalidades.
                 O agente busca semanticamente em todo o projeto e fornece respostas contextualizadas.
               </p>
             </div>

@@ -1,103 +1,103 @@
 ---
-description: Comando de depuração. Ativa o modo DEBUG para investigação sistemática de problemas.
+description: Debugging command. Activates DEBUG mode for systematic problem investigation.
 ---
 
-# /debug - Investigação Sistemática de Problemas
+# /debug - Systematic Problem Investigation
 
 $ARGUMENTS
 
 ---
 
-## Propósito
+## Purpose
 
-Este comando ativa o modo DEBUG para investigação sistemática de problemas, erros ou comportamentos inesperados.
-
----
-
-## Comportamento
-
-Quando o `/debug` é acionado:
-
-1. **Coletar informações**
-   - Mensagem de erro
-   - Passos para reprodução
-   - Comportamento esperado vs real
-   - Mudanças recentes
-
-2. **Formular hipóteses**
-   - Listar causas possíveis
-   - Ordenar por probabilidade
-
-3. **Investigar sistematicamente**
-   - Testar cada hipótese
-   - Verificar logs, fluxo de dados
-   - Usar método de eliminação
-
-4. **Corrigir e prevenir**
-   - Aplicar correção
-   - Explicar a causa raiz
-   - Adicionar medidas de prevenção
+This command activates DEBUG mode for systematic investigation of issues, errors, or unexpected behavior.
 
 ---
 
-## Formato de Saída
+## Behavior
+
+When `/debug` is triggered:
+
+1. **Gather information**
+   - Error message
+   - Reproduction steps
+   - Expected vs actual behavior
+   - Recent changes
+
+2. **Form hypotheses**
+   - List possible causes
+   - Order by likelihood
+
+3. **Investigate systematically**
+   - Test each hypothesis
+   - Check logs, data flow
+   - Use elimination method
+
+4. **Fix and prevent**
+   - Apply fix
+   - Explain root cause
+   - Add prevention measures
+
+---
+
+## Output Format
 
 ```markdown
-## 🔍 Debug: [Problema]
+## 🔍 Debug: [Issue]
 
-### 1. Sintoma
-[O que está acontecendo]
+### 1. Symptom
+[What's happening]
 
-### 2. Informações Coletadas
-- Erro: `[mensagem de erro]`
-- Arquivo: `[caminho_do_arquivo]`
-- Linha: [número da linha]
+### 2. Information Gathered
+- Error: `[error message]`
+- File: `[filepath]`
+- Line: [line number]
 
-### 3. Hipóteses
-1. ❓ [Causa mais provável]
-2. ❓ [Segunda possibilidade]
-3. ❓ [Causa menos provável]
+### 3. Hypotheses
+1. ❓ [Most likely cause]
+2. ❓ [Second possibility]
+3. ❓ [Less likely cause]
 
-### 4. Investigação
+### 4. Investigation
 
-**Testando hipótese 1:**
-[O que eu verifiquei] → [Resultado]
+**Testing hypothesis 1:**
+[What I checked] → [Result]
 
-**Testando hipótese 2:**
-[O que eu verifiquei] → [Resultado]
+**Testing hypothesis 2:**
+[What I checked] → [Result]
 
-### 5. Causa Raiz
-🎯 **[Explicação de por que isso aconteceu]**
+### 5. Root Cause
+🎯 **[Explanation of why this happened]**
 
-### 6. Correção
-```[linguagem]
-// Antes
-[código quebrado]
+### 6. Fix
+```[language]
+// Before
+[broken code]
 
-// Depois
-[código corrigido]
+// After
+[fixed code]
 ```
 
-### 7. Prevenção
-🛡️ [Como prevenir isso no futuro]
-```
-
----
-
-## Exemplos
-
-```
-/debug login não funciona
-/debug API retorna 500
-/debug formulário não envia
-/debug dados não estão salvando
+### 7. Prevention
+🛡️ [How to prevent this in the future]
 ```
 
 ---
 
-## Princípios Chave
+## Examples
 
-- **Pergunte antes de assumir** - obtenha o contexto completo do erro
-- **Teste hipóteses** - não adivinhe aleatoriamente
-- **Explique o porquê** - não apenas o que corrigir
-- **Previna a recorrência** - adicione testes, validação
+```
+/debug login not working
+/debug API returns 500
+/debug form doesn't submit
+/debug data not saving
+```
+
+---
+
+## Key Principles
+
+- **Ask before assuming** - get full error context
+- **Test hypotheses** - don't guess randomly
+- **Explain why** - not just what to fix
+- **Prevent recurrence** - add tests, validation

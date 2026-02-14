@@ -1,165 +1,175 @@
 ---
 name: parallel-agents
-description: Padrões de orquestração multi-agente. Use quando múltiplas tarefas independentes podem ser executadas com diferentes conhecimentos de domínio ou quando uma análise abrangente exige múltiplas perspectivas.
+description: Multi-agent orchestration patterns. Use when multiple independent tasks can run with different domain expertise or when comprehensive analysis requires multiple perspectives.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Agentes Paralelos Nativos
+# Native Parallel Agents
 
-> Orquestração através da ferramenta de Agente integrada do Antigravity.
+> Orchestration through Antigravity's built-in Agent Tool
 
----
+## Overview
 
-## Visão Geral
+This skill enables coordinating multiple specialized agents through Antigravity's native agent system. Unlike external scripts, this approach keeps all orchestration within Antigravity's control.
 
-Esta skill permite coordenar múltiplos agentes especializados através do sistema nativo de agentes. Ao contrário de scripts externos, esta abordagem mantém toda a orquestração sob o controle do Antigravity.
+## When to Use Orchestration
 
----
+✅ **Good for:**
+- Complex tasks requiring multiple expertise domains
+- Code analysis from security, performance, and quality perspectives
+- Comprehensive reviews (architecture + security + testing)
+- Feature implementation needing backend + frontend + database work
 
-## Quando Usar Orquestração
-
-✅ **Bom para:**
-- Tarefas complexas que exigem múltiplos domínios de especialização
-- Análise de código sob as perspectivas de segurança, performance e qualidade
-- Revisões abrangentes (arquitetura + segurança + testes)
-- Implementação de recursos que precisam de trabalho em backend + frontend + banco de dados
-
-❌ **Não indicado para:**
-- Tarefas simples de domínio único
-- Correções rápidas ou pequenas mudanças
-- Tarefas onde um único agente é suficiente
+❌ **Not for:**
+- Simple, single-domain tasks
+- Quick fixes or small changes
+- Tasks where one agent suffices
 
 ---
 
-## Invocação de Agente Nativo
+## Native Agent Invocation
 
-### Agente Único
+### Single Agent
 ```
-Use o agente security-auditor para revisar a autenticação
-```
-
-### Cadeia Sequencial
-```
-Primeiro, use o explorer-agent para descobrir a estrutura do projeto.
-Depois, use o backend-specialist para revisar os endpoints da API.
-Finalmente, use o test-engineer para identificar lacunas nos testes.
+Use the security-auditor agent to review authentication
 ```
 
-### Com Passagem de Contexto
+### Sequential Chain
 ```
-Use o frontend-specialist para analisar os componentes React.
-Com base nessas descobertas, peça ao test-engineer para gerar testes de componente.
+First, use the explorer-agent to discover project structure.
+Then, use the backend-specialist to review API endpoints.
+Finally, use the test-engineer to identify test gaps.
 ```
 
-### Retomar Trabalho Anterior
+### With Context Passing
 ```
-Retome o agente [agentId] e continue com requisitos adicionais.
+Use the frontend-specialist to analyze React components.
+Based on those findings, have the test-engineer generate component tests.
+```
+
+### Resume Previous Work
+```
+Resume agent [agentId] and continue with additional requirements.
 ```
 
 ---
 
-## Padrões de Orquestração
+## Orchestration Patterns
 
-### Padrão 1: Análise Abrangente
+### Pattern 1: Comprehensive Analysis
 ```
-Agentes: explorer-agent → [agentes de domínio] → síntese
+Agents: explorer-agent → [domain-agents] → synthesis
 
-1. explorer-agent: Mapear estrutura da base de código
-2. security-auditor: Postura de segurança
-3. backend-specialist: Qualidade da API
-4. frontend-specialist: Padrões de UI/UX
-5. test-engineer: Cobertura de testes
-6. Sintetizar todas as descobertas
-```
-
-### Padrão 2: Revisão de Funcionalidade (Feature)
-```
-Agentes: agentes de domínio afetados → test-engineer
-
-1. Identificar domínios afetados (backend? frontend? ambos?)
-2. Invocar agentes de domínio relevantes
-3. test-engineer verifica as mudanças
-4. Sintetizar recomendações
+1. explorer-agent: Map codebase structure
+2. security-auditor: Security posture
+3. backend-specialist: API quality
+4. frontend-specialist: UI/UX patterns
+5. test-engineer: Test coverage
+6. Synthesize all findings
 ```
 
-### Padrão 3: Auditoria de Segurança
+### Pattern 2: Feature Review
 ```
-Agentes: security-auditor → penetration-tester → síntese
+Agents: affected-domain-agents → test-engineer
 
-1. security-auditor: Revisão de configuração e código
-2. penetration-tester: Testes ativos de vulnerabilidade
-3. Sintetizar com remediação priorizada
+1. Identify affected domains (backend? frontend? both?)
+2. Invoke relevant domain agents
+3. test-engineer verifies changes
+4. Synthesize recommendations
+```
+
+### Pattern 3: Security Audit
+```
+Agents: security-auditor → penetration-tester → synthesis
+
+1. security-auditor: Configuration and code review
+2. penetration-tester: Active vulnerability testing
+3. Synthesize with prioritized remediation
 ```
 
 ---
 
-## Agentes Disponíveis
+## Available Agents
 
-| Agente | Especialidade | Frases de Gatilho |
-|--------|---------------|-------------------|
-| `orchestrator` | Coordenação | "abrangente", "multi-perspectiva" |
-| `security-auditor` | Segurança | "segurança", "auth", "vulnerabilidades" |
-| `penetration-tester` | Testes de Segurança | "pentest", "red team", "exploit" |
-| `backend-specialist` | Backend | "API", "servidor", "Node.js", "Express" |
-| `frontend-specialist` | Frontend | "React", "UI", "componentes", "Next.js" |
-| `test-engineer` | Testes | "testes", "cobertura", "TDD" |
-| `devops-engineer` | DevOps | "deploy", "CI/CD", "infraestrutura" |
-| `database-architect` | Banco de Dados | "schema", "Prisma", "migrações" |
+| Agent | Expertise | Trigger Phrases |
+|-------|-----------|-----------------|
+| `orchestrator` | Coordination | "comprehensive", "multi-perspective" |
+| `security-auditor` | Security | "security", "auth", "vulnerabilities" |
+| `penetration-tester` | Security Testing | "pentest", "red team", "exploit" |
+| `backend-specialist` | Backend | "API", "server", "Node.js", "Express" |
+| `frontend-specialist` | Frontend | "React", "UI", "components", "Next.js" |
+| `test-engineer` | Testing | "tests", "coverage", "TDD" |
+| `devops-engineer` | DevOps | "deploy", "CI/CD", "infrastructure" |
+| `database-architect` | Database | "schema", "Prisma", "migrations" |
 | `mobile-developer` | Mobile | "React Native", "Flutter", "mobile" |
-| `api-designer` | Design de API | "REST", "GraphQL", "OpenAPI" |
-| `debugger` | Depuração | "bug", "erro", "não funciona" |
-| `explorer-agent` | Descoberta | "explorar", "mapear", "estrutura" |
-| `documentation-writer` | Documentação | "escrever docs", "criar README" |
-| `performance-optimizer`| Performance | "lento", "otimizar", "profiling" |
-| `project-planner` | Planejamento | "planejar", "roadmap", "marcos" |
-| `seo-specialist` | SEO | "SEO", "meta tags", "ranking de busca" |
-| `game-developer` | Jogos | "jogo", "Unity", "Godot", "Phaser" |
+| `api-designer` | API Design | "REST", "GraphQL", "OpenAPI" |
+| `debugger` | Debugging | "bug", "error", "not working" |
+| `explorer-agent` | Discovery | "explore", "map", "structure" |
+| `documentation-writer` | Documentation | "write docs", "create README", "generate API docs" |
+| `performance-optimizer` | Performance | "slow", "optimize", "profiling" |
+| `project-planner` | Planning | "plan", "roadmap", "milestones" |
+| `seo-specialist` | SEO | "SEO", "meta tags", "search ranking" |
+| `game-developer` | Game Development | "game", "Unity", "Godot", "Phaser" |
 
 ---
 
-## Protocolo de Síntese
+## Antigravity Built-in Agents
 
-Após a conclusão de todos os agentes, sintetize:
+These work alongside custom agents:
+
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| **Explore** | Haiku | Fast read-only codebase search |
+| **Plan** | Sonnet | Research during plan mode |
+| **General-purpose** | Sonnet | Complex multi-step modifications |
+
+Use **Explore** for quick searches, **custom agents** for domain expertise.
+
+---
+
+## Synthesis Protocol
+
+After all agents complete, synthesize:
 
 ```markdown
-## Síntese de Orquestração
+## Orchestration Synthesis
 
-### Resumo da Tarefa
-[O que foi realizado]
+### Task Summary
+[What was accomplished]
 
-### Contribuições dos Agentes
-| Agente | Descoberta |
-|--------|------------|
-| security-auditor | Encontrou X |
-| backend-specialist | Identificou Y |
+### Agent Contributions
+| Agent | Finding |
+|-------|---------|
+| security-auditor | Found X |
+| backend-specialist | Identified Y |
 
-### Recomendações Consolidadas
-1. **Crítico**: [Problema do Agente A]
-2. **Importante**: [Problema do Agente B]
-3. **Desejável**: [Melhoria do Agente C]
+### Consolidated Recommendations
+1. **Critical**: [Issue from Agent A]
+2. **Important**: [Issue from Agent B]
+3. **Nice-to-have**: [Enhancement from Agent C]
 
-### Itens de Ação
-- [ ] Corrigir problema crítico de segurança
-- [ ] Refatorar endpoint de API
-- [ ] Adicionar testes ausentes
+### Action Items
+- [ ] Fix critical security issue
+- [ ] Refactor API endpoint
+- [ ] Add missing tests
 ```
 
 ---
 
-## Melhores Práticas
+## Best Practices
 
-1. **Agentes disponíveis** - 17 agentes especializados podem ser orquestrados
-2. **Ordem lógica** - Descoberta → Análise → Implementação → Testes
-3. **Compartilhar contexto** - Passe as descobertas relevantes para os agentes subsequentes
-4. **Síntese única** - Um relatório unificado, não saídas separadas
-5. **Verificar mudanças** - Sempre inclua o `test-engineer` para modificações de código
+1. **Available agents** - 17 specialized agents can be orchestrated
+2. **Logical order** - Discovery → Analysis → Implementation → Testing
+3. **Share context** - Pass relevant findings to subsequent agents
+4. **Single synthesis** - One unified report, not separate outputs
+5. **Verify changes** - Always include test-engineer for code modifications
 
 ---
 
-## Benefícios Chave
+## Key Benefits
 
-- ✅ **Sessão única** - Todos os agentes compartilham o mesmo contexto
-- ✅ **Controlado por IA** - O Antigravity orquestra de forma autônoma
-- ✅ **Integração nativa** - Funciona com agentes integrados de Exploração e Plano
-- ✅ **Suporte a retomada** - Pode continuar o trabalho de agentes anteriores
-- ✅ **Passagem de contexto** - As descobertas fluem entre os agentes
+- ✅ **Single session** - All agents share context
+- ✅ **AI-controlled** - Claude orchestrates autonomously
+- ✅ **Native integration** - Works with built-in Explore, Plan agents
+- ✅ **Resume support** - Can continue previous agent work
+- ✅ **Context passing** - Findings flow between agents
