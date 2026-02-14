@@ -80,7 +80,7 @@ app = FastAPI(
     
     ## Autenticação
     
-    Use o endpoint `/api/v2/auth/login` para obter um token JWT.
+    Use o endpoint `/api/v1/auth/login` para obter um token JWT.
     Inclua o token no header `Authorization: Bearer <token>`.
     """,
     version="2.0.0",
@@ -107,9 +107,9 @@ app.add_middleware(
 # MIDDLEWARES CUSTOMIZADOS
 # =============================================================================
 
-from backend.api.middleware.auth import AuthMiddleware
-from backend.api.middleware.tenant import TenantMiddleware
-from backend.api.middleware.rate_limit import RateLimitMiddleware
+from backend.app.api.middleware.auth import AuthMiddleware
+from backend.app.api.middleware.tenant import TenantMiddleware
+from backend.app.api.middleware.rate_limit import RateLimitMiddleware
 from backend.app.core.observability.middleware import ObservabilityMiddleware
 
 # Ordem de execução (Request):
@@ -130,8 +130,8 @@ app.add_middleware(ObservabilityMiddleware) # Envolve todos os outros
 # ROUTERS
 # =============================================================================
 
-from backend.api.v1.router import api_router as v1_router
-from backend.api.v2 import router as v2_router
+from backend.app.api.v1.router import api_router as v1_router
+from backend.app.api.v2 import router as v2_router
 
 app.include_router(v1_router) # Já tem prefixo /api/v1 no router
 app.include_router(v2_router, prefix="/api/v2")

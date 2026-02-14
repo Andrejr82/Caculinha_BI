@@ -1,1 +1,0 @@
-import{c,m as o,I as r}from"./index-BTwf99OE.js";const a=[["circle",{cx:"11",cy:"11",r:"8",key:"4ej97u"}],["path",{d:"m21 21-4.3-4.3",key:"1qie3q"}]],n=e=>c(r,o(e,{name:"Search",iconNode:a}));export{n as S};

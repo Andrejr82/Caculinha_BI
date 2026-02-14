@@ -1,0 +1,470 @@
+
+
+===== PAGE 1 =====
+GUIA DOCUMENTADO DE OPERAÇÕES DE UNE 
+Guia elaborado em dedicado para LÍDERANÇAS da UNE. 
+ 
+SUMÁRIO 
+MATRIZ DE RESPONSABILIDADES 
+1. 
+GERENCIAL; 
+2. 
+COORDENADOR; 
+3. 
+OPCOM; 
+4. 
+LÍDER ESTOQUE; 
+5. 
+LÍDER SEGMENTO; 
+6. 
+RELAÇÕES E HIERARQUIAS; 
+ABASTECIMENTO DE PRODUTOS 
+1. 
+O QUE É, E COMO FUNCIONA A MC; 
+a. 
+COMO ELA É CALCULADA; 
+2. 
+O QUE É E COMO FUNCIONA A LINHA VERDE; 
+a. 
+COMO FUNCIONA A LINHAVERDE; 
+b. 
+EM QUE CASOS O ROBÔ ALTERA A LINHAVERDE; 
+c. 
+EM QUE MOMENTO A SOLICITAÇÃO DISPARA; 
+3. 
+COMO FUNCIONA O ARREDONDAMENTO DE EMBALAGENS; 
+4. 
+REGRA ESPECIAL PARA ARREDONDAMENTO DE MULTIPLOS 
+5. 
+COMO ALTERAR OS PARÂMETROS DE ABASTECIMENTO DA UNE 
+6. 
+CROSSDOCKING 
+CICLO DE VIDA DOS PRODUTOS 
+1. 
+INCLUSÃO E REMOÇÃO DE ITEM DO MIX DA UNE 
+2. 
+PRODUTOS FORA DE LINHA 
+3. 
+PRODUTOS EM PROMOÇÃO 
+4. 
+COMO SOLICITAR PREÇO PROMOCIONAL 
+5. 
+OS 3 PERFIS DE PRODUTOS 
+POLÍTICA DE FORMAÇÃO DE PREÇOS 
+1. 
+O QUE É RANKING DE PRODUTO 
+2. 
+COMO FUNCIONA A POLÍTICA DE DESCONTOS 
+3. 
+POLÍTICA VAREJO X ATACADO 
+POLÍTICA DE DEVOLUÇÕES E TRANSFERÊNCIAS 
+1. 
+EM QUE CONDIÇÕES POSSO DEVOLVER MEUS PRODUTOS 
+FERRAMENTAS GERENCIAS  
+1. 
+PLANILHA ADMAT_UNE 
+POLÍTICAS DE SAZONALIDADES 
+1. 
+CALENDÁRIO ANUAL DE SAZONALIDADES 
+CONHECIMENTOS GERAIS 
+1. 
+MARCAS PRÓPRIAS: KIT e RENK 
+2. 
+COMO FUNCIONAM AS REGRAS DE CURVAS DE VENDAS DE PRODUTOS 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+===== PAGE 2 =====
+Figura 2, Hierarquia 
+Figura 1, Relações 
+MATRIZ DE RESPONSABILIDADES E HIERARQUIAS, LIDERANÇAS DA UNE 
+1. GERÊNCIA; 
+2. COORDENAÇÃO; 
+3. OPCOM; 
+4. LÍDER DE ESTOQUE; 
+5. LÍDER DE SEGMENTO; 
+6. RELAÇÕES E HIERARQUIAS 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ABASTECIMENTO DE PRODUTOS 
+1. O QUE É, E COMO FUNCIONA A MC? 
+Significa Média Comum, é uma média oficializada que norteia o parâmetro do Produto na UNE.  
+Ele é calculado considerando os últimos meses de venda do produto, projetando um valor a ser parametrizado. A 
+MC é o parâmetro responsável por avaliar a série temporal de vendas dos últimos 12 meses e regular o 
+abastecimento. 
+ 
+a. COMO ELA É CALCULADA? 
+Resumidamente ela é calculada da seguinte forma: 
+(A média dos últimos 12 Meses) + (A média dos últimos 3 Meses) + (A média do vigente no Ano anterior) 
+ 
+Exemplo: 
+ 
+ 
+Atenção: Esta regra de Meses pode variar de acordo com o período do ANO, a regra pode mudar, é apenas uma 
+exemplificação de como ela funciona. 
+ 
+ 
+ 
+ 
+2. O QUE É, E COMO FUNCIONA A LINHA VERDE; 
+ 
+
+
+===== PAGE 3 =====
+A linha verde foi criada para gerar abastecimento automático dos produtos através de parâmetros estatísticos. Um 
+cálculo padrão de Ponto de Pedido, e poderosamente eficiente. 
+Através dos parâmetros abaixo, este cálculo pode ser realizado: 
+ 
+ 
+MC (Média Comum): Calcula uma média de venda em quantidade dos últimos 12 Meses; 
+ 
+ESTOQUE: Campo afetado unicamente pelo Robô; 
+ 
+ESTOQUE GONDOLA: Incluído pelo Comprador, só pode ser alterado pelo OPCOM; 
+ 
+ESTOQUE ILHA: Incluído pelo Comprador, com prazo definido de saída. Geralmente usado para 
+sazonalidades. 
+ 
+ESTOQUE MÁXIMO, ou LINHA VERDE: A SOMA dos campos (ESTOQUE+ESTOQUE GONDOLA+ESTOQUE 
+ILHA), este cálculo final é quem define o máximo de abastecimento do item para a UNE. 
+ 
+TRAVA: Caso, verdadeiro impede a ação do Robô no parâmetro final de LINHA VERDE. 
+ 
+a. COMO FUNCIONA? 
+Através do apontamento entre a MC e EST.GONDOLA.  
+Se a MC é maior que o parâmetro definido pelo Comprador ou o OPCOM e o produto estiver DESTRAVADO, ela 
+aumenta o parâmetro lançando a diferença da venda no campo ESTOQUE.  
+Afinal está vendendo mais que o inicial parametrizado e o produto esta liberado para atuação do Robô. 
+ 
+Porém quando a MC não é maior que o EST.GONDOLA, o robô não age. Uma LINHA VERDE só pode ser 
+reduzida pelo Robô até o definido pelo EST.GONDOLA. Abaixo disso somente o OPCOM pode reduzir um 
+parâmetro de LINHA VERDE. 
+ 
+ Quando a MC MAIOR ESTOQUE GONDOLA: Trava NÃO 
+ 
+ 
+ Quando a MC MAIOR ESTOQUE GONDOLA: Trava SIM 
+ 
+Em ambos Casos acima, a MC é MAIOR que o EST.GONDOLA, e somente assim o parâmetro final da LINHA 
+VERDE pode ser mudado. 
+ 
+ Quando a MC MENOR ESTOQUE GONDOLA: Trava NÃO 
+ 
+ 
+ Quando a MC MENOR ESTOQUE GONDOLA: Trava SIM 
+ 
+Em ambos Casos acima, a MC é MENOR que o EST.GONDOLA, em nenhum dos casos a MC pode reduzir o 
+parâmetro do EST>GONDOLA, campo que só pode ser alterado pelo OPCOM. 
+Ou seja em ambos os casos o abastecimento só pode ser reduzido pela ação do OPCOM. 
+ 
+ 
+b. EM QUE CASOS QUE O ROBÔ PODE REDUZIR A LINHA VERDE?  
+ 
+Somente quando a MC > EST.GONDOLA. Caso a MC reduza na passagem de mês, ela reduz o campo ESTOQUE e 
+consequentemente o parâmetro de LINHAVERDE. Somente nestes casos o robô, através da MC, reduz a 
+LINHAVERDE sem a interferência do OPCOM. Ou seja, só pode ocorrer um uma “virada” de mês, onde há o 
+recálculo da MC que se baseia em meses. 
+ 
+
+
+===== PAGE 4 =====
+ Exemplo de “virada” de mês, ABRIL para MAIO 
+ 
+ 
+ 
+c. 
+QUANDO A SOLITAÇÃO DISPARA? 
+Agora que temos definida qual a quantidade máxima que a UNE pode receber no estoque, parametrizado pela 
+LINHAVERDE. Já posso referenciar meu EST.UNE para calcular abastecimento.  
+ 
+O disparo só acontece quando o ESTOQUE UNE é MENOR ou IGUAL a 50% do meu parâmetro máximo de 
+abastecimento. 
+ 
+ Exemplo de liberação de disparos: 
+ 
+ 
+ Exemplo de VOLUME a ser disparado, será sempre a diferença entre a (LINHAVERDE) – (EST.UNE): 
+ 
+Atenção: Mesmo a quantidade sendo a (LV – EST.UNE), mais uma regra aparece para escalar a produção. 
+ 
+ 
+3. ARREDONDAMENTOS DE EMBALAGEM, COMO FUNCIONAM? 
+Com a liberação do DISPARO, mais uma regra se inicia para arredondamento dos produtos solicitados.  
+Ela surge para agilizar a entrega dos produtos a UNE, dado volumes únicos entre caixas MASTER e MULTIPLOS.  
+Caso na hora da separação, o separador precise abrir a caixa para fracionar e formar um novo VOLUME, 
+logicamente atrasa a separação que responde em tempo de entrega para a UNE. Levar a caixa fechada agiliza o 
+processo exponencialmente quando em grandes quantidades, como é o caso. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+4. REGRA ESPECIAL DE ARREDONDAMENTO MÚLTIPLOS 
+Existem produtos que se manuseados, podem danificar a qualidade para venda.  
+Como é o caso para itens como Flores, Lãs.... Mais uma REGRA é lançada, orientada pelo AGRUPAMENTO do item. 
+Ou seja, se ele está agrupado em uma das nomenclaturas abaixo, ele só se movimenta em MULTIPLO. 
+ 
+Grupos cadastrados nesta REGRA:  
+ACESSORIOS P/COSTURA, ADESIVO AZULEJOS, ADESIVO TECIDO, BARBANTES, BARBANTES PARA ARTESANATO, BORDADOS, 
+CARBONOS, CORDÕES, ESCOVAS, ETIQUETA P/ETIQUETADORA, FITAS CETIM, FITAS GORGURÃO, FITAS TAFETÁ, FLORES 
+
+
+===== PAGE 5 =====
+DECORATIVAS, LÃS IMPORTADAS, LINHAS COSTURA, LINHAS P/ARTESANATO, PAPEIS XEROGRAFICOS, PINCÉIS, RENDAS, RENDAS 
+DE NYLON, TOALHAS, VIÉS, ZIPER NYLON, ZIPERES  
+(1, 47, 63, 117, 194, 228, 324, 326, 331, 333, 341, 345, 346, 347, 370, 445, 500, 736, 789, 851, 1137, 1138, 1198, 6340, 6359) 
+ 
+ 
+5. COMO ALTERAR OS PARÂMETROS DE ABASTECIMENTO DA UNE? 
+Após a reformulação, agora apenas o OPCOM pode alterar um parâmetro de GONDÔLA pela ferramenta contida na 
+PLANILHA ADMAT. Isso assegura bons ajustes e velocidade de ação.  Qualquer alteração, seja em grande quantidade 
+ou não deve ser enviar ao sistema através da Planilha para futura importação dos Analistas de BI. 
+ 
+Incluir o Valor desejado na Coluna CL, Ajuste LV. 
+Adicione o novo valor desejado, clique em “Enviar para Analista”, ultimo botão da Rotina de Segunda Feira. 
+ 
+ 
+ 
+6. CROSSDOCKING 
+Itens que ainda não são maturados, estão em “teste” ou itens que infelizmente não podem ser armazenados no 
+CD, são enviados para as UNES via CROSSDOCKING. 
+A UNE recebe o PEDIDO diretamente do Fornecedor, havendo conferencia APENAS dos Volumes da NOTA FISCAL. 
+ 
+Existem produtos que só podem ser comercializados por essa dinâmica de abastecimento. 
+Em caso de dúvidas, ou sinistros ocorridos em uma NOTA de CROSS, faça os contatos com 
+bi@cacula.com; atendimento.compras@cacula.com 
+(21) 3878-8852 R. 8899 
+ 
+CICLO DE VIDA DOS PRODUTOS 
+1. INCLUSÃO E REMOÇÃO DE ITEM DO MIX DA UNE 
+ 
+ 
+ 
+O OPCOM é o principal porta voz da UNE para solicitação de alteração de MIX de PRODUTOS para a UNE. 
+O Prazo médio para retorno comum das solicitações é de no máximo 48h. 
+ 
+2. 
+PRODUTOS FORA DE LINHA; 
+ 
+O OPCOM, informa a UNE SEMANALMENTE através da Rotina de QUINTA-FEIRA, apontando itens fora de LINHA que precisam 
+“Girar” no PDV da UNE para o esgotamento. Caso necessário alteração de preço, ou qualquer ação que impulsione a venda 
+dessa “sobra”, o OPCOM também será o responsável pelo pedido para o BI/COMPRAS. O mesmo deve ser procurado pelas 
+lideranças/outros para que este solicite um PROMOCIONAL por exemplo, pela Planilha do ADMAT. 
+ 
+Líderes/Outros Solicitam 
+inclusão ou remoção ao 
+OPCOM da UNE.
+O OPCOM faz contato com 
+o BI, documentando o 
+pedido por e-mail e 
+copiando o Gerente da UNE 
+no pedido.
+O BI alinha comunicação 
+com o Compras, que 
+autoriza ou não a alteração 
+pedido. Com a Autorização 
+o BI segue com a ação.
+
+
+===== PAGE 6 =====
+*Consulte a ROTINA QUINTA-FEIRA, BANCAGEM FINANCEIRA 
+ 
+3. PRODUTOS EM PROMOÇÃO; 
+ 
+O OPCOM, informa a UNE SEMANALMENTE através da Rotina de SEXTA-FEIRA, apontado itens PROMOCIONAIS sem “Giro”. 
+Ele audita o porquê o item não estar vendendo, e busca com os Líderes do SEGMENTO entender o que pode ser feito para o 
+esgotamento deste produto, ou até ajuste no disponível físico. 
+ 
+ 
+ 
+4. 
+COMO SOLICITAR PREÇO PROMOCIONAL 
+Agora temos uma nova ferramenta adicionado a Planilha do ADMAT_UNE. 
+Para pedir, você informa o preço desejado na Coluna W e clica no botão: “a) Enviar Promocionais” 
+ 
+ 
+ 
+Através da Planilha do ADMAT ele envia e acompanha a solicitações de Preços ao Comprador. 
+No Caso de Acompanhamento dos pedidos já realizados, clique no botão: “b) Acompanhar Promocionais” 
+ 
+ 
+ 
+O Prazo médio para retorno comum das solicitações é de 24h. 
+ 
+5. PERFIL DE PRODUTO: DIRECIONADOR, COMPLEMENTAR E IMPULSO 
+ 
+ 
+Direcionador: Produtos que estão na mente do consumidor ao entrarem na Loja para Comprar. 
+São itens de “necessidade primária” para o consumidor, ele veio a loja por causa desse item. 
+É uma compra pensada, Racionalizada. 
+
+
+===== PAGE 7 =====
+ 
+Exemplos: Papel, Cartuchos, Tecidos, Caneta, Massas de Biscuit, Linhas, Fitas Cetim... 
+ 
+ 
+Complementar: Produtos que complementam o consumo do Direcionador, que “só são consumidos” caso 
+esteja “colado” ao item Direcionador. Mas claro não é uma regra FIXA, pois a variação do Perfil do Consumidor 
+remodela essa ordem de Direcionador e Complementar. 
+É uma compra “semi-pensada”, racionalizada somente no momento da compra. 
+ 
+Para o Papel: Grampos, Clips, Envelopes, Cartuchos... 
+Para os Cartuchos: Baterias, Fone de Ouvido, Pen-Drive... 
+Para os Tecidos: Tesouras, Apliques, Viés, Botão, Elástico... 
+Para os Canetas: Marca Texto, Corretivos, Estojos... 
+Para as Massas de Biscuit: Corantes, Formas, Aplicações... 
+ 
+Exemplos: A Manteiga complementa o Pão; O Carvão complementa a Carne pro churrasco; A Farofa 
+complementa Frango Assado; A Bebida complementa a Refeição; O Amaciante complementa o Sabão; O 
+Nescau complementa o Leite; O Lenço umedecido complementa a Fralda; O Condicionador complementa o 
+Shampoo; Uma Esponja de Banho complementa o Sabonete; O Pincel complementa a Tinta; 
+ 
+ 
+Impulso: São itens não necessários ao consumo do cliente. Estes itens só são consumidor caso atrativos ao 
+consumidor, só vendem caso despertem desejos de consumo no cliente.  
+É uma compra não pensada, Irracional. Motivada 100% através do Desejo. 
+ 
+Exemplos: Chocolates, Salgadinhos, Doces, Chinelos Decorados, Brinquedos...  
+Mas para consumidores de NICHO podem ser itens diferenciados em características, mesmo não sendo 
+avaliados comumente como Impulsos. Como exemplo: Um Pincéis diferente, uma Agulha com atributos mais 
+complexos de conforto ou cores.  
+ 
+ 
+POLÍTICA DE FORMAÇÃO DE PREÇOS 
+1. O QUE É RANKING DE PRODUTO? 
+Essa REGRA de precificação é exclusiva para compras abaixo de R$ 750,00, compras acima deste valor pagam 
+sempre o 1ª preço. O Ranking classifica o Produto para um tipo de consumidor, entre VAREJO/ATACADO.  
+ 
+Estimulando a compra através dele a política de precificação altera conforme abaixo: 
+ 
+ 
+Exemplo de produto com RANKING diferentes: 
+ 
+ 
+ 
+RANK 0 = Dois Preços.  
+Compras acima de R$ 750,00 padrão de 38%, e para compras abaixo de R$ 750,00 desconto de 30% 
+ 
+RANK 1 = Preço Único. 
+Desconto padrão de 38% 
+
+
+===== PAGE 8 =====
+ 
+RANK 2 = Dois Preços. 
+Compras acima de R$ 750,00 padrão de 38%, e para compras abaixo de R$ 750,00 desconto de 30% 
+ 
+RANK 3 = Preço Único. 
+Não descontos para produtos com esse RANK, São geralmente aplicados a produtos em que há preço 
+tabela, ou sugerido na embalagem. Exemplo: Livros, Revistas e Álbuns. 
+ 
+RANK 4 = Dois Preços. 
+Compras acima de R$ 750,00 padrão de 38%, e para compras abaixo de R$ 750,00 desconto de 24% 
+ 
+2. COMO É A POLÍTICA DE PAGAMENTOS E DESCONTOS;  
+Agora que o preço do Produto já foi formado, e no PDV temos o valor final. Temos novas regras de descontos, de 
+acordo com a FORMA DE PAGAMENTO no ato de passagem pelo CAIXA. 
+ 
+Por exemplo, a CANETA ABAIXO: 
+ 
+ 
+3. POLÍTICA VAREJO X ATACADO; 
+A empresa trabalha com a Política de ATACAREJO, onde o cliente tem a oportunidade de ter o maior desconto 
+possível para aqueles que compram grandes volumes em valores. A referência para uma compra em ATACADO é de 
+R$ 750,00.  Para compras abaixo do valor de R$ 750,00 será aplicado o RANKING que pode variar de acordo com 
+cada produto, pagamento exclusivamente o 2º PREÇO informado na etiqueta. 
+ 
+ 
+POLÍTICA DE DEVOLUÇÕES E TRANSFERÊNCIAS 
+ 
+1. EM QUE CONDIÇÕES POSSO DEVOLVER MEUS PRODUTOS? 
+A UNE só pode devolver produtos ao CDCAXIAS, através de um PEDIDO DE COLETA, comumente realizado pelo líder 
+de Estoque. Só assim o CD pode protocolar um Chamado para coletar o material. 
+ 
+Somente produtos com embalagens originais, não violadas, podem ser devolvidos ao CD. 
+Para o caso de produtos fora de suas Embalagens Originais, a movimentação só pode ser realizada entre UNES. 
+ 
+Para este tipo de solicitação, procure o OPCOM da UNE deseja para conectar contato de transferência. Para o Caso 
+de não saber para onde movimentar o produto, apenas desejar a devolução por motivo de excesso, procure o 
+CANAL BI para avaliarmos as UNE’s com necessidade do item, assim direcionaremos a transferência. 
+ 
+ 
+ 
+ 
+FERRAMENTAS E ACESSOS POR NÍVEL HIERÁRQUICO 
+1. PLANILHA ADMAT_UNE 
+\\192.168.4.1\DEPARTAMENTOS\ADMAT   
+Selecione a PASTA referente a SUA UNE e tenha acesso aos arquivos. Somente as Lideranças da UNE estão 
+autorizadas para o acesso dos dados. 
+Líder ESTOQUE solicita 
+COLETA de CAIXA 
+MASTER original ao CD 
+CAXIAS, copiando o 
+bi@cacula.com
+O CD recebe o pedido e 
+protocola um número de 
+COLETA, deixando uma 
+data relativamente 
+agendada.
+O CD realiza a coleta e 
+armazena no estoque 
+para futuros pedidos de 
+abastecimentos.
+
+
+===== PAGE 9 =====
+ 
+Esta Planilha tem todos os dados Comerciais e Logísticos necessários para Operação e administração em Loja. 
+ 
+ 
+SAZONALIDADES 
+1. A QUEM ME REPORTAR AJUDA NO CASO DE DÚVIDAS SOBRE UMA SAZONALIDADE? 
+Concentrem os e-mails para o Canal de BI bi@cacula.com para ajudar como facilitadores na comunicação. 
+Segunda opção é o Comprador Responsável pelo SEGMENTO que a Sazonalidade faz parte. 
+ 
+2. CALENDÁRIO DE SAZONALIDADES: 
+ 
+VOLTA ÀS AULAS 
+DIAS DAS MÃES 
+DIA DOS PAIS 
+DIA DAS CRIANÇAS 
+INVERNO 
+PÁSCOA 
+FESTA CAIPIRA 
+CARNAVAL 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+===== PAGE 10 =====
+ 
+
+
+===== PAGE 11 =====
+ 

@@ -10,6 +10,7 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -337,7 +338,10 @@ def get_semantic_cache() -> SemanticCache:
     """Retorna instância singleton do cache."""
     global _semantic_cache
     if _semantic_cache is None:
-        _semantic_cache = SemanticCache()
+        ttl = settings.CACHE_TTL_MINUTES
+        if settings.DEV_FAST_MODE:
+            ttl = max(ttl, 720)
+        _semantic_cache = SemanticCache(ttl_minutes=ttl)
     return _semantic_cache
 
 

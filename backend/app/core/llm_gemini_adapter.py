@@ -12,13 +12,16 @@ GEMINI_AVAILABLE = False # Assume false until all imports succeed
 LANGCHAIN_GEMINI_AVAILABLE = False
 
 try:
-    import google.generativeai as genai
-    from google.api_core.exceptions import RetryError, InternalServerError
-    from google.generativeai.types import FunctionDeclaration, Tool
-    GEMINI_AVAILABLE = True
-except ImportError as e:
-    print(f"Erro de importação do Gemini: {e}")
-    FunctionDeclaration = Any # Fallback to avoid NameError
+    # New SDK v1
+    from google import genai
+    from google.genai import types
+    HAS_GENAI_SDK = True
+    GEMINI_AVAILABLE = True # Set true if new SDK is available
+except ImportError:
+    HAS_GENAI_SDK = False
+    
+# Legacy SDK (deprecated)
+HAS_LEGACY_SDK = False # We are not using the legacy SDK anymore, so this is always false.
 
 # Disable langchain-google-genai to avoid version conflicts
 # Using native google.generativeai adapter instead
@@ -36,8 +39,8 @@ class GeminiLLMAdapter(BaseLLMAdapter):
 
         if not GEMINI_AVAILABLE:
             raise ImportError(
-                "google-generativeai não está instalado. "
-                "Execute: pip install google-generativeai"
+                "google-generativeai ou google-genai não está instalado. "
+                "Execute: pip install google-generativeai ou pip install google-generativeai==1.0.0b1"
             )
 
         # Use provided API key or fall back to settings
@@ -45,13 +48,20 @@ class GeminiLLMAdapter(BaseLLMAdapter):
         if not api_key:
             raise ValueError("GEMINI_API_KEY não configurada no arquivo .env")
 
-        genai.configure(api_key=api_key)
+        # google.genai (new SDK) does not expose configure/GenerativeModel APIs used below.
+        # Keep legacy path when available and force REST fallback otherwise.
+        self._sdk_mode = "legacy" if hasattr(genai, "configure") else "new"
+        if self._sdk_mode == "legacy":
+            genai.configure(api_key=api_key)
+        else:
+            self.logger.info("google.genai detected; enabling REST fallback mode for Gemini adapter")
         self.gemini_api_key = api_key
 
         # Use provided model name or fall back to settings (which loads from .env)
-        self.model_name = model_name or settings.LLM_MODEL_NAME or "gemini-2.5-pro"
-        self.max_retries = 5  # FIX 2026-01-07: Increased for silent retry with rate limits
-        self.retry_delay = 2.0  # 2s base delay (will be overridden by API suggestion)
+        self.model_name = model_name or settings.LLM_MODEL_NAME
+        # Keep retries short to avoid long UI stalls on quota/rate limits.
+        self.max_retries = 1
+        self.retry_delay = 0.5
 
         # Store configurable system instruction (default None)
         self.system_instruction = system_instruction
@@ -168,6 +178,20 @@ class GeminiLLMAdapter(BaseLLMAdapter):
         Gera completion em streaming da API Gemini.
         Yields chunks com {'content': str} ou {'tool_calls': ...}
         """
+        # New google.genai SDK path: use REST fallback to avoid legacy SDK incompatibilities.
+        if getattr(self, "_sdk_mode", "legacy") == "new":
+            result = self._generate_via_rest(messages, tools)
+            if "content" in result:
+                yield {"content": result["content"]}
+            else:
+                yield {
+                    "error": result.get(
+                        "error",
+                        "Serviço temporariamente indisponível por limite de cota. Configure billing da API Gemini ou tente novamente em instantes.",
+                    )
+                }
+            return
+
         # Se for Gemini 3 Flash Preview, usar REST Bypass (sem streaming por enquanto ou implementado via requests stream)
         # Por simplicidade, vamos focar no suporte SDK para streaming primeiro
         if "gemini-3" in self.model_name or "thinking" in self.model_name:
@@ -230,7 +254,16 @@ class GeminiLLMAdapter(BaseLLMAdapter):
                         }
         except Exception as e:
             self.logger.error(f"Streaming error: {e}")
-            yield {"error": str(e)}
+            error_msg = str(e).lower()
+            if any(k in error_msg for k in ["429", "quota", "rate"]):
+                yield {
+                    "error": (
+                        "Serviço temporariamente indisponível por limite de cota. "
+                        "Configure billing da API Gemini ou tente novamente em instantes."
+                    )
+                }
+            else:
+                yield {"error": str(e)}
 
     def get_completion(
         self,
@@ -244,6 +277,10 @@ class GeminiLLMAdapter(BaseLLMAdapter):
         Se o modelo for 'gemini-3-flash-preview', usa a implementação REST direta (_generate_via_rest)
         para garantir suporte a 'thought_signature', que é filtrado pela biblioteca 'google-generativeai' (depreciada).
         """
+        # New google.genai SDK path: force REST fallback (legacy SDK APIs unavailable).
+        if getattr(self, "_sdk_mode", "legacy") == "new":
+            return self._generate_via_rest(messages, tools)
+
         # Se for Gemini 3 Flash Preview, usar REST Bypass
         # SDK atual não suporta thought_signature
         if "gemini-3" in self.model_name or "thinking" in self.model_name:
@@ -434,7 +471,7 @@ class GeminiLLMAdapter(BaseLLMAdapter):
 
                 thread = threading.Thread(target=worker)
                 thread.start()
-                thread.join(timeout=30.0)  # FIX 2025-12-27: Increased to 30s (1 retry only, was 3x15s=45s)
+                thread.join(timeout=8.0)
 
                 if thread.is_alive():
                     self.logger.warning(f"Thread timeout tentativa {attempt + 1}")
@@ -451,14 +488,14 @@ class GeminiLLMAdapter(BaseLLMAdapter):
 
                     if api_suggested_delay:
                         # API explicitly said to wait X seconds (rate limit)
-                        delay = min(api_suggested_delay, 60)  # Cap at 60s
+                        delay = min(api_suggested_delay, 2)
                         self.logger.warning(
                             f"[RETRY] Rate limit detectado. Aguardando {delay}s antes do retry "
                             f"(tentativa {attempt + 1}/{self.max_retries}, silencioso para usuário)"
                         )
                     else:
                         # Generic error - use exponential backoff
-                        delay = min(self.retry_delay * (2**attempt), 30)
+                        delay = min(self.retry_delay * (2**attempt), 2)
                         self.logger.warning(
                             f"[RETRY] Erro retentável. Backoff exponencial: {delay}s "
                             f"(tentativa {attempt + 1}/{self.max_retries})"
@@ -487,7 +524,7 @@ class GeminiLLMAdapter(BaseLLMAdapter):
                     f"Erro externo tentativa {attempt + 1}: {e}", exc_info=True
                 )
                 if attempt < self.max_retries - 1:
-                    delay = self.retry_delay * (2**attempt)
+                    delay = min(self.retry_delay * (2**attempt), 2)
                     time.sleep(delay)
                     continue
                 return {"error": f"Erro após {self.max_retries} tentativas: {e}"}

@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, For } from 'solid-js';
 import { Database, Server, HardDrive, Activity, CheckCircle, AlertTriangle, RefreshCw, Settings, Play, FileText } from 'lucide-solid';
+import { diagnosticsApi } from '../lib/api';
 
 interface DBConfig {
   use_sql_server: boolean;
@@ -52,20 +53,16 @@ export default function Diagnostics() {
       }
 
       const [statusRes, configRes] = await Promise.all([
-        fetch('/api/v1/diagnostics/db-status', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch('/api/v1/diagnostics/config', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
+        diagnosticsApi.getDbStatus(),
+        diagnosticsApi.getConfig()
       ]);
 
-      if (!statusRes.ok || !configRes.ok) {
+      if (statusRes.status !== 200 || configRes.status !== 200) {
         throw new Error('Erro ao buscar informações de diagnóstico');
       }
 
-      const status = await statusRes.json();
-      const config = await configRes.json();
+      const status = statusRes.data;
+      const config = configRes.data;
 
       setDbStatus(status);
       setDbConfig(config);
@@ -87,19 +84,13 @@ export default function Diagnostics() {
         throw new Error('Token não encontrado');
       }
 
-      const response = await fetch('/api/v1/diagnostics/test-connection', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await diagnosticsApi.testConnection();
 
-      if (!response.ok) {
+      if (response.status !== 200) {
         throw new Error('Erro ao testar conexão');
       }
 
-      const result = await response.json();
+      const result = response.data;
       setTestResult(result);
     } catch (err: any) {
       setTestResult({

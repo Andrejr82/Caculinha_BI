@@ -1,5 +1,6 @@
 import { createSignal, createEffect, onCleanup, onMount, For, Show } from 'solid-js';
 import auth from '@/store/auth';
+import { authApi } from '@/lib/api';
 import { ThinkingProcess, AutoResizeTextarea, PlotlyChart, DataTable, FeedbackButtons, DownloadButton, MessageActions, ExportMenu, ShareButton, TypingIndicator } from '@/components';
 import { marked } from 'marked';
 import { Trash2, StopCircle, User, Bot, Sparkles, SendHorizontal, Paperclip } from 'lucide-solid';
@@ -157,9 +158,29 @@ export default function Chat() {
   const processUserMessage = async (userText: string) => {
     const token = auth.token();
     if (!token) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', text: 'Por favor, faça login.', type: 'error', timestamp: Date.now() }]);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        text: '⚠️ Sessão inválida. Faça login novamente para continuar a análise.',
+        type: 'error',
+        timestamp: Date.now()
+      }]);
       return;
     }
+
+    // Proactive Token Refresh: Garantir que o token não expire durante o stream.
+    // Fazemos uma chamada leve ao backend para disparar o interceptor de refresh se necessário.
+    try {
+      await authApi.getMe();
+    } catch (e) {
+      console.warn("⚠️ Falha ao validar/renovar token antes do stream:", e);
+      // Se falhar drasticamente, o interceptor já deve ter redirecionado para login,
+      // mas como precaução interrompemos aqui.
+      return;
+    }
+
+    // Pegar o token possivelmente renovado do store
+    const currentToken = sessionStorage.getItem('token') || token;
 
     setIsStreaming(true);
     const assistantId = (Date.now() + 1).toString();
@@ -177,7 +198,7 @@ export default function Chat() {
     }]);
 
     try {
-      const eventSource = new EventSource(`/api/v1/chat/stream?q=${encodeURIComponent(userText)}&token=${encodeURIComponent(token)}&session_id=${sessionId()}`);
+      const eventSource = new EventSource(`/api/v1/chat/stream?q=${encodeURIComponent(userText)}&token=${encodeURIComponent(currentToken)}&session_id=${sessionId()}`);
       setCurrentEventSource(eventSource);
 
       let currentMessageId = assistantId;
@@ -234,7 +255,9 @@ export default function Chat() {
           }
           else if (data.error) {
             setMessages(prev => prev.map(msg =>
-              msg.id === currentMessageId ? { ...msg, text: `Erro: ${data.error}`, type: 'error', isThinking: false } : msg
+              msg.id === currentMessageId
+                ? { ...msg, text: `⚠️ Não foi possível concluir a análise: ${data.error}`, type: 'error', isThinking: false }
+                : msg
             ));
             eventSource.close();
             setIsStreaming(false);
@@ -249,7 +272,11 @@ export default function Chat() {
         console.error("EventSource Error", err);
         eventSource.close();
         setIsStreaming(false);
-        setMessages(prev => prev.map(msg => msg.id === currentMessageId ? { ...msg, text: msg.text + "\n\n(Conexão interrompida)", isThinking: false } : msg));
+        setMessages(prev => prev.map(msg =>
+          msg.id === currentMessageId
+            ? { ...msg, text: msg.text + "\n\n⚠️ Conexão interrompida. Verifique o backend e tente novamente.", isThinking: false }
+            : msg
+        ));
       };
 
     } catch (err) {
@@ -347,7 +374,7 @@ export default function Chat() {
                       {/* Charts */}
                       <Show when={msg.type === 'chart' && msg.chart_spec}>
                         <div class="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 shadow-sm">
-                          <PlotlyChart chartSpec={() => msg.chart_spec} />
+                          <PlotlyChart chartSpec={() => msg.chart_spec} deferLoad />
                         </div>
                       </Show>
 
@@ -435,7 +462,7 @@ export default function Chat() {
           </div>
 
           <div class="text-center mt-2 pb-2">
-            <p class="text-[10px] text-slate-400 font-medium">Caçulinha • Powered by Gemini 2.5</p>
+            <p class="text-[10px] text-slate-400 font-medium">Caçulinha • AI Assistant</p>
           </div>
         </div>
       </div>

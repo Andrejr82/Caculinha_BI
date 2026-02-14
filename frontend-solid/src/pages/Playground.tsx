@@ -1,7 +1,6 @@
 import { createSignal, For, Show, onMount, createEffect } from 'solid-js';
-import { Terminal, Send, Trash2, Settings, Zap, Activity, Clock, Cpu, Info, Code, FileJson, Save, Play, X, ChevronDown, ChevronRight, Pencil, Split, LayoutTemplate } from 'lucide-solid';
-
-import api from '../lib/api';
+import { Terminal, Send, Trash2, Settings, Clock, Cpu, Code, Play, X, ChevronDown, ChevronRight, Split, LayoutTemplate, ThumbsUp, ThumbsDown, Download } from 'lucide-solid';
+import { playgroundApi, authApi } from '../lib/api';
 import { MessageActions } from '../components/MessageActions';
 import 'github-markdown-css/github-markdown.css';
 import './chat-markdown.css';
@@ -11,6 +10,7 @@ interface Message {
    role: 'user' | 'assistant';
    content: string;
    timestamp: string;
+   request_id?: string;
 }
 
 interface ModelInfo {
@@ -18,6 +18,9 @@ interface ModelInfo {
    temperature: number;
    max_tokens: number;
    json_mode: boolean;
+   playground_mode?: string;
+   playground_mode_label?: string;
+   remote_llm_enabled?: boolean;
    default_temperature?: number;
    default_max_tokens?: number;
    max_temperature_limit?: number;
@@ -42,17 +45,27 @@ interface ChatResponse {
    cache_stats: CacheStats;
 }
 
+interface PlaygroundMetrics {
+   total_requests: number;
+   local_requests: number;
+   remote_requests: number;
+   feedback_total: number;
+   feedback_useful: number;
+   feedback_not_useful: number;
+   feedback_useful_rate: number;
+}
+
 export default function Playground() {
    // Panel A State
    const [messagesA, setMessagesA] = createSignal<Message[]>([]);
-   const [modelA, setModelA] = createSignal('gemini-2.5-flash-lite');
+   const [modelA, setModelA] = createSignal('server-default');
    const [responseTimeA, setResponseTimeA] = createSignal(0);
    const [loadingA, setLoadingA] = createSignal(false);
 
    // Panel B State (Compare Mode)
    const [compareMode, setCompareMode] = createSignal(false);
    const [messagesB, setMessagesB] = createSignal<Message[]>([]);
-   const [modelB, setModelB] = createSignal('gemini-2.0-flash-exp');
+   const [modelB, setModelB] = createSignal('server-default');
    const [responseTimeB, setResponseTimeB] = createSignal(0);
    const [loadingB, setLoadingB] = createSignal(false);
 
@@ -72,21 +85,25 @@ export default function Playground() {
 
    // Available models (Mock for now, could fetch from backend)
    const models = [
-      { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
-      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)' },
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-      { id: 'gemini-3-flash-preview', name: 'Gemini 3.0 Preview' }
+      { id: 'server-default', name: 'Server Default (settings.LLM_MODEL_NAME)' }
    ];
 
    const [modelInfo, setModelInfo] = createSignal<ModelInfo | null>(null);
+   const [metrics, setMetrics] = createSignal<PlaygroundMetrics | null>(null);
 
    onMount(async () => {
       try {
-         const response = await api.get('/playground/info');
+         const response = await playgroundApi.getInfo();
          setModelInfo(response.data);
          if (response.data.model) setModelA(response.data.model);
       } catch (error) {
          console.error('Erro ao carregar info do modelo:', error);
+      }
+      try {
+         const response = await playgroundApi.getMetrics();
+         setMetrics(response.data);
+      } catch {
+         // metrics may require admin; keep silent for non-admin users
       }
    });
 
@@ -96,7 +113,7 @@ export default function Playground() {
    });
 
    const streamRequest = async (
-      modelName: string,
+      _modelName: string,
       currentHistory: Message[],
       setMessages: (msgs: Message[]) => void,
       setLoading: (l: boolean) => void,
@@ -114,6 +131,13 @@ export default function Playground() {
       }];
       setMessages(initialMsgs);
 
+      // Proactive Token Refresh
+      try {
+         await authApi.getMe();
+      } catch (e) {
+         console.warn("⚠️ Falha ao renovar token no playground:", e);
+      }
+
       try {
          const response = await fetch('/api/v1/playground/stream', {
             method: 'POST',
@@ -122,24 +146,25 @@ export default function Playground() {
                'Authorization': `Bearer ${sessionStorage.getItem('token')}` // Auth fix: use sessionStorage like rest of app
             },
             body: JSON.stringify({
-               message: currentHistory[currentHistory.length - 1].content, // User message is last in history passed here? No, history excludes last user msg usually.
-               // Fix: sendMessage passes FULL history including new user message
-               // But backend expects history + message. 
-               // Let's pass last message as 'message' and rest as 'history'
                message: currentHistory[currentHistory.length - 1].content,
                history: currentHistory.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
                system_instruction: systemInstruction(),
                temperature: temperature(),
                max_tokens: maxTokens(),
                json_mode: jsonMode(),
-               stream: true,
-               model: modelName
+               stream: true
             })
          });
 
+         if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errText}`);
+         }
+
          const reader = response.body?.getReader();
          const decoder = new TextDecoder();
-         let accumulatedText = "";
+      let accumulatedText = "";
+      let requestId: string | undefined = undefined;
 
          if (!reader) throw new Error("No reader");
 
@@ -157,14 +182,22 @@ export default function Playground() {
                      if (data.type === 'token') {
                         accumulatedText += data.text;
                         setMessages(initialMsgs.map(m =>
-                           m.id === assistantId ? { ...m, content: accumulatedText } : m
+                           m.id === assistantId ? { ...m, content: accumulatedText, request_id: requestId } : m
+                        ));
+                     } else if (data.type === 'start') {
+                        requestId = data.request_id;
+                     } else if (data.type === 'degraded') {
+                        accumulatedText += (accumulatedText ? '\n\n' : '') + `⚠️ Modo degradado: ${data.text}`;
+                        setMessages(initialMsgs.map(m =>
+                           m.id === assistantId ? { ...m, content: accumulatedText || `⚠️ Modo degradado: ${data.text}`, request_id: requestId } : m
                         ));
                      } else if (data.type === 'done') {
                         setResponseTime(data.metrics.time);
+                        if (data.request_id) requestId = data.request_id;
                      } else if (data.type === 'error') {
-                        accumulatedText += `\n[Erro: ${data.text}]`;
+                        accumulatedText += `\n\n⚠️ Não foi possível concluir no Playground: ${data.text}`;
                         setMessages(initialMsgs.map(m =>
-                           m.id === assistantId ? { ...m, content: accumulatedText } : m
+                           m.id === assistantId ? { ...m, content: accumulatedText, request_id: requestId } : m
                         ));
                      }
                   } catch (e) {
@@ -176,11 +209,53 @@ export default function Playground() {
 
       } catch (e: any) {
          setMessages(initialMsgs.map(m =>
-            m.id === assistantId ? { ...m, content: `Erro de conexão: ${e.message}` } : m
+            m.id === assistantId ? { ...m, content: `⚠️ Falha de conexão com o Playground: ${e.message}`, request_id: requestId } : m
          ));
       } finally {
          setLoading(false);
       }
+   };
+
+   const submitFeedback = async (message: Message, useful: boolean) => {
+      if (!message.request_id) return;
+      try {
+         await playgroundApi.submitFeedback({
+            request_id: message.request_id,
+            useful,
+         });
+      } catch (e) {
+         console.warn('Falha ao enviar feedback Playground', e);
+      }
+   };
+
+   const exportJson = () => {
+      const payload = { panelA: messagesA(), panelB: messagesB(), exported_at: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `playground-export-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+   };
+
+   const exportCsv = () => {
+      const rows = [...messagesA(), ...messagesB()].map(m => ({
+         id: m.id,
+         role: m.role,
+         timestamp: m.timestamp,
+         request_id: m.request_id || '',
+         content: (m.content || '').replace(/\n/g, ' ').replace(/"/g, '""')
+      }));
+      const header = 'id,role,timestamp,request_id,content';
+      const csv = [header, ...rows.map(r => `"${r.id}","${r.role}","${r.timestamp}","${r.request_id}","${r.content}"`)].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `playground-export-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
    };
 
    const sendMessage = async (e?: Event) => {
@@ -230,7 +305,35 @@ export default function Playground() {
       return "Code snippet generator to be updated for stream...";
    };
 
-   // Examples
+   // BI Task Cards
+   const biTasks = [
+      {
+         title: "Ruptura por Loja",
+         system: "Você é analista BI de varejo físico. Responda com Resumo, Tabela e Ação recomendada.",
+         prompt: "Monte uma SQL de ruptura por loja e período para priorizar reposição."
+      },
+      {
+         title: "Margem por Categoria",
+         system: "Você é analista de performance comercial. Estruture resposta em Resumo, Tabela e Ação.",
+         prompt: "Quero um template SQL para analisar margem por categoria e identificar outliers."
+      },
+      {
+         title: "Top Produtos",
+         system: "Você é analista de sortimento. Use saída objetiva para decisão de loja física.",
+         prompt: "Crie uma análise dos top produtos por venda e giro para lojas físicas."
+      },
+      {
+         title: "Transferências",
+         system: "Você é analista de abastecimento. Priorize recomendações acionáveis.",
+         prompt: "Preciso de uma query de transferências entre lojas com base no estoque."
+      },
+      {
+         title: "Demanda",
+         system: "Você é analista de planejamento. Entregue plano operacional curto.",
+         prompt: "Sugira um roteiro para previsão de demanda semanal por loja e categoria."
+      }
+   ];
+
    const examples = [
       {
          title: "Análise Financeira",
@@ -285,6 +388,12 @@ export default function Playground() {
                   title="Ver Código"
                >
                   <Code size={18} />
+               </button>
+               <button onClick={exportJson} class="btn btn-ghost btn-icon" title="Exportar JSON">
+                  <Download size={18} />
+               </button>
+               <button onClick={exportCsv} class="btn btn-ghost btn-icon" title="Exportar CSV">
+                  <FileJson size={18} />
                </button>
             </div>
          </div>
@@ -345,6 +454,12 @@ export default function Playground() {
                               <div class={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                  <div class={`max-w-[90%] rounded-xl p-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card border'}`}>
                                     <div class="markdown-body bg-transparent" innerHTML={msg.content ? msg.content.replace(/\n/g, '<br/>') : ''} />
+                                    <Show when={msg.role === 'assistant' && msg.request_id}>
+                                       <div class="flex items-center gap-2 mt-2">
+                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, true)}><ThumbsUp size={12} /></button>
+                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, false)}><ThumbsDown size={12} /></button>
+                                       </div>
+                                    </Show>
                                     {/* Note: In real app use marked() here */}
                                  </div>
                               </div>
@@ -379,9 +494,15 @@ export default function Playground() {
                            <For each={messagesB()}>
                               {(msg) => (
                                  <div class={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div class={`max-w-[90%] rounded-xl p-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card border'}`}>
-                                       <div class="markdown-body bg-transparent" innerHTML={msg.content ? msg.content.replace(/\n/g, '<br/>') : ''} />
-                                    </div>
+                                 <div class={`max-w-[90%] rounded-xl p-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card border'}`}>
+                                    <div class="markdown-body bg-transparent" innerHTML={msg.content ? msg.content.replace(/\n/g, '<br/>') : ''} />
+                                    <Show when={msg.role === 'assistant' && msg.request_id}>
+                                       <div class="flex items-center gap-2 mt-2">
+                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, true)}><ThumbsUp size={12} /></button>
+                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, false)}><ThumbsDown size={12} /></button>
+                                       </div>
+                                    </Show>
+                                 </div>
                                  </div>
                               )}
                            </For>
@@ -430,6 +551,15 @@ export default function Playground() {
             {/* Right Sidebar - Configuration */}
             <div class="border-l bg-card/30 p-6 overflow-y-auto hidden lg:block">
                <div class="sticky top-0 space-y-8">
+                  <div class="p-3 rounded-lg border bg-background/70 text-xs text-muted">
+                     <strong>Modo:</strong> {modelInfo()?.playground_mode_label || 'Local only'}
+                     <Show when={metrics()}>
+                        <div class="mt-2 space-y-1">
+                           <div>Req 7d: {metrics()!.total_requests}</div>
+                           <div>Feedback útil: {metrics()!.feedback_useful_rate}%</div>
+                        </div>
+                     </Show>
+                  </div>
                   {/* Settings Group */}
                   <div class="space-y-4">
                      <h3 class="font-bold flex items-center gap-2 text-foreground/80">
@@ -493,7 +623,20 @@ export default function Playground() {
 
                   <Show when={messagesA().length === 0}>
                      <div class="space-y-2 mt-8">
-                        <h3 class="font-bold text-foreground/80 text-sm">Exemplos</h3>
+                        <h3 class="font-bold text-foreground/80 text-sm">Tarefas BI</h3>
+                        <For each={biTasks}>
+                           {(example) => (
+                              <button
+                                 onClick={() => loadExample(example)}
+                                 class="w-full p-3 rounded-lg border border-border/50 hover:border-primary/50 hover:bg-secondary/50 transition-all text-left group"
+                              >
+                                 <div class="font-semibold text-xs group-hover:text-primary transition-colors mb-1 flex items-center gap-2">
+                                    <Play size={12} /> {example.title}
+                                 </div>
+                              </button>
+                           )}
+                        </For>
+                        <h3 class="font-bold text-foreground/80 text-sm pt-3">Exemplos Técnicos</h3>
                         <For each={examples}>
                            {(example) => (
                               <button

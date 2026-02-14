@@ -27,8 +27,9 @@ class GroqLLMAdapter(BaseLLMAdapter):
             raise ValueError("GROQ_API_KEY não configurada")
 
         self.client = Groq(api_key=api_key)
-        self.model_name = model_name or "llama-3.3-70b-versatile"
+        self.model_name = model_name or settings.GROQ_MODEL_NAME or "llama-3.3-70b-versatile"
         self.system_instruction = system_instruction
+        self.max_output_tokens = settings.LLM_MAX_OUTPUT_TOKENS if settings.DEV_FAST_MODE else max(settings.LLM_MAX_OUTPUT_TOKENS, 1024)
         
         self.logger.info(f"[OK] GroqLLMAdapter inicializado: {self.model_name}")
 
@@ -64,7 +65,7 @@ class GroqLLMAdapter(BaseLLMAdapter):
                 "model": self.model_name,
                 "messages": messages,
                 "temperature": 0.1,
-                "max_tokens": 4096,
+                "max_tokens": self.max_output_tokens,
                 "top_p": 1,
                 "stream": False
             }

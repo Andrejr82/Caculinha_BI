@@ -106,23 +106,24 @@ async def get_traffic_metrics(
         from backend.services.metrics import MetricsService
         metrics = MetricsService()
         
-        # Get metrics from the last N hours
-        total_requests = metrics._request_count
-        error_count = metrics._error_count
+        # Use public getter methods (not private attributes)
+        total_requests = metrics.get_counter("chat_requests_total")
+        error_count = metrics.get_counter("chat_errors_total")
+        auth_logins = metrics.get_counter("auth_logins_total")
         
         # Calculate rates
         uptime_hours = max((time.time() - SERVER_START_TIME) / 3600, 0.1)
         requests_per_minute = total_requests / (uptime_hours * 60) if uptime_hours > 0 else 0
         error_rate = (error_count / total_requests * 100) if total_requests > 0 else 0
         
-        # Get latency percentiles
-        latencies = metrics._latency_samples if hasattr(metrics, '_latency_samples') else []
-        p50 = sorted(latencies)[int(len(latencies) * 0.5)] if latencies else 0
-        p95 = sorted(latencies)[int(len(latencies) * 0.95)] if len(latencies) > 20 else p50
-        p99 = sorted(latencies)[int(len(latencies) * 0.99)] if len(latencies) > 100 else p95
+        # Get latency percentiles from histogram
+        latency_stats = metrics.get_histogram_stats("chat_latency_seconds")
+        p50 = latency_stats.get("p50", 0) or 0
+        p95 = latency_stats.get("p95", 0) or p50
+        p99 = latency_stats.get("p99", 0) or p95
         
         return TrafficMetrics(
-            total_requests=total_requests,
+            total_requests=total_requests + auth_logins,  # Include auth requests
             requests_per_minute=round(requests_per_minute, 2),
             error_count=error_count,
             error_rate=round(error_rate, 2),
@@ -157,25 +158,26 @@ async def get_usage_metrics(
         from backend.services.metrics import MetricsService
         metrics = MetricsService()
         
-        # Get endpoint stats
-        endpoint_stats = getattr(metrics, '_endpoint_stats', {})
-        top_endpoints = [
-            {"endpoint": k, "count": v}
-            for k, v in sorted(endpoint_stats.items(), key=lambda x: x[1], reverse=True)[:10]
-        ]
+        # Get all metrics using public API
+        all_metrics = metrics.get_all_metrics()
+        counters = all_metrics.get("counters", {})
         
-        # Get user stats
-        user_stats = getattr(metrics, '_user_stats', {})
-        top_users = [
-            {"user": k, "requests": v}
-            for k, v in sorted(user_stats.items(), key=lambda x: x[1], reverse=True)[:10]
-        ]
+        # Extract endpoint-level counters
+        top_endpoints = []
+        for key, value in counters.items():
+            if not key.startswith("__"):
+                top_endpoints.append({"endpoint": key, "count": value})
+        
+        top_endpoints = sorted(top_endpoints, key=lambda x: x["count"], reverse=True)[:10]
+        
+        # Calculate totals
+        total_requests = sum(counters.values())
         
         return UsageMetrics(
-            active_users_24h=len(user_stats),
-            total_queries_today=sum(endpoint_stats.values()),
+            active_users_24h=metrics.get_counter("auth_logins_total"),
+            total_queries_today=total_requests,
             top_endpoints=top_endpoints,
-            top_users=top_users
+            top_users=[]  # User-level tracking not implemented yet
         )
     except Exception as e:
         logger.error(f"Error getting usage metrics: {e}")

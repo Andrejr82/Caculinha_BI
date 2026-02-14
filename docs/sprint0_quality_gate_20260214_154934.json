@@ -1,0 +1,47 @@
+﻿[
+    {
+        "check":  "git_repository",
+        "status":  "PASS",
+        "details":  "RepositÃ³rio Git acessÃ­vel."
+    },
+    {
+        "check":  "workspace_clean",
+        "status":  "FAIL",
+        "details":  "Arquivos rastreados: 23865 | MudanÃ§as pendentes: 652"
+    },
+    {
+        "check":  "file_exists:README.md",
+        "status":  "PASS",
+        "details":  "VerificaÃ§Ã£o de presenÃ§a de arquivo crÃ­tico."
+    },
+    {
+        "check":  "file_exists:backend/app/api/v1/endpoints/playground.py",
+        "status":  "PASS",
+        "details":  "VerificaÃ§Ã£o de presenÃ§a de arquivo crÃ­tico."
+    },
+    {
+        "check":  "file_exists:frontend-solid/src/pages/Playground.tsx",
+        "status":  "PASS",
+        "details":  "VerificaÃ§Ã£o de presenÃ§a de arquivo crÃ­tico."
+    },
+    {
+        "check":  "file_exists:.github/workflows/ci.yml",
+        "status":  "PASS",
+        "details":  "VerificaÃ§Ã£o de presenÃ§a de arquivo crÃ­tico."
+    },
+    {
+        "check":  "ci_blocking_quality_gate",
+        "status":  "PASS",
+        "details":  "continue-on-error=true encontrados: 0"
+    },
+    {
+        "check":  "pytest_config",
+        "status":  "PASS",
+        "details":  "pytest.ini presente."
+    },
+    {
+        "check":  "frontend_package_json",
+        "status":  "PASS",
+        "details":  "package.json do frontend presente."
+    }
+]

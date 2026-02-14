@@ -1,5 +1,6 @@
 import { createSignal, createResource, For, Show } from 'solid-js';
 import auth from '@/store/auth';
+import { preferencesApi } from '@/lib/api';
 
 interface PreferenceKey {
   key: string;
@@ -16,9 +17,8 @@ export function UserPreferences() {
 
   // Fetch common keys
   const [commonKeys] = createResource(async () => {
-    const response = await fetch('/api/v1/preferences/common/keys');
-    const data = await response.json();
-    return data.keys as PreferenceKey[];
+    const response = await preferencesApi.getCommonKeys();
+    return response.data.keys as PreferenceKey[];
   });
 
   // Fetch user preferences
@@ -26,12 +26,9 @@ export function UserPreferences() {
     const token = auth.token();
     if (!token) return { preferences: {} };
 
-    const response = await fetch('/api/v1/preferences', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    setPreferences(data.preferences || {});
-    return data;
+    const response = await preferencesApi.getUserPreferences();
+    setPreferences(response.data.preferences || {});
+    return response.data;
   });
 
   const savePreferences = async () => {
@@ -42,16 +39,9 @@ export function UserPreferences() {
     setMessage('');
 
     try {
-      const response = await fetch('/api/v1/preferences/batch', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(preferences())
-      });
+      const response = await preferencesApi.saveBatch(preferences());
 
-      if (!response.ok) {
+      if (response.status !== 200 && response.status !== 204 && response.status !== 201) {
         throw new Error('Falha ao salvar preferências');
       }
 

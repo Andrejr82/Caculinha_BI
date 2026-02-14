@@ -82,6 +82,10 @@ class AuthService:
             User dict if authenticated, None otherwise
         """
         user_data = None
+        local_fallback_enabled = (
+            settings.FALLBACK_TO_PARQUET
+            and settings.ENVIRONMENT != "production"
+        )
 
         # Priority 1: Supabase Auth (if enabled)
         if self.use_supabase:
@@ -91,30 +95,36 @@ class AuthService:
                 if user_data:
                     security_logger.info(f"User '{username}' authenticated via Supabase")
                     return user_data
+
+                if not local_fallback_enabled:
+                    security_logger.warning(
+                        f"Supabase auth failed for '{username}'. "
+                        "Local fallback disabled, denying access."
+                    )
+                    return None
+
+                security_logger.warning(
+                    f"Supabase auth failed for '{username}'. "
+                    "Trying local parquet fallback."
+                )
             except Exception as e:
-                security_logger.warning(f"Supabase auth failed for '{username}': {e}")
+                security_logger.error(f"Supabase auth error for '{username}': {e}")
+                if not local_fallback_enabled:
+                    return None
+                security_logger.warning(
+                    f"Supabase unavailable for '{username}'. "
+                    "Trying local parquet fallback."
+                )
 
-        # Priority 2: Parquet (fallback or primary if Supabase disabled)
-        try:
-            user_data = await self._auth_from_parquet(username, password)
-            if user_data:
-                security_logger.info(f"User '{username}' authenticated via Parquet")
-                return user_data
-        except Exception as e:
-            security_logger.error(f"Parquet auth failed for '{username}': {e}")
-
-        # Priority 3: SQL Server (last resort)
-        # 🚨 OPTIMIZATION: Only attempt SQL if explicitly enabled AND DB session provided AND configured
-        if self.use_sql_server and db is not None and settings.DATABASE_URL:
+        # Fallbacks (Apenas se Supabase estiver desativado)
+        if (not self.use_supabase) or local_fallback_enabled:
             try:
-                user_data = await self._auth_from_sql(username, password, db)
+                user_data = await self._auth_from_parquet(username, password)
                 if user_data:
-                    security_logger.info(f"User '{username}' authenticated via SQL Server")
+                    security_logger.info(f"User '{username}' authenticated via Parquet")
                     return user_data
             except Exception as e:
-                security_logger.warning(f"SQL Server auth failed for '{username}': {e}")
-        elif self.use_sql_server and db is None:
-             security_logger.warning(f"Skipping SQL Server auth for '{username}': DB session not available (check db dependency)")
+                security_logger.error(f"Parquet auth failed for '{username}': {e}")
 
         security_logger.warning(f"Authentication failed for user '{username}' - Invalid credentials or inactive.")
         return None

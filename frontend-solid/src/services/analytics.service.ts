@@ -24,17 +24,17 @@ export const analyticsService = {
     if (filters?.minValue !== undefined) params.append('min_value', filters.minValue.toString());
     if (filters?.maxValue !== undefined) params.append('max_value', filters.maxValue.toString());
 
-    return apiClient.get<AnalyticsData[]>(`/api/v1/analytics/data?${params.toString()}`);
+    return apiClient.get<AnalyticsData[]>(`/analytics/data?${params.toString()}`);
   },
 
   async getMetrics(): Promise<AnalyticsMetric[]> {
     // Connect to FastAPI backend: GET /api/v1/analytics/metrics
-    return apiClient.get<AnalyticsMetric[]>('/api/v1/analytics/metrics');
+    return apiClient.get<AnalyticsMetric[]>('/analytics/metrics');
   },
 
   async exportData(format: ExportFormat, filters?: AnalyticsFilter): Promise<Blob> {
     // Connect to FastAPI backend: POST /api/v1/analytics/export
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/analytics/export`, {
+    const response = await fetch('/api/v1/analytics/export', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,6 +46,6 @@ export const analyticsService = {
 
   async runCustomQuery(query: string): Promise<any> {
     // Connect to FastAPI backend: POST /api/v1/analytics/query
-    return apiClient.post('/api/v1/analytics/query', { query });
+    return apiClient.post('/analytics/query', { query });
   },
 };

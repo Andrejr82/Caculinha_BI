@@ -76,6 +76,12 @@ def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df['mc'] = df['MEDIA_CONSIDERADA_LV']
     if 'VENDA_30DD' in df.columns and 'venda_30_d' not in df.columns:
         df['venda_30_d'] = df['VENDA_30DD']
+    if 'ESTOQUE_CD' in df.columns and 'estoque_cd' not in df.columns:
+        df['estoque_cd'] = df['ESTOQUE_CD']
+    if 'NOMESEGMENTO' in df.columns and 'nomesegmento' not in df.columns:
+        df['nomesegmento'] = df['NOMESEGMENTO']
+    if 'UNE_NOME' in df.columns and 'une_nome' not in df.columns:
+        df['une_nome'] = df['UNE_NOME']
     if 'ESTOQUE_GONDOLA_LV' in df.columns and 'estoque_gondola' not in df.columns:
         df['estoque_gondola'] = df['ESTOQUE_GONDOLA_LV']
     
@@ -1202,8 +1208,39 @@ def encontrar_rupturas_criticas(limite: Optional[int] = 100) -> Dict[str, Any]:
                 "mensagem": "Nenhum dado de produto encontrado."
             }
 
+        # Garantir presença das colunas mínimas para cálculo (resiliência a drift de schema)
+        required_cols = ['estoque_cd', 'estoque_atual', 'linha_verde', 'venda_30_d']
+        missing_required = [c for c in required_cols if c not in df.columns]
+        if missing_required:
+            # Tentativa final de aliases comuns
+            alias_map = {
+                'estoque_cd': 'ESTOQUE_CD',
+                'estoque_atual': 'ESTOQUE_UNE',
+                'linha_verde': 'ESTOQUE_LV',
+                'venda_30_d': 'VENDA_30DD',
+            }
+            for col in list(missing_required):
+                alias = alias_map.get(col)
+                if alias and alias in df.columns:
+                    df[col] = df[alias]
+
+            missing_required = [c for c in required_cols if c not in df.columns]
+            if missing_required:
+                logger.warning(
+                    "Ruptura crítica indisponível por colunas ausentes: %s",
+                    missing_required
+                )
+                return {
+                    "total_criticos": 0,
+                    "produtos_criticos": [],
+                    "mensagem": (
+                        "Dados insuficientes para calcular rupturas críticas "
+                        f"(colunas ausentes: {', '.join(missing_required)})."
+                    ),
+                }
+
         # Garantir que as colunas numéricas são do tipo correto
-        for col in ['estoque_cd', 'estoque_atual', 'linha_verde', 'venda_30_d']:
+        for col in required_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
         # Aplicar a regra de negócio

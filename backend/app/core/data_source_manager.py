@@ -8,12 +8,12 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from backend.app.core.parquet_cache import cache
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Constantes: Arquivos de dados
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-MAIN_DATA_FILE = PROJECT_ROOT / "data" / "parquet" / "admmat.parquet"
+# Canonical parquet source of truth (already normalized to absolute path in settings)
+MAIN_DATA_FILE = Path(settings.PARQUET_DATA_PATH)
 
 
 class ParquetDataSource:

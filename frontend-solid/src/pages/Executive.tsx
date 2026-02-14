@@ -1,4 +1,5 @@
 import { createSignal, onMount, Show, For, createResource } from "solid-js";
+import { dashboardApi } from "../lib/api";
 import type { Component } from "solid-js";
 
 // --- Interfaces ---
@@ -31,13 +32,13 @@ interface ProductData {
 // --- Fetchers ---
 
 const fetchTopSales = async () => {
-    const res = await fetch("/api/v1/dashboard/top-vendidos");
-    return (await res.json()).produtos as ProductData[];
+    const res = await dashboardApi.getTopSales();
+    return res.data.produtos as ProductData[];
 };
 
 const fetchTopMargin = async () => {
-    const res = await fetch("/api/v1/dashboard/top-margin");
-    return (await res.json()).produtos as ProductData[];
+    const res = await dashboardApi.getTopMargin();
+    return res.data.produtos as ProductData[];
 };
 
 // --- Components ---
@@ -150,8 +151,8 @@ const Executive: Component = () => {
     const loadDashboardData = async () => {
         setLoading(true);
         try {
-            const kpisResponse = await fetch("/api/v1/dashboard/metrics/executive-kpis");
-            const kpisData = await kpisResponse.json();
+            const kpisResponse = await dashboardApi.getExecutiveKpis();
+            const kpisData = kpisResponse.data;
 
             setKPIs([
                 {
@@ -180,8 +181,8 @@ const Executive: Component = () => {
                 }
             ]);
 
-            const alertsResponse = await fetch("/api/v1/dashboard/alerts/critical");
-            const alertsData = await alertsResponse.json();
+            const alertsResponse = await dashboardApi.getCriticalAlerts();
+            const alertsData = alertsResponse.data;
             setAlerts(alertsData.alerts || []);
 
         } catch (err) {

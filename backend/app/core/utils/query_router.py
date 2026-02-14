@@ -43,6 +43,7 @@ def extract_une_filter(query: str) -> Optional[str]:
     """Extrai código UNE da query."""
     # Padrões: "une 520", "loja 520", "na 520"
     patterns = [
+        r"u+ne\s+(\d+)",  # tolera typo: uune, uuune...
         r"une\s+(\d+)",
         r"loja\s+(\d+)",
         r"na\s+(\d{3,4})",  # Assume UNE tem 3-4 dígitos
@@ -171,11 +172,13 @@ def route_visualization(query: str, confidence: float) -> ToolSelection:
     
     product = extract_product_code(query)
     if product:
-        params["filtro_produto"] = product  # Int (keep as int)
+        # String para maior compatibilidade com providers que validam schema estritamente.
+        params["filtro_produto"] = str(product)
     
     limit = extract_top_limit(query)
     if limit:
-        params["limite"] = limit  # Int (keep as int)
+        # Enviar como string reduz falhas de tool-call em providers estritos.
+        params["limite"] = str(limit)
     
     # Detectar tipo de gráfico
     if "pizza" in query_lower or "pie" in query_lower:
@@ -352,9 +355,78 @@ def route_optimization(query: str, confidence: float) -> ToolSelection:
 def route_analysis(query: str, confidence: float) -> ToolSelection:
     """Roteamento específico para análises."""
     query_lower = query.lower()
-    
+    limit = extract_top_limit(query) or 20
+
     product = extract_product_code(query)
     une = extract_une_filter(query)
+
+    # Casos de negócio comercial: ruptura deve priorizar ferramenta especializada.
+    if re.search(r"ruptur\w*|falta\s+de\s+estoque|sem\s+estoque", query_lower):
+        params: Dict[str, Any] = {"limite": limit}
+        segment = extract_segment_filter(query)
+        if segment:
+            params["segmento"] = segment
+        if une:
+            params["une"] = une
+        return ToolSelection(
+            tool_name="encontrar_rupturas_criticas",
+            tool_params=params,
+            confidence=max(confidence, 0.90),
+            fallback_tools=["consultar_dados_flexivel"],
+            reasoning="Análise de ruptura prioriza ferramenta especializada"
+        )
+
+    # Casos de queda/negatividade de vendas: direcionar para dados por grupo (sem depender de gráfico).
+    if re.search(r"vend\w*\s+negativ\w*|vend\w*\s+ruin\w*|piores?\s+grupos?", query_lower):
+        params = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": ["NOMEGRUPO", "NOMESEGMENTO"],
+            "ordenar_por": "valor",
+            "ordem_desc": False,
+            "limite": 200,
+        }
+        filtros = {}
+        if une:
+            filtros["UNE"] = int(une)
+        segment = extract_segment_filter(query)
+        if segment:
+            filtros["NOMESEGMENTO"] = segment
+        if filtros:
+            params["filtros"] = filtros
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params=params,
+            confidence=max(confidence, 0.88),
+            fallback_tools=["gerar_grafico_universal_v2"],
+            reasoning="Análise de vendas negativas/ruins por grupo com dados detalhados"
+        )
+
+    # Casos comerciais: "analise vendas ... grupos que precisam ação"
+    if re.search(r"analis\w*\s+as?\s+vendas|grupos?\s+que\s+precisam\s+de\s+a[çc][aã]o", query_lower):
+        params = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": ["NOMEGRUPO", "NOMESEGMENTO"],
+            "ordenar_por": "valor",
+            "ordem_desc": False,  # menor venda primeiro = grupos prioritários para ação
+            "limite": 120,
+        }
+        filtros = {}
+        if une:
+            filtros["UNE"] = int(une)
+        segment = extract_segment_filter(query)
+        if segment:
+            filtros["NOMESEGMENTO"] = segment
+        if filtros:
+            params["filtros"] = filtros
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params=params,
+            confidence=max(confidence, 0.90),
+            fallback_tools=["gerar_grafico_universal_v2"],
+            reasoning="Análise de grupos prioritários para ação com base em menor venda"
+        )
     
     # Sub-classificação
     if product and ("todas as lojas" in query_lower or "toda a rede" in query_lower):
@@ -391,10 +463,14 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
             params["filtros"]["UNE"] = int(une)
         reasoning = "Análise genérica via consulta flexível"
     
+    final_confidence = confidence * 0.85
+    if tool_name == "consultar_dados_flexivel":
+        final_confidence = max(final_confidence, 0.82)
+
     return ToolSelection(
         tool_name=tool_name,
         tool_params=params,
-        confidence=confidence * 0.85,
+        confidence=final_confidence,
         fallback_tools=["consultar_dados_gerais"],
         reasoning=reasoning
     )
@@ -402,13 +478,39 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
 
 def route_data_query(query: str, confidence: float) -> ToolSelection:
     """Roteamento específico para consultas de dados."""
+    query_lower = query.lower()
+    if re.search(r"ruptur\w*|falta\s+de\s+estoque|sem\s+estoque", query_lower):
+        return ToolSelection(
+            tool_name="encontrar_rupturas_criticas",
+            tool_params={"limite": extract_top_limit(query) or 20},
+            confidence=max(confidence, 0.85),
+            fallback_tools=["consultar_dados_flexivel"],
+            reasoning="Consulta textual de ruptura redirecionada para ferramenta específica"
+        )
+
+    if re.search(r"vend\w*\s+negativ\w*|vend\w*\s+ruin\w*|piores?\s+grupos?", query_lower):
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params={
+                "agregacao": "SUM",
+                "coluna_agregacao": "VENDA_30DD",
+                "agrupar_por": ["NOMEGRUPO", "NOMESEGMENTO"],
+                "ordenar_por": "valor",
+                "ordem_desc": False,
+                "limite": 200,
+            },
+            confidence=max(confidence, 0.84),
+            fallback_tools=["gerar_grafico_universal_v2"],
+            reasoning="Consulta de performance negativa redirecionada para análise de dados"
+        )
+
     product = extract_product_code(query)
     une = extract_une_filter(query)
     segment = extract_segment_filter(query)
     
     params = {
         "colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"],
-        "limite": 50
+        "limite": "50"
     }
     
     filtros = {}

@@ -12,6 +12,7 @@ security_logger = logging.getLogger("security") # Dedicated security logger
 from fastapi import APIRouter, Depends, HTTPException, Form, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import JWTError
 
 from backend.app.api.dependencies import get_current_active_user
 from backend.app.config.database import get_db
@@ -39,26 +40,6 @@ async def login(
     from backend.app.core.auth_service import auth_service
     from backend.app.config.settings import settings
 
-    # 🚨 EMERGENCY BACKDOOR FOR PRESENTATION 🚨
-    # Ignora banco de dados e serviços externos para garantir acesso na demo
-    if login_data.username == "admin" and login_data.password == "demo123":
-        security_logger.warning("🚨 EMERGENCY LOGIN USED for user 'admin' 🚨")
-        # FIX: Usar UUID válido para passar na validação do Pydantic/UUID em dependencies.py
-        import uuid
-        admin_uuid = "00000000-0000-0000-0000-000000000001" 
-        
-        token_data = {
-            "sub": admin_uuid, # UUID válido
-            "username": "admin",
-            "role": "admin",
-            "allowed_segments": ["*"]
-        }
-        return Token(
-            access_token=create_access_token(token_data),
-            refresh_token=create_refresh_token(token_data),
-            token_type="bearer"
-        )
-    # ---------------------------------------------------------
 
     # Autentica usando Parquet diretamente quando SQL Server desabilitado
     user_data = await auth_service.authenticate_user(
