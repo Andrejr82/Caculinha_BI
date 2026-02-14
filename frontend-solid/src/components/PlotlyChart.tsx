@@ -1,8 +1,7 @@
 // frontend-solid/src/components/PlotlyChart.tsx
 
 import { createEffect, onCleanup, Accessor, createSignal, Show, onMount } from 'solid-js';
-import Plotly from 'plotly.js-dist-min';
-import { Maximize, Minimize } from 'lucide-solid';
+import { Maximize, Minimize, BarChart3 } from 'lucide-solid';
 
 const CACULA_CHART_COLORS = [
   '#8B7355', '#C9A961', '#6B7A5A', '#A68968', '#CC8B3C',
@@ -18,6 +17,17 @@ interface PlotlyChartProps {
   enableDownload?: boolean;
   expandedContent?: any; // JSX.Element
   naked?: boolean; // New prop for borderless mode
+  deferLoad?: boolean; // Load Plotly only after explicit user action
+}
+
+type PlotlyModule = typeof import('plotly.js-dist-min');
+let plotlyPromise: Promise<PlotlyModule> | null = null;
+
+function getPlotly(): Promise<PlotlyModule> {
+  if (!plotlyPromise) {
+    plotlyPromise = import('plotly.js-dist-min');
+  }
+  return plotlyPromise;
 }
 
 
@@ -27,6 +37,7 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
 
   const chartId = props.chartId || `chart-${Math.random().toString(36).substr(2, 9)}`;
   const [isExpanded, setIsExpanded] = createSignal(false);
+  const [shouldLoad, setShouldLoad] = createSignal(!props.deferLoad);
 
   const toggleExpand = () => {
     const newState = !isExpanded();
@@ -49,17 +60,23 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
   onCleanup(() => {
     window.removeEventListener('keydown', handleEsc);
     document.body.style.overflow = '';
-    if (chartDiv) Plotly.purge(chartDiv);
-    if (expandedChartDiv) Plotly.purge(expandedChartDiv);
+    getPlotly()
+      .then((mod) => {
+        if (chartDiv) mod.default.purge(chartDiv);
+        if (expandedChartDiv) mod.default.purge(expandedChartDiv);
+      })
+      .catch(() => undefined);
   });
 
-  const renderPlot = () => {
+  const renderPlot = async () => {
+    if (!shouldLoad()) return;
     const spec = props.chartSpec();
     const targetDiv = isExpanded() ? expandedChartDiv : chartDiv;
 
     if (!targetDiv || !spec || Object.keys(spec).length === 0) return;
 
     try {
+      const plotly = (await getPlotly()).default;
       const caculaLayout = {
         paper_bgcolor: isExpanded() ? '#FAFAFA' : '#FAFAFA',
         plot_bgcolor: '#FFFFFF',
@@ -107,10 +124,10 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
       };
 
       // Limpar o outro div se estiver mudando de estado
-      if (isExpanded() && chartDiv) Plotly.purge(chartDiv);
-      if (!isExpanded() && expandedChartDiv) Plotly.purge(expandedChartDiv);
+      if (isExpanded() && chartDiv) plotly.purge(chartDiv);
+      if (!isExpanded() && expandedChartDiv) plotly.purge(expandedChartDiv);
 
-      Plotly.newPlot(targetDiv, spec.data, caculaLayout, config);
+      plotly.newPlot(targetDiv, spec.data, caculaLayout, config);
 
       if (props.onDataClick) {
         (targetDiv as any).on('plotly_click', props.onDataClick);
@@ -120,7 +137,9 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
     }
   };
 
-  createEffect(renderPlot);
+  createEffect(() => {
+    void renderPlot();
+  });
 
   return (
     <>
@@ -128,17 +147,32 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
         class={`relative w-full overflow-hidden transition-shadow ${props.naked ? '' : 'rounded-xl border bg-card group shadow-sm hover:shadow-md'}`}
         style={{ height: props.height || '550px', 'min-height': '450px' }}
       >
-        <div class="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); toggleExpand(); }}
-            class="p-2 rounded-lg bg-white/90 border shadow-sm hover:bg-white text-primary transition-colors"
-            title="Ver em tela cheia"
-          >
-            <Maximize size={18} />
-          </button>
-        </div>
+        <Show
+          when={shouldLoad()}
+          fallback={
+            <div class="w-full h-full flex items-center justify-center p-6">
+              <button
+                onClick={() => setShouldLoad(true)}
+                class="px-4 py-2 rounded-lg border bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-2"
+              >
+                <BarChart3 size={16} />
+                Carregar Gráfico
+              </button>
+            </div>
+          }
+        >
+          <div class="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleExpand(); }}
+              class="p-2 rounded-lg bg-white/90 border shadow-sm hover:bg-white text-primary transition-colors"
+              title="Ver em tela cheia"
+            >
+              <Maximize size={18} />
+            </button>
+          </div>
 
-        <div ref={chartDiv} class="w-full h-full" id={chartId}></div>
+          <div ref={chartDiv} class="w-full h-full" id={chartId}></div>
+        </Show>
       </div>
 
       <Show when={isExpanded()}>

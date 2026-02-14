@@ -374,7 +374,7 @@ export default function Chat() {
                       {/* Charts */}
                       <Show when={msg.type === 'chart' && msg.chart_spec}>
                         <div class="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 shadow-sm">
-                          <PlotlyChart chartSpec={() => msg.chart_spec} />
+                          <PlotlyChart chartSpec={() => msg.chart_spec} deferLoad />
                         </div>
                       </Show>
 

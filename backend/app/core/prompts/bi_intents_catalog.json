@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "domain": "playground_bi",
+  "intents": [
+    {
+      "id": "parquet.filter.status_error",
+      "description": "Gera script Python/Polars para filtrar status = error em parquet",
+      "patterns": ["parquet", "status", "error"],
+      "default_confidence": 0.98
+    },
+    {
+      "id": "sql.produtos_sem_venda_6_meses",
+      "description": "Retorna SQL para produtos sem venda nos ultimos 6 meses",
+      "patterns": ["sql", "produtos", "6", "meses", "nao venderam"],
+      "default_confidence": 0.92
+    },
+    {
+      "id": "sql.ruptura_por_loja_periodo",
+      "description": "Retorna SQL para ruptura por loja e periodo",
+      "patterns": ["ruptura", "loja", "periodo"],
+      "default_confidence": 0.93
+    },
+    {
+      "id": "sql.sugestao_transferencia_lojas",
+      "description": "Retorna SQL de sugestao de transferencia entre lojas",
+      "patterns": ["transferencia", "lojas", "estoque"],
+      "default_confidence": 0.9
+    },
+    {
+      "id": "bi.admat_une_checklist",
+      "description": "Checklist operacional ADMAT/UNE para analistas BI",
+      "patterns": ["admat", "une", "linha verde", "media comum"],
+      "default_confidence": 0.88
+    }
+  ]
+}

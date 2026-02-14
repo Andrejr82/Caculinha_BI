@@ -112,6 +112,10 @@ class Settings(BaseSettings):
     # AI / LLM - Multi-provider Support
     # FIX 2026-01-09: Groq é o LLM principal (mais rápido, sem rate limit frequente)
     LLM_PROVIDER: Literal["google", "groq", "mock"] = "google"
+    PLAYGROUND_MODE: Literal["local_only", "hybrid_optional", "remote_required"] = "local_only"
+    PLAYGROUND_CANARY_ENABLED: bool = False
+    PLAYGROUND_CANARY_ALLOWED_ROLES: str = "admin"
+    PLAYGROUND_CANARY_ALLOWED_USERS: str = ""
     
     # Google Gemini
     GEMINI_API_KEY: str | None = None
