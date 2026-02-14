@@ -181,6 +181,7 @@ export interface UserData {
   full_name?: string;
   is_active: boolean;
   allowed_segments?: string[];
+  sql_full_access_enabled?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -202,6 +203,30 @@ export interface UpdateUserPayload {
   allowed_segments?: string[];
 }
 
+export interface PlaygroundSqlAccessItem {
+  user_id: string;
+  enabled: boolean;
+  active: boolean;
+  expires_at?: string | null;
+}
+
+export interface PlaygroundCanaryAccessItem {
+  user_id: string;
+  enabled: boolean;
+}
+
+export interface AuditLogItem {
+  id: string;
+  user_id: string;
+  user_name: string;
+  action: string;
+  resource: string;
+  details?: Record<string, any> | null;
+  ip_address: string;
+  timestamp: string;
+  status: string;
+}
+
 export const adminApi = {
   syncParquet: () => api.post('/admin/sync-parquet'),
 
@@ -211,6 +236,15 @@ export const adminApi = {
   createUser: (userData: CreateUserPayload) => api.post<UserData>('/admin/users', userData),
   updateUser: (userId: string, userData: UpdateUserPayload) => api.put<UserData>(`/admin/users/${userId}`, userData),
   deleteUser: (userId: string) => api.delete(`/admin/users/${userId}`),
+  getPlaygroundSqlAccess: () => api.get<PlaygroundSqlAccessItem[]>('/admin/playground-sql-access'),
+  setPlaygroundSqlAccess: (userId: string, enabled: boolean, expires_at?: string) =>
+    api.put<PlaygroundSqlAccessItem>(`/admin/playground-sql-access/${userId}`, { enabled, expires_at }),
+  revokeAllPlaygroundSqlAccess: () => api.post<{ status: string; revoked_count: number; message: string }>('/admin/playground-sql-access/revoke-all'),
+  getPlaygroundCanaryAccess: () => api.get<PlaygroundCanaryAccessItem[]>('/admin/playground-canary-access'),
+  setPlaygroundCanaryAccess: (userId: string, enabled: boolean) =>
+    api.put<PlaygroundCanaryAccessItem>(`/admin/playground-canary-access/${userId}`, { enabled }),
+  revokeAllPlaygroundCanaryAccess: () => api.post<{ status: string; revoked_count: number; message: string }>('/admin/playground-canary-access/revoke-all'),
+  getAuditLogs: (limit: number = 100) => api.get<AuditLogItem[]>(`/admin/audit-logs?limit=${limit}`),
 };
 
 export const learningApi = {
@@ -292,6 +326,9 @@ export const codeChatApi = {
 
 export const playgroundApi = {
   getInfo: () => api.get('/playground/info'),
+  getMetrics: () => api.get('/playground/metrics'),
+  submitFeedback: (payload: { request_id: string; useful: boolean; comment?: string }) =>
+    api.post('/playground/feedback', payload),
 };
 
 export default api;

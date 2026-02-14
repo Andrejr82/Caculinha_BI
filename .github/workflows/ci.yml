@@ -37,21 +37,18 @@ jobs:
         cd backend
         pip install flake8
         flake8 app/ --max-line-length=120 --ignore=E501,W503 --exclude=__pycache__,migrations
-      continue-on-error: true
     
     - name: Run tests
       run: |
         cd backend
         pip install pytest pytest-cov
         pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
-      continue-on-error: true
     
     - name: Check security
       run: |
         cd backend
         pip install bandit
         bandit -r app/ -ll
-      continue-on-error: true
 
   build-frontend:
     name: Build Frontend
