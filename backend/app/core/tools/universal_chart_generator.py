@@ -27,7 +27,7 @@ def gerar_grafico_universal_v2(
     filtro_produto: Optional[str] = None,
     tipo_grafico: str = "auto",
     quebra_por: Optional[str] = None,  # NEW: Controle explícito de agrupamento
-    limite: Optional[str] = None
+    limite: Optional[Union[int, str]] = None
 ) -> Dict[str, Any]:
     """
     Gera gráficos interativos, rankings visuais, comparações e dashboards estatísticos.
@@ -43,7 +43,7 @@ def gerar_grafico_universal_v2(
         filtro_produto: Código do produto (SKU)
         tipo_grafico: "bar", "pie", "line", "auto"
         quebra_por: Campo para agrupar/eixo X. Opções: "LOJA", "SEGMENTO", "CATEGORIA", "PRODUTO", "TEMPO", "FABRICANTE".
-        limite: Número máximo de itens (ex: "10").
+        limite: Número máximo de itens (ex: 10).
 
     Returns:
         Gráfico Plotly JSON com dados filtrados
@@ -501,12 +501,48 @@ def gerar_grafico_universal_v2(
     
     # 5. Gerar gráfico
     if tipo_grafico == "auto":
-        tipo_grafico = "bar" 
+        tipo_grafico = "bar"
 
     fig = go.Figure()
-    
+
     if tipo_grafico == "pie":
         fig.add_trace(go.Pie(labels=df_agg["dimensao"], values=df_agg["valor"], hole=0.3))
+    elif tipo_grafico in ("line", "linhas"):
+        fig.add_trace(go.Scatter(
+            x=df_agg["dimensao"],
+            y=df_agg["valor"],
+            mode="lines+markers",
+            line=dict(color="#1f77b4", width=3),
+            marker=dict(size=7),
+            text=df_agg["valor"].apply(lambda x: f"{x:,.0f}"),
+        ))
+    elif tipo_grafico == "pareto":
+        pareto_df = df_agg.copy()
+        total = float(pareto_df["valor"].sum() or 0)
+        pareto_df["acumulado_pct"] = (pareto_df["valor"].cumsum() / total * 100) if total > 0 else 0
+        fig.add_trace(go.Bar(
+            x=pareto_df["dimensao"],
+            y=pareto_df["valor"],
+            marker_color="#1f77b4",
+            name="Valor"
+        ))
+        fig.add_trace(go.Scatter(
+            x=pareto_df["dimensao"],
+            y=pareto_df["acumulado_pct"],
+            mode="lines+markers",
+            line=dict(color="#ff7f0e", width=3),
+            yaxis="y2",
+            name="% Acumulado"
+        ))
+        fig.update_layout(
+            yaxis2=dict(
+                title="% Acumulado",
+                overlaying="y",
+                side="right",
+                range=[0, 110],
+                showgrid=False,
+            )
+        )
     else:
         fig.add_trace(go.Bar(
             x=df_agg["dimensao"], 
@@ -529,6 +565,22 @@ def gerar_grafico_universal_v2(
         xaxis_tickangle=-45  # Rotacionar labels do eixo X para melhor leitura
     )
 
+    # 6. Resumo analítico para melhorar resposta textual do LLM.
+    total_valor = float(df_agg["valor"].sum() or 0)
+    top_n = df_agg.nlargest(min(3, len(df_agg)), "valor")[["dimensao", "valor"]]
+    bottom_n = df_agg.nsmallest(min(3, len(df_agg)), "valor")[["dimensao", "valor"]]
+
+    def _to_pairs(frame: pd.DataFrame) -> List[Dict[str, Any]]:
+        return [{"dimensao": str(r["dimensao"]), "valor": float(r["valor"])} for _, r in frame.iterrows()]
+
+    summary_msg = (
+        f"Análise concluída: {len(df_agg)} itens. "
+        f"Total de {titulo_metrica.lower()}: {total_valor:,.2f}. "
+        f"Maior destaque: {top_n.iloc[0]['dimensao']} ({float(top_n.iloc[0]['valor']):,.2f})."
+        if len(df_agg) > 0
+        else "Análise concluída sem dados agregados."
+    )
+
     return {
         "status": "success",
         "chart_type": tipo_grafico,
@@ -537,6 +589,9 @@ def gerar_grafico_universal_v2(
             "dimensao": titulo_dimensao,
             "metrica": titulo_metrica,
             "total_itens": len(df_agg),
-            "mensagem": f"Gráfico gerado via DuckDB Aggregation."
+            "total_valor": total_valor,
+            "top_3": _to_pairs(top_n),
+            "bottom_3": _to_pairs(bottom_n),
+            "mensagem": summary_msg,
         }
     }

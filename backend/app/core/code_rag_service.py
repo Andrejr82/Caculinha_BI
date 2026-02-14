@@ -143,6 +143,16 @@ class CodeRAGService:
             trace = traceback.format_exc()
             logger.error(f"[FATAL] Failed to initialize RAG service: {e}\n{trace}")
             return False
+
+    def _unavailable_reason(self) -> str:
+        """Human-friendly reason when Code RAG is unavailable."""
+        if not settings.GEMINI_API_KEY:
+            return "gemini_api_key_missing"
+        if not self._storage_path.exists():
+            return "index_missing"
+        if not (self._storage_path / "docstore.json").exists() and not (self._storage_path / "index_store.json").exists():
+            return "index_files_missing"
+        return "service_not_initialized"
     
     def get_index_stats(self) -> Dict[str, Any]:
         """
@@ -158,8 +168,10 @@ class CodeRAGService:
             return self._index_stats
 
         # Default stats if not loaded
+        reason = self._unavailable_reason()
         return {
-            "status": "not_indexed",
+            "status": "not_ready",
+            "reason": reason,
             "total_files": 0,
             "total_functions": 0,
             "total_classes": 0,
@@ -186,9 +198,16 @@ class CodeRAGService:
             Dicts with 'type' ('token', 'references', 'error') and payload
         """
         if not self._ensure_initialized():
+            reason = self._unavailable_reason()
+            if reason in {"index_missing", "index_files_missing"}:
+                msg = "index missing; run scripts/index_codebase.py"
+            elif reason == "gemini_api_key_missing":
+                msg = "code chat unavailable; configure GEMINI_API_KEY for code indexing"
+            else:
+                msg = "code chat unavailable; check backend logs"
             yield {
                 "type": "error",
-                "content": "Service not initialized. Check logs."
+                "content": msg
             }
             return
 

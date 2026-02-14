@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "templates": [
+    {
+      "id": "bi.margem_categoria",
+      "keywords": ["margem", "categoria"],
+      "summary": "Template para análise de margem por categoria e priorização de correção comercial.",
+      "headers": ["Categoria", "Margem_%", "Receita", "Ação"],
+      "rows": [
+        ["A", "32.4", "R$ 1.2M", "Manter estratégia"],
+        ["B", "18.1", "R$ 840k", "Revisar preço/custo"],
+        ["C", "9.5", "R$ 410k", "Plano de recuperação"]
+      ],
+      "action": "Executar diagnóstico de custo e política promocional para categorias com margem abaixo da meta."
+    },
+    {
+      "id": "bi.top_produtos",
+      "keywords": ["top", "produto"],
+      "summary": "Template para ranking de produtos por venda e giro no canal físico.",
+      "headers": ["Produto", "Venda_30d", "Giro", "Cobertura_dias"],
+      "rows": [
+        ["Produto X", "R$ 120k", "Alto", "11"],
+        ["Produto Y", "R$ 96k", "Médio", "18"],
+        ["Produto Z", "R$ 88k", "Alto", "9"]
+      ],
+      "action": "Priorizar reposição dos itens com alto giro e baixa cobertura para reduzir risco de ruptura."
+    },
+    {
+      "id": "bi.demanda_semanal",
+      "keywords": ["demanda", "semanal"],
+      "summary": "Template para previsão semanal por loja/categoria com plano de abastecimento.",
+      "headers": ["Loja", "Categoria", "Demanda_prevista", "Estoque_atual", "Gap"],
+      "rows": [
+        ["1685", "Higiene", "340", "280", "60"],
+        ["1974", "Limpeza", "290", "310", "-20"],
+        ["2365", "Papelaria", "180", "130", "50"]
+      ],
+      "action": "Emitir plano de reposição para gaps positivos e revisar excessos para realocação."
+    }
+  ]
+}

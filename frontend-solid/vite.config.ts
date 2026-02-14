@@ -46,5 +46,19 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true,
     },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('plotly.js-dist-min')) return 'vendor-plotly';
+          if (id.includes('marked') || id.includes('remark') || id.includes('highlight.js')) return 'vendor-markdown';
+          if (id.includes('@supabase/')) return 'vendor-supabase';
+          if (id.includes('@tanstack/')) return 'vendor-query';
+          if (id.includes('@solidjs/router')) return 'vendor-router';
+          if (id.includes('lucide-solid')) return 'vendor-icons';
+          return 'vendor';
+        },
+      },
+    },
   },
 });

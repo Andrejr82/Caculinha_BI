@@ -5,6 +5,7 @@ User management, audit logs, and system settings
 
 import uuid
 import json # Added import
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
@@ -14,13 +15,16 @@ from pydantic import BaseModel
 
 from backend.app.api.dependencies import get_db, require_role, get_current_active_user
 from backend.app.config.security import get_password_hash
-from backend.app.infrastructure.database.models import AuditLog, Report, User
+from backend.app.infrastructure.database.models import AuditLog, Report, User, UserPreference
 from backend.app.schemas.user import UserCreate, UserResponse, UserUpdate
 from backend.app.core.parquet_cache import cache
 from backend.app.core.sync_service import sync_service
 from backend.app.core.supabase_user_service import supabase_user_service
+from backend.app.core.playground_sql_access import build_sql_access_context, evaluate_sql_access, parse_sql_access_context
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+PLAYGROUND_SQL_ACCESS_KEY = "playground_sql_full_access"
+PLAYGROUND_CANARY_ACCESS_KEY = "playground_canary_access"
 
 
 # Modelos adicionais para compatibilidade
@@ -29,6 +33,100 @@ class AdminStats(BaseModel):
     activeUsers: int
     totalQueries: int
     systemHealth: str
+
+
+class PlaygroundSqlAccessUpdate(BaseModel):
+    enabled: bool
+    expires_at: str | None = None
+
+
+class PlaygroundSqlAccessItem(BaseModel):
+    user_id: str
+    enabled: bool
+    active: bool
+    expires_at: str | None = None
+
+
+class PlaygroundCanaryAccessUpdate(BaseModel):
+    enabled: bool
+
+
+class PlaygroundCanaryAccessItem(BaseModel):
+    user_id: str
+    enabled: bool
+
+
+def _invalidate_playground_sql_cache(user_id: str | None = None) -> None:
+    try:
+        from backend.app.api.v1.endpoints import playground as playground_endpoint
+        if user_id:
+            playground_endpoint._sql_access_cache.pop(str(user_id), None)
+        else:
+            playground_endpoint._sql_access_cache.clear()
+    except Exception:
+        # Falha de invalidação não deve quebrar endpoint administrativo.
+        pass
+
+
+def _invalidate_playground_canary_cache(user_id: str | None = None) -> None:
+    try:
+        from backend.app.api.v1.endpoints import playground as playground_endpoint
+        if user_id:
+            playground_endpoint._canary_access_cache.pop(str(user_id), None)
+        else:
+            playground_endpoint._canary_access_cache.clear()
+    except Exception:
+        pass
+
+
+def _log_sql_access_change(
+    db: AsyncSession,
+    *,
+    actor_user_id: uuid.UUID,
+    target_user_id: uuid.UUID | None,
+    enabled: bool,
+    expires_at: str | None,
+    action: str,
+) -> None:
+    details = {
+        "target_user_id": str(target_user_id) if target_user_id else None,
+        "enabled": enabled,
+        "expires_at": expires_at,
+    }
+    db.add(
+        AuditLog(
+            user_id=actor_user_id,
+            action=action,
+            resource="playground_sql_access",
+            details=details,
+            ip_address="admin-panel",
+            status="success",
+        )
+    )
+
+
+def _log_canary_access_change(
+    db: AsyncSession,
+    *,
+    actor_user_id: uuid.UUID,
+    target_user_id: uuid.UUID | None,
+    enabled: bool,
+    action: str,
+) -> None:
+    details = {
+        "target_user_id": str(target_user_id) if target_user_id else None,
+        "enabled": enabled,
+    }
+    db.add(
+        AuditLog(
+            user_id=actor_user_id,
+            action=action,
+            resource="playground_canary_access",
+            details=details,
+            ip_address="admin-panel",
+            status="success",
+        )
+    )
 
 
 @router.post("/sync-parquet")
@@ -130,6 +228,211 @@ async def get_users(
             }
             for user in users
         ]
+
+
+@router.get("/playground-sql-access", response_model=list[PlaygroundSqlAccessItem])
+async def list_playground_sql_access(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[PlaygroundSqlAccessItem]:
+    result = await db.execute(
+        select(UserPreference).where(UserPreference.key == PLAYGROUND_SQL_ACCESS_KEY)
+    )
+    rows = result.scalars().all()
+    items: list[PlaygroundSqlAccessItem] = []
+    for row in rows:
+        parsed_ctx = parse_sql_access_context(row.context)
+        is_active, _ = evaluate_sql_access(str(row.value), row.context)
+        items.append(
+            PlaygroundSqlAccessItem(
+                user_id=str(row.user_id),
+                enabled=str(row.value).lower() == "true",
+                active=is_active,
+                expires_at=parsed_ctx.get("expires_at"),
+            )
+        )
+    return items
+
+
+@router.put("/playground-sql-access/{user_id}", response_model=PlaygroundSqlAccessItem)
+async def update_playground_sql_access(
+    user_id: str,
+    payload: PlaygroundSqlAccessUpdate,
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PlaygroundSqlAccessItem:
+    try:
+        target_user_id = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="user_id inválido")
+
+    expires_at_value: datetime | None = None
+    if payload.enabled and payload.expires_at:
+        try:
+            expires_at_value = datetime.fromisoformat(payload.expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="expires_at inválido (use ISO-8601)")
+
+    pref_result = await db.execute(
+        select(UserPreference).where(
+            (UserPreference.user_id == target_user_id)
+            & (UserPreference.key == PLAYGROUND_SQL_ACCESS_KEY)
+        )
+    )
+    preference = pref_result.scalar_one_or_none()
+    if preference is None:
+        preference = UserPreference(
+            user_id=target_user_id,
+            key=PLAYGROUND_SQL_ACCESS_KEY,
+            value="true" if payload.enabled else "false",
+            context=build_sql_access_context(expires_at=expires_at_value),
+        )
+        db.add(preference)
+    else:
+        preference.value = "true" if payload.enabled else "false"
+        preference.context = build_sql_access_context(expires_at=expires_at_value)
+
+    is_active, _ = evaluate_sql_access(preference.value, preference.context)
+    parsed_ctx = parse_sql_access_context(preference.context)
+    _log_sql_access_change(
+        db,
+        actor_user_id=current_user.id,
+        target_user_id=target_user_id,
+        enabled=payload.enabled,
+        expires_at=parsed_ctx.get("expires_at"),
+        action="grant_sql_full_access" if payload.enabled else "revoke_sql_full_access",
+    )
+    await db.commit()
+    _invalidate_playground_sql_cache(user_id=user_id)
+    return PlaygroundSqlAccessItem(
+        user_id=user_id,
+        enabled=payload.enabled,
+        active=is_active,
+        expires_at=parsed_ctx.get("expires_at"),
+    )
+
+
+@router.post("/playground-sql-access/revoke-all")
+async def revoke_all_playground_sql_access(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    result = await db.execute(
+        select(UserPreference).where(UserPreference.key == PLAYGROUND_SQL_ACCESS_KEY)
+    )
+    preferences = result.scalars().all()
+    revoked_count = 0
+    for pref in preferences:
+        if str(pref.value).lower() == "true":
+            pref.value = "false"
+            pref.context = build_sql_access_context(expires_at=None)
+            revoked_count += 1
+    _log_sql_access_change(
+        db,
+        actor_user_id=current_user.id,
+        target_user_id=None,
+        enabled=False,
+        expires_at=None,
+        action="revoke_sql_full_access_bulk",
+    )
+    await db.commit()
+    _invalidate_playground_sql_cache(user_id=None)
+    return {
+        "status": "ok",
+        "revoked_count": revoked_count,
+        "message": "Permissão SQL completo revogada para usuários não-admin configurados.",
+    }
+
+
+@router.get("/playground-canary-access", response_model=list[PlaygroundCanaryAccessItem])
+async def list_playground_canary_access(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[PlaygroundCanaryAccessItem]:
+    result = await db.execute(
+        select(UserPreference).where(UserPreference.key == PLAYGROUND_CANARY_ACCESS_KEY)
+    )
+    rows = result.scalars().all()
+    return [
+        PlaygroundCanaryAccessItem(
+            user_id=str(row.user_id),
+            enabled=str(row.value).strip().lower() == "true",
+        )
+        for row in rows
+    ]
+
+
+@router.put("/playground-canary-access/{user_id}", response_model=PlaygroundCanaryAccessItem)
+async def update_playground_canary_access(
+    user_id: str,
+    payload: PlaygroundCanaryAccessUpdate,
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PlaygroundCanaryAccessItem:
+    try:
+        target_user_id = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="user_id inválido")
+
+    pref_result = await db.execute(
+        select(UserPreference).where(
+            (UserPreference.user_id == target_user_id)
+            & (UserPreference.key == PLAYGROUND_CANARY_ACCESS_KEY)
+        )
+    )
+    preference = pref_result.scalar_one_or_none()
+    if preference is None:
+        preference = UserPreference(
+            user_id=target_user_id,
+            key=PLAYGROUND_CANARY_ACCESS_KEY,
+            value="true" if payload.enabled else "false",
+            context=None,
+        )
+        db.add(preference)
+    else:
+        preference.value = "true" if payload.enabled else "false"
+
+    _log_canary_access_change(
+        db,
+        actor_user_id=current_user.id,
+        target_user_id=target_user_id,
+        enabled=payload.enabled,
+        action="grant_playground_canary_access" if payload.enabled else "revoke_playground_canary_access",
+    )
+    await db.commit()
+    _invalidate_playground_canary_cache(user_id=user_id)
+    return PlaygroundCanaryAccessItem(user_id=user_id, enabled=payload.enabled)
+
+
+@router.post("/playground-canary-access/revoke-all")
+async def revoke_all_playground_canary_access(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    result = await db.execute(
+        select(UserPreference).where(UserPreference.key == PLAYGROUND_CANARY_ACCESS_KEY)
+    )
+    preferences = result.scalars().all()
+    revoked_count = 0
+    for pref in preferences:
+        if str(pref.value).strip().lower() == "true":
+            pref.value = "false"
+            revoked_count += 1
+
+    _log_canary_access_change(
+        db,
+        actor_user_id=current_user.id,
+        target_user_id=None,
+        enabled=False,
+        action="revoke_playground_canary_access_bulk",
+    )
+    await db.commit()
+    _invalidate_playground_canary_cache(user_id=None)
+    return {
+        "status": "ok",
+        "revoked_count": revoked_count,
+        "message": "Acesso canário do Playground revogado para usuários configurados.",
+    }
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)

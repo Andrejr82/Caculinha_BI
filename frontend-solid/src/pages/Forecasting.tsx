@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, For } from "solid-js";
 import { PlotlyChart } from "../components/PlotlyChart";
+import { dashboardApi } from "../lib/api";
 import type { Component } from "solid-js";
 import "../styles/micro-interactions.css";
 
@@ -68,11 +69,11 @@ const Forecasting: Component = () => {
   onMount(async () => {
     // Load metadata segments and stores
     try {
-      const segResp = await fetch("/api/v1/dashboard/metadata/segments");
-      if (segResp.ok) setSegmentos(await segResp.json());
+      const segResp = await dashboardApi.getMetadataSegments();
+      if (segResp.status === 200) setSegmentos(segResp.data);
 
-      const storesResp = await fetch("/api/v1/dashboard/metadata/stores");
-      if (storesResp.ok) setLojas(await storesResp.json());
+      const storesResp = await dashboardApi.getMetadataStores();
+      if (storesResp.status === 200) setLojas(storesResp.data);
     } catch (e) {
       console.error("Failed to load metadata", e);
     }
@@ -86,9 +87,8 @@ const Forecasting: Component = () => {
     if (!segmento) return;
 
     try {
-      const url = `/api/v1/dashboard/metadata/groups?segmento=${encodeURIComponent(segmento)}`;
-      const resp = await fetch(url);
-      if (resp.ok) setGrupos(await resp.json());
+      const resp = await dashboardApi.getMetadataGroups(segmento);
+      if (resp.status === 200) setGrupos(resp.data);
 
       // Auto-load products for the segment
       loadProducts(segmento, "");
@@ -101,11 +101,8 @@ const Forecasting: Component = () => {
     if (!segmento) return;
     setListLoading(true);
     try {
-      let url = `/api/v1/dashboard/products/list?segmento=${encodeURIComponent(segmento)}`;
-      if (grupo) url += `&grupo=${encodeURIComponent(grupo)}`;
-
-      const resp = await fetch(url);
-      const data = await resp.json();
+      const resp = await dashboardApi.getProductList(segmento, grupo);
+      const data = resp.data;
       if (data.products) {
         setProductsList(data.products);
       }
@@ -235,46 +232,37 @@ const Forecasting: Component = () => {
 
     try {
       // 1. Forecast with Store Filter (UNE)
-      const forecastResp = await fetch("/api/v1/dashboard/tools/prever_demanda", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          produto_id: pid,
-          periodo_dias: periodos(),
-          considerar_sazonalidade: true,
-          une: selectedLoja() || null
-        })
+      const response = await dashboardApi.predictDemand({
+        produto_id: pid,
+        periodo_dias: periodos(),
+        considerar_sazonalidade: true,
+        une: selectedLoja() || null
       });
-      const fData = await forecastResp.json();
+      const fData = response.data;
       if (fData.error) throw new Error(fData.error);
       setForecastData(fData);
       renderPlotlyChart(fData);
 
       // 2. EOQ (Only if Scope is Global/Rede - EOQ per store is too granular usually)
       if (!selectedLoja()) {
-        const eoqResp = await fetch("/api/v1/dashboard/tools/calcular_eoq", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ produto_id: pid })
-        });
-        const eData = await eoqResp.json();
+        const response = await dashboardApi.calculateEOQ({ produto_id: pid });
+        const eData = response.data;
 
         if (!eData.error) {
           setEOQData(eData);
 
           // 3. Auto-Allocation
           if (eData.eoq > 0) {
-            const allocResp = await fetch("/api/v1/dashboard/tools/alocar_estoque", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+            // 3. Auto-Allocation
+            if (eData.eoq > 0) {
+              const response = await dashboardApi.allocateStock({
                 produto_id: pid,
                 quantidade_total: eData.eoq,
                 criterio: "prioridade_ruptura"
-              })
-            });
-            const aData = await allocResp.json();
-            if (!aData.error) setAllocationData(aData);
+              });
+              const aData = response.data;
+              if (!aData.error) setAllocationData(aData);
+            }
           }
         }
       }

@@ -1,11 +1,23 @@
 import { Shield, Users, Database, Settings, RefreshCw, CheckCircle, AlertCircle, Plus, Edit, Trash2, X } from 'lucide-solid';
-import { createSignal, Show, For, createResource, onMount } from 'solid-js';
-import { adminApi, analyticsApi, UserData, CreateUserPayload, UpdateUserPayload } from '@/lib/api';
+import { createSignal, Show, For, createResource, createMemo } from 'solid-js';
+import { adminApi, analyticsApi, UserData, CreateUserPayload, UpdateUserPayload, AuditLogItem, PlaygroundCanaryAccessItem, PlaygroundSqlAccessItem } from '@/lib/api';
 
 export default function Admin() {
   const [syncing, setSyncing] = createSignal(false);
   const [message, setMessage] = createSignal<{ type: 'success' | 'error', text: string } | null>(null);
   const [activeTab, setActiveTab] = createSignal<'sync' | 'users'>('sync');
+  const [showOnlySqlEnabled, setShowOnlySqlEnabled] = createSignal(false);
+  const [showOnlyCanaryEnabled, setShowOnlyCanaryEnabled] = createSignal(false);
+  const [showAuditPanel, setShowAuditPanel] = createSignal(false);
+  const [showUserModal, setShowUserModal] = createSignal(false);
+  const [editingUser, setEditingUser] = createSignal<UserData | null>(null);
+  const [formData, setFormData] = createSignal<CreateUserPayload>({
+    username: '',
+    email: '',
+    password: '',
+    role: 'user',
+    allowed_segments: []
+  });
 
   // User Management State
   const [users, { refetch: refetchUsers }] = createResource<UserData[]>(async () => {
@@ -18,25 +30,70 @@ export default function Admin() {
     }
   });
 
-  // Load Segment Options
-  const [filterOptions] = createResource(async () => {
+  const [sqlAccessMap, { refetch: refetchSqlAccess }] = createResource(async () => {
     try {
-      const response = await analyticsApi.getFilterOptions();
-      return response.data;
+      const response = await adminApi.getPlaygroundSqlAccess();
+      const map = new Map<string, PlaygroundSqlAccessItem>();
+      response.data.forEach((item) => map.set(item.user_id, item));
+      return map;
     } catch (err) {
-      console.error('Error loading filter options:', err);
-      return { categorias: [], segmentos: [] };
+      console.error('Error loading SQL access map:', err);
+      return new Map<string, PlaygroundSqlAccessItem>();
     }
   });
 
-  const [showUserModal, setShowUserModal] = createSignal(false);
-  const [editingUser, setEditingUser] = createSignal<UserData | null>(null);
-  const [formData, setFormData] = createSignal<CreateUserPayload>({
-    username: '',
-    email: '',
-    password: '',
-    role: 'user',
-    allowed_segments: []
+  const [canaryAccessMap, { refetch: refetchCanaryAccess }] = createResource(async () => {
+    try {
+      const response = await adminApi.getPlaygroundCanaryAccess();
+      const map = new Map<string, PlaygroundCanaryAccessItem>();
+      response.data.forEach((item) => map.set(item.user_id, item));
+      return map;
+    } catch (err) {
+      console.error('Error loading canary access map:', err);
+      return new Map<string, PlaygroundCanaryAccessItem>();
+    }
+  });
+
+  const [auditLogs, { refetch: refetchAuditLogs }] = createResource<AuditLogItem[], boolean>(
+    showAuditPanel,
+    async (visible) => {
+      if (!visible) return [];
+      try {
+        const response = await adminApi.getAuditLogs(50);
+        return response.data;
+      } catch (err) {
+        console.error('Error loading audit logs:', err);
+        return [];
+      }
+    }
+  );
+
+  // Load Segment Options
+  const [filterOptions] = createResource<boolean, { categorias: string[]; segmentos: string[] }>(
+    showUserModal,
+    async (isOpen) => {
+      if (!isOpen) return { categorias: [], segmentos: [] };
+      try {
+        const response = await analyticsApi.getFilterOptions();
+        return response.data;
+      } catch (err) {
+        console.error('Error loading filter options:', err);
+        return { categorias: [], segmentos: [] };
+      }
+    }
+  );
+
+  const filteredUsers = createMemo(() => {
+    const list = users() || [];
+    return list.filter((u) => {
+      if (showOnlySqlEnabled() && !(u.role === 'admin' || sqlAccessMap()?.get(u.id)?.active === true)) {
+        return false;
+      }
+      if (showOnlyCanaryEnabled() && !(u.role === 'admin' || canaryAccessMap()?.get(u.id)?.enabled === true)) {
+        return false;
+      }
+      return true;
+    });
   });
 
   const handleSync = async () => {
@@ -108,6 +165,9 @@ export default function Admin() {
 
       closeUserModal();
       refetchUsers();
+      refetchSqlAccess();
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
       console.error('Erro ao salvar usuário:', err);
@@ -138,6 +198,9 @@ export default function Admin() {
       await adminApi.deleteUser(user.id);
       setMessage({ type: 'success', text: `Usuário ${user.username} excluído com sucesso!` });
       refetchUsers();
+      refetchSqlAccess();
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
       const errorMsg = err?.response?.data?.detail || 'Erro ao excluir usuário';
@@ -155,9 +218,110 @@ export default function Admin() {
         text: `Usuário ${user.username} ${!user.is_active ? 'ativado' : 'desativado'} com sucesso!`
       });
       refetchUsers();
+      refetchSqlAccess();
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
       const errorMsg = err?.response?.data?.detail || 'Erro ao atualizar status do usuário';
+      setMessage({ type: 'error', text: errorMsg });
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
+  const handleToggleSqlAccess = async (user: UserData) => {
+    if (user.role === 'admin') return;
+    setMessage(null);
+    try {
+      const current = sqlAccessMap()?.get(user.id);
+      const enabledNow = current?.enabled === true;
+      let expiresAt: string | undefined = undefined;
+      if (!enabledNow) {
+        const daysRaw = window.prompt('Validade em dias para SQL completo (vazio = sem expiração):', '30');
+        if (daysRaw === null) return;
+        const clean = daysRaw.trim();
+        if (clean.length > 0) {
+          const days = Number.parseInt(clean, 10);
+          if (Number.isNaN(days) || days <= 0) {
+            setMessage({ type: 'error', text: 'Validade inválida. Informe dias > 0 ou deixe vazio.' });
+            return;
+          }
+          const dt = new Date();
+          dt.setDate(dt.getDate() + days);
+          expiresAt = dt.toISOString();
+        }
+      }
+      await adminApi.setPlaygroundSqlAccess(user.id, !enabledNow, expiresAt);
+      setMessage({
+        type: 'success',
+        text: `SQL completo ${!enabledNow ? 'habilitado' : 'desabilitado'} para ${user.username}.`
+      });
+      refetchSqlAccess();
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Erro ao alterar permissão SQL';
+      setMessage({ type: 'error', text: errorMsg });
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
+  const handleRevokeAllSqlAccess = async () => {
+    if (!confirm('Revogar SQL completo de todos os usuários não-admin?')) return;
+    setMessage(null);
+    try {
+      const response = await adminApi.revokeAllPlaygroundSqlAccess();
+      setMessage({
+        type: 'success',
+        text: `${response.data.revoked_count} usuário(s) tiveram SQL completo revogado.`
+      });
+      refetchSqlAccess();
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Erro ao revogar permissões em massa';
+      setMessage({ type: 'error', text: errorMsg });
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
+  const handleToggleCanaryAccess = async (user: UserData) => {
+    if (user.role === 'admin') return;
+    setMessage(null);
+    try {
+      const current = canaryAccessMap()?.get(user.id);
+      const enabledNow = current?.enabled === true;
+      await adminApi.setPlaygroundCanaryAccess(user.id, !enabledNow);
+      setMessage({
+        type: 'success',
+        text: `Canário LLM remota ${!enabledNow ? 'habilitado' : 'desabilitado'} para ${user.username}.`
+      });
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Erro ao alterar permissão canário';
+      setMessage({ type: 'error', text: errorMsg });
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
+  const handleRevokeAllCanaryAccess = async () => {
+    if (!confirm('Revogar acesso canário do Playground para todos os usuários não-admin?')) return;
+    setMessage(null);
+    try {
+      const response = await adminApi.revokeAllPlaygroundCanaryAccess();
+      setMessage({
+        type: 'success',
+        text: `${response.data.revoked_count} usuário(s) tiveram acesso canário revogado.`
+      });
+      refetchCanaryAccess();
+      if (showAuditPanel()) refetchAuditLogs();
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Erro ao revogar acessos canário em massa';
       setMessage({ type: 'error', text: errorMsg });
       setTimeout(() => setMessage(null), 5000);
     }
@@ -230,15 +394,45 @@ export default function Admin() {
         <Show when={activeTab() === 'users'}>
           <div class="space-y-4">
             {/* Header with Add Button */}
-            <div class="flex justify-between items-center">
+            <div class="flex flex-wrap justify-between items-center gap-3">
               <h3 class="text-lg font-semibold">Gerenciar Usuários</h3>
-              <button
-                onClick={openCreateUserModal}
-                class="btn btn-primary gap-2"
-              >
-                <Plus size={16} />
-                Novo Usuário
-              </button>
+              <div class="flex items-center gap-2">
+                <label class="text-xs text-muted flex items-center gap-2 px-3 py-2 border rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={showOnlySqlEnabled()}
+                    onChange={(e) => setShowOnlySqlEnabled(e.currentTarget.checked)}
+                  />
+                  Somente SQL habilitado
+                </label>
+                <label class="text-xs text-muted flex items-center gap-2 px-3 py-2 border rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyCanaryEnabled()}
+                    onChange={(e) => setShowOnlyCanaryEnabled(e.currentTarget.checked)}
+                  />
+                  Somente Canário LLM
+                </label>
+                <button
+                  onClick={handleRevokeAllSqlAccess}
+                  class="btn btn-outline text-red-400 border-red-500/30 hover:bg-red-500/10"
+                >
+                  Revogar SQL de Todos
+                </button>
+                <button
+                  onClick={handleRevokeAllCanaryAccess}
+                  class="btn btn-outline text-amber-300 border-amber-500/30 hover:bg-amber-500/10"
+                >
+                  Revogar Canário de Todos
+                </button>
+                <button
+                  onClick={openCreateUserModal}
+                  class="btn btn-primary gap-2"
+                >
+                  <Plus size={16} />
+                  Novo Usuário
+                </button>
+              </div>
             </div>
 
             {/* Users Table */}
@@ -250,6 +444,8 @@ export default function Admin() {
                     <th class="text-left p-3 text-sm font-medium">Email</th>
                     <th class="text-left p-3 text-sm font-medium">Role</th>
                     <th class="text-left p-3 text-sm font-medium">Segmentos</th>
+                    <th class="text-center p-3 text-sm font-medium">SQL Completo</th>
+                    <th class="text-center p-3 text-sm font-medium">Canário LLM</th>
                     <th class="text-center p-3 text-sm font-medium">Status</th>
                     <th class="text-right p-3 text-sm font-medium">Ações</th>
                   </tr>
@@ -257,15 +453,15 @@ export default function Admin() {
                 <tbody>
                   <Show when={users.loading}>
                     <tr>
-                      <td colspan="6" class="text-center p-8 text-muted">
+                      <td colspan="8" class="text-center p-8 text-muted">
                         <RefreshCw size={24} class="animate-spin mx-auto mb-2" />
                         Carregando usuários...
                       </td>
                     </tr>
                   </Show>
 
-                  <Show when={!users.loading && users()}>
-                    <For each={users()}>
+                  <Show when={!users.loading && filteredUsers()}>
+                    <For each={filteredUsers()}>
                       {(user) => (
                         <tr class="border-b hover:bg-muted/30 transition-colors">
                           <td class="p-3">{user.username}</td>
@@ -285,6 +481,43 @@ export default function Admin() {
                                 : <span class="text-yellow-500 text-xs">Nenhum</span>
                             }>
                               <span class="text-muted italic">Todos (Admin)</span>
+                            </Show>
+                          </td>
+                          <td class="p-3 text-center">
+                            <Show
+                              when={user.role !== 'admin'}
+                              fallback={<span class="px-2 py-1 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400">Sempre</span>}
+                            >
+                              <button
+                                onClick={() => handleToggleSqlAccess(user)}
+                                class={`px-2 py-1 rounded text-xs font-medium transition-colors ${sqlAccessMap()?.get(user.id)?.active
+                                  ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                                  : 'bg-gray-500/10 text-gray-300 hover:bg-gray-500/20'
+                                  }`}
+                              >
+                                {sqlAccessMap()?.get(user.id)?.active ? 'Habilitado' : 'Bloqueado'}
+                              </button>
+                              <Show when={sqlAccessMap()?.get(user.id)?.expires_at}>
+                                <div class="text-[10px] text-muted mt-1">
+                                  até {new Date(sqlAccessMap()!.get(user.id)!.expires_at as string).toLocaleString('pt-BR')}
+                                </div>
+                              </Show>
+                            </Show>
+                          </td>
+                          <td class="p-3 text-center">
+                            <Show
+                              when={user.role !== 'admin'}
+                              fallback={<span class="px-2 py-1 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400">Sempre</span>}
+                            >
+                              <button
+                                onClick={() => handleToggleCanaryAccess(user)}
+                                class={`px-2 py-1 rounded text-xs font-medium transition-colors ${canaryAccessMap()?.get(user.id)?.enabled
+                                  ? 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                                  : 'bg-gray-500/10 text-gray-300 hover:bg-gray-500/20'
+                                  }`}
+                              >
+                                {canaryAccessMap()?.get(user.id)?.enabled ? 'Habilitado' : 'Bloqueado'}
+                              </button>
                             </Show>
                           </td>
                           <td class="p-3 text-center">
@@ -321,15 +554,68 @@ export default function Admin() {
                     </For>
                   </Show>
 
-                  <Show when={!users.loading && (!users() || users()?.length === 0)}>
+                  <Show when={!users.loading && (!filteredUsers() || filteredUsers()?.length === 0)}>
                     <tr>
-                      <td colspan="6" class="text-center p-8 text-muted">
-                        Nenhum usuário encontrado
+                      <td colspan="8" class="text-center p-8 text-muted">
+                        Nenhum usuário encontrado com o filtro atual
                       </td>
                     </tr>
                   </Show>
                 </tbody>
               </table>
+            </div>
+
+            <div class="border rounded-lg bg-card p-4">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold">Auditoria de Permissões Playground (Admin)</h4>
+                <button
+                  class="btn btn-outline btn-sm"
+                  onClick={() => {
+                    const next = !showAuditPanel();
+                    setShowAuditPanel(next);
+                    if (next) refetchAuditLogs();
+                  }}
+                >
+                  {showAuditPanel() ? 'Ocultar' : 'Carregar'}
+                </button>
+              </div>
+              <Show when={showAuditPanel()} fallback={<p class="text-xs text-muted">Painel de auditoria em modo sob demanda para reduzir carga.</p>}>
+              <div class="overflow-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-muted/40">
+                    <tr>
+                      <th class="text-left p-2">Data/Hora</th>
+                      <th class="text-left p-2">Admin</th>
+                      <th class="text-left p-2">Ação</th>
+                      <th class="text-left p-2">Alvo</th>
+                      <th class="text-left p-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={(auditLogs() || []).filter((l) => l.resource === 'playground_sql_access' || l.resource === 'playground_canary_access').slice(0, 20)}>
+                      {(log) => (
+                        <tr class="border-b border-border/40">
+                          <td class="p-2">{new Date(log.timestamp).toLocaleString('pt-BR')}</td>
+                          <td class="p-2">{log.user_name}</td>
+                          <td class="p-2">{log.action}</td>
+                          <td class="p-2">{(log.details as any)?.target_user_id || 'massa'}</td>
+                          <td class="p-2">
+                            <span class={`px-2 py-0.5 rounded text-xs ${log.status === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                              {log.status}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                    </For>
+                    <Show when={(auditLogs() || []).filter((l) => l.resource === 'playground_sql_access' || l.resource === 'playground_canary_access').length === 0}>
+                      <tr>
+                        <td colspan="5" class="p-3 text-muted">Sem eventos de auditoria para permissões do Playground.</td>
+                      </tr>
+                    </Show>
+                  </tbody>
+                </table>
+              </div>
+              </Show>
             </div>
           </div>
         </Show>

@@ -1,7 +1,7 @@
 /* src/index.tsx - Versão ULTRA SIMPLIFICADA sem verificação de versão */
 import { render } from 'solid-js/web';
 import { Router, Route, Navigate } from '@solidjs/router';
-import { Show, lazy, Suspense } from 'solid-js';
+import { Show, lazy, Suspense, ErrorBoundary as SolidErrorBoundary } from 'solid-js';
 import { QueryClient, QueryClientProvider } from '@tanstack/solid-query';
 import './index.css';
 
@@ -195,9 +195,37 @@ console.log('✅ QueryClient created');
 
 // Render app
 try {
+  const recoverSystem = () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } finally {
+      window.location.href = '/login';
+      window.location.reload();
+    }
+  };
+
   render(() => (
     <QueryClientProvider client={queryClient}>
-      <App />
+      <SolidErrorBoundary fallback={(err) => (
+        <div class="min-h-screen flex items-center justify-center p-8 bg-slate-100">
+          <div class="max-w-lg w-full bg-white shadow-lg rounded-xl p-6 space-y-4">
+            <h1 class="text-xl font-semibold text-red-700">System Recovering</h1>
+            <p class="text-sm text-slate-700">
+              O sistema encontrou um erro inesperado durante a inicialização.
+            </p>
+            <pre class="text-xs bg-slate-50 border rounded p-3 overflow-auto text-slate-700">{String(err)}</pre>
+            <button
+              class="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+              onClick={recoverSystem}
+            >
+              Limpar cache e recarregar
+            </button>
+          </div>
+        </div>
+      )}>
+        <App />
+      </SolidErrorBoundary>
       {/* ✅ USABILIDADE: Global UI Components */}
       <ToastContainer />
       <ConfirmDialogContainer />

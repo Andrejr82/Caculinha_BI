@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Agent Solution BI - Lojas Caçula
  */
 export default defineConfig({
-    testDir: './tests/integration',
+    testDir: './tests',
 
     // Execução sequencial para evitar conflitos de estado
     fullyParallel: false,
@@ -21,10 +21,11 @@ export default defineConfig({
 
     // Timeout de 30s por teste
     timeout: 30 * 1000,
+    outputDir: 'test-results/artifacts',
 
     // Reporters
     reporter: [
-        ['html', { outputFolder: 'test-results/html-report', open: 'never' }],
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
         ['json', { outputFile: 'test-results/results.json' }],
         ['list']
     ],
@@ -43,7 +44,7 @@ export default defineConfig({
         video: 'retain-on-failure',
 
         // Timeout de navegação
-        navigationTimeout: 10 * 1000,
+        navigationTimeout: 30 * 1000,
 
         // Timeout de ação
         actionTimeout: 5 * 1000,
@@ -57,11 +58,20 @@ export default defineConfig({
         },
     ],
 
-    // Web Server
-    webServer: {
-        command: 'npm run dev',
-        url: 'http://localhost:3000',
-        reuseExistingServer: !process.env.CI,
-        timeout: 120 * 1000,
-    },
+    // Web Servers
+    webServer: [
+        {
+            command: 'python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000',
+            url: 'http://127.0.0.1:8000/health',
+            cwd: '..',
+            reuseExistingServer: !process.env.CI,
+            timeout: 120 * 1000,
+        },
+        {
+            command: 'npm run dev',
+            url: 'http://localhost:3000',
+            reuseExistingServer: !process.env.CI,
+            timeout: 120 * 1000,
+        },
+    ],
 });

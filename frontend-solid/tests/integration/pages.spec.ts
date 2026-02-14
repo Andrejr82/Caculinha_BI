@@ -36,12 +36,16 @@ test.describe('Páginas - Usuário Comum', () => {
         });
     });
 
-    test('Rupturas carrega', async ({ authenticatedPage: page }) => {
+    test('Rupturas carrega com dados', async ({ authenticatedPage: page }) => {
         await page.goto('/rupturas');
         await page.waitForLoadState('networkidle');
 
-        // Aguardar um pouco para dados carregarem
-        await page.waitForTimeout(2000);
+        // Aguardar carregamento de dados (tabela ou lista)
+        await expect(page.locator('table, .ruptura-card').first()).toBeVisible({ timeout: 15000 });
+
+        // Verificar se há pelo menos um item ou linha de dado (não apenas header)
+        const rowCount = await page.locator('table tr, .ruptura-item').count();
+        expect(rowCount).toBeGreaterThan(0);
 
         await page.screenshot({
             path: 'test-results/screenshots/page-rupturas.png',

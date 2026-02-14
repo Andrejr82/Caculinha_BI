@@ -18,14 +18,12 @@ function createAuthStore() {
   // Função para validar e decodificar token
   const validateAndDecodeToken = (tokenString: string): any | null => {
     try {
-      // Verificar formato JWT (deve ter 3 partes separadas por .)
       const parts = tokenString.split('.');
       if (parts.length !== 3) {
         console.error('❌ Token inválido: formato incorreto');
         return null;
       }
 
-      // Decodificar payload (Base64Url -> Base64 -> JSON)
       const base64Url = parts[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const jsonPayload = decodeURIComponent(
@@ -37,7 +35,6 @@ function createAuthStore() {
 
       const payload = JSON.parse(jsonPayload);
 
-      // Verificar expiração
       if (payload.exp) {
         const now = Math.floor(Date.now() / 1000);
         if (payload.exp < now) {
@@ -61,10 +58,11 @@ function createAuthStore() {
       }
 
       const initToken = sessionStorage.getItem('token');
+      const initRefreshToken = sessionStorage.getItem('refresh_token');
+
       if (initToken) {
         const payload = validateAndDecodeToken(initToken);
 
-        // Verificação ESTRITA: Se o payload for nulo ou token expirado, limpar TUDO.
         if (payload) {
           // 🚨 CRITICAL FIX: Admin ALWAYS gets full access
           let allowedSegments = payload.allowed_segments || [];
@@ -86,41 +84,37 @@ function createAuthStore() {
           setIsAuthenticated(true);
           console.log('🔄 Sessão restaurada com sucesso:', userData);
         } else {
-          // Token inválido, malformado ou expirado -> Logout forçado imediato
+          // Token inválido ou expirado - Limpar
           console.warn('⚠️ Token inválido detectado na inicialização - Limpando sessão.');
           sessionStorage.removeItem('token');
+          sessionStorage.removeItem('refresh_token');
           setIsAuthenticated(false);
           setUser(null);
           setToken(null);
-          // Opcional: Redirecionar se estiver numa rota protegida é responsabilidade do Router,
-          // mas garantir o estado limpo previne o acesso visual indevido.
         }
       }
     } catch (error) {
       console.error('❌ Erro crítico ao inicializar autenticação:', error);
       sessionStorage.removeItem('token');
+      sessionStorage.removeItem('refresh_token');
       setIsAuthenticated(false);
     }
   };
 
-  // Executar inicialização
   initializeAuth();
 
   const login = async (usernameOrEmail: string, password: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     try {
-      // ✅ FIX: Backend aceita 'username' que pode ser email para Supabase
-      // O auth_service.py detecta se é email e usa Supabase, senão usa Parquet
       const response = await api.post('/auth/login', {
-        username: usernameOrEmail,  // Pode ser email (Supabase) ou username (Parquet)
+        username: usernameOrEmail,
         password
       });
 
-      const { access_token } = response.data;
+      const { access_token, refresh_token } = response.data;
 
       if (access_token) {
-        // Validar token antes de salvar
         const payload = validateAndDecodeToken(access_token);
 
         if (!payload) {
@@ -129,10 +123,11 @@ function createAuthStore() {
         }
 
         sessionStorage.setItem('token', access_token);
+        if (refresh_token) sessionStorage.setItem('refresh_token', refresh_token);
+
         setToken(access_token);
         setIsAuthenticated(true);
 
-        // 🚨 CRITICAL FIX: Admin ALWAYS gets full access
         let allowedSegments = payload.allowed_segments || [];
         const role = payload.role || 'user';
 
@@ -141,7 +136,6 @@ function createAuthStore() {
           allowedSegments = ['*'];
         }
 
-        // Definir dados do usuário baseado no payload do JWT
         const userData: User = {
           username: payload.username || payload.sub || usernameOrEmail.split('@')[0],
           role: role,
@@ -167,6 +161,7 @@ function createAuthStore() {
 
   const logout = () => {
     sessionStorage.removeItem('token');
+    sessionStorage.removeItem('refresh_token');
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);

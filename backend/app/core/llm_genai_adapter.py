@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional
 import logging
 import time
 import json
+import os
 from backend.app.core.llm_base import BaseLLMAdapter
 from backend.app.config.settings import settings
 
@@ -54,7 +55,7 @@ class GenAILLMAdapter(BaseLLMAdapter):
             raise ValueError("GEMINI_API_KEY não configurada no arquivo .env")
 
         # Model Name
-        raw_model_name = model_name or settings.LLM_MODEL_NAME or "gemini-2.5-pro"
+        raw_model_name = model_name or settings.LLM_MODEL_NAME
         # Sanitização robusta para corrigir erros de .env com aspas ou comentários
         self.model_name = raw_model_name.split("#")[0].strip().replace('"', '').replace("'", "")
         
@@ -62,9 +63,11 @@ class GenAILLMAdapter(BaseLLMAdapter):
         self.client = genai.Client(api_key=self.api_key)
         
         # Configuration
-        self.max_retries = 5
-        self.retry_delay = 2.0
+        # Keep retries short to avoid long user-facing stalls on quota exhaustion.
+        self.max_retries = 2
+        self.retry_delay = 0.5
         self.system_instruction = system_instruction
+        self.debug_dumps = os.getenv("GENAI_DEBUG_DUMPS", "false").lower() == "true"
 
         self.logger.info(f"[OK] GenAI adapter inicializado com modelo: {self.model_name}")
 
@@ -96,8 +99,8 @@ class GenAILLMAdapter(BaseLLMAdapter):
                     converted_tools = self._convert_tools(tools)
                     self.logger.info(f"DEBUG TOOLS: Original count: {len(tools) if hasattr(tools, '__len__') else '?'}, Converted: {len(converted_tools)}")
                     
-                    # 🔴 DEBUG: Salvar ferramentas em arquivo
-                    if converted_tools:
+                    # Optional debug dump (disabled by default in production flow).
+                    if converted_tools and self.debug_dumps:
                         import json
                         from pathlib import Path
                         from datetime import datetime
@@ -183,7 +186,18 @@ class GenAILLMAdapter(BaseLLMAdapter):
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay * (attempt + 1))
                 else:
-                    return {"error": f"Falha após {self.max_retries} tentativas: {str(e)}"}
+                    error_text = str(e).lower()
+                    if any(token in error_text for token in ["429", "quota", "resource_exhausted", "rate limit"]):
+                        return {
+                            "error": "Quota estourada / configure billing / tente depois",
+                            "error_type": "rate_limit",
+                        }
+                    if any(token in error_text for token in ["413", "payload too large", "tokens per minute", "request too large"]):
+                        return {
+                            "error": "Pedido muito grande para o modelo de fallback. Tente uma pergunta mais objetiva.",
+                            "error_type": "payload_too_large",
+                        }
+                    return {"error": "Serviço de IA indisponível no momento. Tente novamente em instantes."}
         
         return {"error": "Max retries exceeded"}
 
@@ -530,65 +544,39 @@ class GenAILLMAdapter(BaseLLMAdapter):
     def _parse_response(self, response) -> Dict[str, Any]:
         """Parse resposta da API."""
         try:
-            # 🔴 DEBUG: Salvar resposta RAW em arquivo para análise
-            import json
-            from pathlib import Path
-            from datetime import datetime
-            
-            debug_dir = Path("debug_llm_responses")
-            debug_dir.mkdir(exist_ok=True)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            debug_file = debug_dir / f"response_{timestamp}.json"
-            
-            # Converter response para dict serializável
-            response_dict = {
-                "timestamp": timestamp,
-                "has_candidates": hasattr(response, 'candidates'),
-                "candidates_count": len(response.candidates) if hasattr(response, 'candidates') else 0,
-                "raw_response_str": str(response),
-                "raw_response_repr": repr(response),
-                "response_type": str(type(response)),
-            }
-            
-            # Tentar extrair mais detalhes
-            if hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                response_dict["candidate_0"] = {
-                    "has_content": hasattr(candidate, 'content'),
-                    "content_str": str(candidate.content) if hasattr(candidate, 'content') else None,
-                    "content_repr": repr(candidate.content) if hasattr(candidate, 'content') else None,
+            if self.debug_dumps:
+                # Optional deep dumps only when explicitly enabled.
+                import json
+                from pathlib import Path
+                from datetime import datetime
+                
+                debug_dir = Path("debug_llm_responses")
+                debug_dir.mkdir(exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                debug_file = debug_dir / f"response_{timestamp}.json"
+                
+                response_dict = {
+                    "timestamp": timestamp,
+                    "has_candidates": hasattr(response, 'candidates'),
+                    "candidates_count": len(response.candidates) if hasattr(response, 'candidates') else 0,
+                    "raw_response_str": str(response),
+                    "raw_response_repr": repr(response),
+                    "response_type": str(type(response)),
                 }
                 
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    response_dict["candidate_0"]["parts_count"] = len(candidate.content.parts)
-                    response_dict["candidate_0"]["parts"] = []
-                    
-                    for i, part in enumerate(candidate.content.parts):
-                        part_info = {
-                            "index": i,
-                            "type": str(type(part)),
-                            "str": str(part),
-                            "repr": repr(part),
-                            "dir": dir(part),
-                            "has_text": hasattr(part, 'text'),
-                            "has_function_call": hasattr(part, 'function_call'),
-                            "has_function_response": hasattr(part, 'function_response'),
-                        }
-                        
-                        if hasattr(part, 'text'):
-                            part_info["text_value"] = part.text
-                        if hasattr(part, 'function_call'):
-                            part_info["function_call_str"] = str(part.function_call)
-                        
-                        response_dict["candidate_0"]["parts"].append(part_info)
-            
-            # Salvar em arquivo
-            with open(debug_file, 'w', encoding='utf-8') as f:
-                json.dump(response_dict, f, indent=2, ensure_ascii=False)
-            
-            print(f"\n{'='*80}\n[DEBUG] Resposta RAW salva em: {debug_file}\n{'='*80}\n", flush=True)
-            self.logger.info(f"[DEBUG] Resposta RAW salva em: {debug_file}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    candidate = response.candidates[0]
+                    response_dict["candidate_0"] = {
+                        "has_content": hasattr(candidate, 'content'),
+                        "content_str": str(candidate.content) if hasattr(candidate, 'content') else None,
+                        "content_repr": repr(candidate.content) if hasattr(candidate, 'content') else None,
+                    }
+                
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    json.dump(response_dict, f, indent=2, ensure_ascii=False)
+                
+                self.logger.info(f"[DEBUG] Resposta RAW salva em: {debug_file}")
             
             # Continuar com parsing normal
             tool_calls = []

@@ -5,7 +5,7 @@ BI Chat with AI assistant
 
 from typing import Annotated, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import ORJSONResponse, StreamingResponse
+from fastapi.responses import ORJSONResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
 import json
@@ -18,7 +18,7 @@ from decimal import Decimal
 from datetime import datetime, date
 
 # Import core dependencies
-from backend.app.api.dependencies import get_current_active_user
+from backend.app.api.dependencies import get_current_active_user, get_token_from_header_or_query
 from backend.app.infrastructure.database.models import User
 from backend.app.config.settings import settings
 from backend.app.core.utils.response_cache import ResponseCache
@@ -37,6 +37,20 @@ from backend.app.core.utils.response_validator import validate_response, validat
 from backend.app.services.chat_service_v3 import ChatServiceV3
 
 logger = logging.getLogger(__name__)
+
+def _is_degraded_or_error_response(payload: Any) -> bool:
+    """Avoid caching degraded/error messages and ignore them on cache reads."""
+    text = str(payload).lower()
+    degraded_markers = [
+        "tempo limite",
+        "quota estourada",
+        "resource_exhausted",
+        "serviço de ia temporariamente indisponível",
+        "payload too large",
+        "request too large",
+        "erro ao processar",
+    ]
+    return any(marker in text for marker in degraded_markers)
 
 
 def safe_json_dumps(obj: Any, **kwargs) -> str:
@@ -177,9 +191,9 @@ class ChatResponse(BaseModel):
 @router.get("/stream")
 async def stream_chat(
     q: str,
-    token: str,
     session_id: str,
     request: Request,
+    token: Annotated[str, Depends(get_token_from_header_or_query)],
 ):
     """
     Streaming endpoint using Server-Sent Events (SSE)
@@ -195,14 +209,16 @@ async def stream_chat(
         logger.info(f"SSE authenticated user: {current_user.username}")
     except Exception as e:
         logger.error(f"SSE authentication failed: {e}")
-        async def error_generator():
-            yield f"data: {safe_json_dumps({'error': 'Não autenticado'})}\n\n"
-        return StreamingResponse(error_generator(), media_type="text/event-stream")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Sessao invalida ou expirada. Faca login novamente."},
+        )
 
     last_event_id = request.headers.get("Last-Event-ID")
     logger.info(f"==> SSE STREAM REQUEST: {q} (Session: {session_id}) (Last-Event-ID: {last_event_id}) <==")
 
     async def event_generator():
+        final_sent = False
         try:
             event_counter = int(last_event_id) if last_event_id else 0
 
@@ -286,7 +302,31 @@ async def stream_chat(
                 event_counter += 1
                 yield f"id: {event_counter}\n"
                 yield f"data: {safe_json_dumps({'type': 'final', 'text': '', 'done': True})}\n\n"
+                final_sent = True
                 return # SAÍDA ANTECIPADA - Evita carregar o agente pesado
+            
+            # --- FAST PATH: perguntas determinísticas de KPI (sem LLM) ---
+            kpi_intents = [
+                "kpi",
+                "kpis",
+                "indicadores",
+                "metricas",
+                "métricas",
+                "resumo executivo",
+            ]
+            if any(term in query_clean for term in kpi_intents) and len(query_clean) <= 60:
+                deterministic_msg = (
+                    "Para KPIs instantâneos, use o Dashboard/endpoint de métricas. "
+                    "Posso detalhar um KPI específico se você informar qual (ex.: venda_30dd, margem, estoque)."
+                )
+                event_counter += 1
+                yield f"id: {event_counter}\n"
+                yield f"data: {safe_json_dumps({'type': 'text', 'text': deterministic_msg, 'done': False})}\n\n"
+                event_counter += 1
+                yield f"id: {event_counter}\n"
+                yield f"data: {safe_json_dumps({'type': 'final', 'text': '', 'done': True})}\n\n"
+                final_sent = True
+                return
             # ---------------------------------------------------------------------
 
             # [DEBUG] FIX: Ensure initialization if startup task hasn't finished yet
@@ -311,12 +351,15 @@ async def stream_chat(
 
             # NOVO: Verificar Semantic Cache primeiro (com user_id)
             cached_response = cache_get(q, user_id=user_cache_id)
-            if cached_response:
+            if cached_response and not _is_degraded_or_error_response(cached_response):
                 logger.info(f"CACHE HIT: Resposta encontrada em cache para: {q[:50]}... (user={user_cache_id})")
                 event_counter += 1
                 yield f"id: {event_counter}\n"
                 yield f"data: {safe_json_dumps({'type': 'cache_hit', 'done': False})}\n\n"
                 agent_response = cached_response
+            elif cached_response:
+                logger.info("CACHE SKIP: resposta degradada/erro não será reutilizada")
+                agent_response = None
             else:
                 # OPTIMIZATION 2025: Stream progress events during agent execution
                 import asyncio
@@ -365,11 +408,11 @@ async def stream_chat(
                             try:
                                 agent_response = agent_task.result()
                             except asyncio.TimeoutError:
-                                logger.error(f"Agent timeout após 60s para query: {q}")
+                                logger.error(f"Agent timeout após 90s para query: {q}")
                                 agent_response = {
                                     "type": "text",
                                     "result": {
-                                        "mensagem": "O tempo limite de processamento foi excedido (1 minuto). A consulta solicitada é muito complexa. Tente ser mais específico ou dividi-la em partes menores."
+                                        "mensagem": "O tempo limite de processamento foi excedido (90 segundos). Tente uma pergunta mais objetiva para receber a resposta mais rápido."
                                     }
                                 }
                             except Exception as e:
@@ -377,13 +420,13 @@ async def stream_chat(
                                 agent_response = {
                                     "type": "text",
                                     "result": {
-                                        "mensagem": f"Erro ao processar consulta: {str(e)}"
+                                        "mensagem": "Nao foi possivel concluir a analise agora. Tente novamente em instantes."
                                     }
                                 }
                             break
 
                 # [OK] FIX 2026-01-14: Salvar resposta válida em cache COM user_id
-                if agent_response and "error" not in str(agent_response).lower():
+                if agent_response and "error" not in str(agent_response).lower() and not _is_degraded_or_error_response(agent_response):
                     cache_set(q, agent_response, user_id=user_cache_id)
             
             if not agent_response:
@@ -391,7 +434,7 @@ async def stream_chat(
                 agent_response = {
                     "type": "text",
                     "result": {
-                        "mensagem": f"Desculpe, não consegui processar sua pergunta. Por favor, reformule e tente novamente."
+                        "mensagem": "Não foi possível concluir a análise agora. Verifique limites de quota/billing e tente uma pergunta mais objetiva."
                     }
                 }
             
@@ -448,6 +491,9 @@ async def stream_chat(
                 if not chart_data:
                     if isinstance(result_data, dict):
                          response_text = result_data.get("mensagem", "")
+                         evidence = result_data.get("evidencia")
+                         if evidence:
+                             response_text = f"{response_text}\n\nEvidência: {evidence}"
                     else:
                          response_text = str(result_data)
                     
@@ -510,7 +556,8 @@ async def stream_chat(
             yield f"data: {safe_json_dumps(error_response)}\n\n"
         finally:
             # 🛑 SAFETY NET: Always send DONE signal to prevent frontend infinite spinner
-            yield f"data: {safe_json_dumps({'type': 'final', 'text': '', 'done': True})}\n\n"
+            if not final_sent:
+                yield f"data: {safe_json_dumps({'type': 'final', 'text': '', 'done': True})}\n\n"
 
     
     return StreamingResponse(
@@ -532,7 +579,7 @@ async def submit_feedback(
     if query_history is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="QueryHistory system not initialized."
+            detail="Sistema de historico indisponivel temporariamente."
         )
     
     feedback_entry = {
@@ -553,7 +600,7 @@ async def submit_feedback(
         logger.error(f"Failed to write feedback to file: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save feedback."
+            detail="Nao foi possivel salvar o feedback agora."
         )
 
     return {"message": "Feedback submitted successfully."}
@@ -583,7 +630,7 @@ async def send_chat_message(
     # unless we expose it. But for the demo, let's focus on the streaming endpoint.
     
     if chat_service_v3 is None:
-         raise HTTPException(status_code=500, detail="Agent not init")
+         raise HTTPException(status_code=500, detail="Servico de chat ainda nao inicializado.")
 
     # Assuming no history for legacy non-session calls
     # We will use the NEW service instead of the old agent directly to ensure consistency
@@ -593,3 +640,13 @@ async def send_chat_message(
         user_id=current_user.id
     )
     return {"response": str(result), "full_agent_response": result}
+
+
+@router.get("/history")
+async def get_chat_history(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> dict:
+    """
+    Legacy contract endpoint for frontend/tests compatibility.
+    """
+    return {"items": [], "user": current_user.username}

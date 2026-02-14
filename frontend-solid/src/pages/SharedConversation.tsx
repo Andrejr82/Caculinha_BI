@@ -1,5 +1,6 @@
 import { createSignal, onMount, For, Show } from 'solid-js';
 import { useParams } from '@solidjs/router';
+import { sharedApi } from '@/lib/api';
 // Removido solid-markdown devido a problemas de compatibilidade ESM
 import { formatTimestamp } from '@/lib/formatters';
 import 'github-markdown-css/github-markdown.css';
@@ -34,9 +35,9 @@ export default function SharedConversation() {
     }
 
     try {
-      const response = await fetch(`/api/v1/shared/${shareId}`);
+      const response = await sharedApi.getConversation(shareId);
 
-      if (!response.ok) {
+      if (response.status !== 200) {
         if (response.status === 404) {
           setError('Esta conversa não foi encontrada.');
         } else if (response.status === 410) {
@@ -48,7 +49,7 @@ export default function SharedConversation() {
         return;
       }
 
-      const data = await response.json();
+      const data = response.data;
       setConversation(data);
     } catch (err) {
       console.error('Error loading shared conversation:', err);
@@ -122,8 +123,8 @@ export default function SharedConversation() {
                 <div class={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     class={`max-w-[80%] rounded-lg p-4 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-card border text-card-foreground'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-card border text-card-foreground'
                       }`}
                   >
                     <div class="markdown-body" style="white-space: pre-wrap;">

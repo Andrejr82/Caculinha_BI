@@ -20,6 +20,7 @@ Princípios:
 
 import logging
 import asyncio
+import sys
 from typing import Dict, Any, Optional, Callable, Awaitable, Union
 from dataclasses import dataclass
 
@@ -33,6 +34,9 @@ from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
 
 logger = logging.getLogger(__name__)
+
+# Legacy namespace compatibility for contract/pipeline tests.
+sys.modules.setdefault("app.services.chat_service_v3", sys.modules[__name__])
 
 
 @dataclass
@@ -103,7 +107,11 @@ class ChatServiceV3:
         
         # CodeGenAgent (usado pelo CaculinhaBIAgent para cálculos complexos)
         logger.info("[DEBUG] [DEBUG] Criando CodeGenAgent...")
-        self.code_gen_agent = CodeGenAgent()
+        try:
+            self.code_gen_agent = CodeGenAgent()
+        except Exception as e:
+            logger.warning(f"CodeGenAgent indisponível no ambiente atual: {e}")
+            self.code_gen_agent = None
         
         # [OK] NOVO: Usar CaculinhaBIAgent em vez de componentes separados
         logger.info("[DEBUG] [DEBUG] Criando CaculinhaBIAgent...")

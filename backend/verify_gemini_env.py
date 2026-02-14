@@ -5,25 +5,38 @@ from dotenv import load_dotenv
 # Carrega o .env explicitamente do diretório atual (backend)
 load_dotenv(override=True)
 
-api_key = os.getenv("GEMINI_API_KEY")
-model_name = os.getenv("LLM_MODEL_NAME", "gemini-2.5-pro")
+# New SDK v1
+try:
+    from google import genai
+    print("✅ google-genai SDK installed.")
+except ImportError:
+    print("❌ google-genai SDK NOT installed.")
+    exit(1)
 
-print(f"--- TESTE DE CONEXÃO GEMINI (.env) ---")
-print(f"Modelo configurado: {model_name}")
-print(f"Chave encontrada: {'Sim' if api_key else 'Não'}")
+# Legacy SDK (Optional)
+try:
+    import google.generativeai as genai_legacy
+    print("⚠️ google-generativeai installed (Legacy).")
+except ImportError:
+    print("ℹ️ google-generativeai NOT installed (Clean).")
 
-if api_key:
-    # Mostra apenas o início e fim por segurança
-    print(f"Chave (parcial): {api_key[:5]}...{api_key[-5:]}")
+from backend.app.config.settings import settings
+
+def verify():
+    api_key = settings.GEMINI_API_KEY
+    if not api_key:
+        print("❌ GEMINI_API_KEY not found in settings/env.")
+        exit(1)
+        
+    print(f"🔑 API Key found: {api_key[:5]}...{api_key[-3:]}")
     
-    genai.configure(api_key=api_key)
     try:
-        print(f"Tentando gerar conteúdo com {model_name}...")
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content("Olá, responda apenas 'CONEXAO_OK'")
-        print(f"Resultado: {response.text}")
-        print("\n✅ O Gemini está funcionando corretamente com as configurações do .env!")
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite", # Test with a cheap model
+            contents="Say 'OK'"
+        )
+        print(f"✅ API Connection Successful: {response.text}")
     except Exception as e:
-        print(f"\n❌ Falha na conexão: {str(e)}")
-else:
-    print("❌ Erro: GEMINI_API_KEY não encontrada no arquivo .env")
+        print(f"❌ API Connection Failed: {e}")
+        exit(1)

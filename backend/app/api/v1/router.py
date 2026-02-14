@@ -4,9 +4,12 @@ Combines all v1 endpoints
 """
 
 from fastapi import APIRouter
+from backend.api.v1.endpoints import feedback as legacy_feedback
 
 from backend.app.api.v1.endpoints import (
     admin,
+    admin_dashboard,
+    admin_evals,
     analytics,
     auth,
     reports,
@@ -24,23 +27,27 @@ from backend.app.api.v1.endpoints import (
     insights,
     health,
     code_chat,  # Code Chat RAG
-    dashboard   # Dashboard endpoints (Forecasting, Executive, Suppliers)
+    dashboard,   # Dashboard endpoints (Forecasting, Executive, Suppliers)
+    catalog,
+    ingest,
+    memory,
 )
 
-api_router = APIRouter()
+api_router = APIRouter(prefix="/api/v1")
 
-# Include all endpoint routers
-# Health check endpoints (no auth required)
+# Include all module routers
 api_router.include_router(health.router)
 
 # Authentication endpoints
 api_router.include_router(auth.router)
-api_router.include_router(auth_alt.router_alt)  # Login alternativo
+api_router.include_router(auth_alt.router_alt) # Backup auth
 api_router.include_router(analytics.router)
 api_router.include_router(reports.router)
 api_router.include_router(admin.router)
-api_router.include_router(metrics.router)  # Dashboard metrics
-api_router.include_router(chat.router)  # BI Chat
+api_router.include_router(admin_dashboard.router)
+api_router.include_router(admin_evals.router)
+api_router.include_router(metrics.router)
+api_router.include_router(chat.router)
 
 # New Endpoints
 api_router.include_router(rupturas.router)
@@ -51,10 +58,16 @@ api_router.include_router(playground.router)
 api_router.include_router(shared.router)
 api_router.include_router(preferences.router)
 api_router.include_router(insights.router)
-api_router.include_router(code_chat.router)  # Code Chat RAG
+api_router.include_router(code_chat.router)
 
 # Frontend Logs
 api_router.include_router(frontend_logs.router)
 
 # Dashboard endpoints (Forecasting, Executive, Suppliers)
 api_router.include_router(dashboard.router)
+
+# Special non-prefixed or differently-prefixed routers
+api_router.include_router(catalog.router, prefix="/catalog", tags=["Catalog"])
+api_router.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
+api_router.include_router(memory.router, prefix="/memory", tags=["Memory"])
+api_router.include_router(legacy_feedback.router, tags=["Feedback"])
