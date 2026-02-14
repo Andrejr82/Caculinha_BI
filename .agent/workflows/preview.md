@@ -1,80 +1,81 @@
 ---
-description: Iniciar, parar e checar status do servidor de preview. Gerenciamento do servidor de desenvolvimento local.
+description: Preview server start, stop, and status check. Local development server management.
 ---
 
-# /preview - Gerenciamento de Preview
+# /preview - Preview Management
 
 $ARGUMENTS
 
 ---
 
-## Tarefa
+## Task
 
-Gerenciar o servidor de preview: iniciar, parar, checar status.
+Manage preview server: start, stop, status check.
 
-### Comandos
+### Commands
 
 ```
-/preview           - Mostrar status atual
-/preview start     - Iniciar servidor
-/preview stop      - Parar servidor
-/preview restart   - Reiniciar
-/preview check     - Verificação de saúde (health check)
+/preview           - Show current status
+/preview start     - Start server
+/preview stop      - Stop server
+/preview restart   - Restart
+/preview check     - Health check
 ```
 
 ---
 
-## Exemplos de Uso
+## Usage Examples
 
-### Iniciar Servidor
+### Start Server
 ```
 /preview start
 
-Resposta:
-🚀 Iniciando preview...
-   Porta: 3000
-   Tipo: Next.js
+Response:
+🚀 Starting preview...
+   Port: 3000
+   Type: Next.js
 
-✅ Preview pronto!
+✅ Preview ready!
    URL: http://localhost:3000
 ```
 
-### Checagem de Status
+### Status Check
 ```
 /preview
 
-Resposta:
-=== Status do Preview ===
+Response:
+=== Preview Status ===
 
 🌐 URL: http://localhost:3000
-📁 Projeto: C:/projetos/meu-app
-🏷️ Tipo: nextjs
-💚 Saúde: OK
+📁 Project: C:/projects/my-app
+🏷️ Type: nextjs
+💚 Health: OK
 ```
 
-### Conflito de Porta
+### Port Conflict
 ```
 /preview start
 
-Resposta:
-⚠️ A porta 3000 está em uso.
+Response:
+⚠️ Port 3000 is in use.
 
-Opções:
-1. Iniciar na porta 3001
-2. Fechar app na 3000
-3. Especificar porta diferente
+Options:
+1. Start on port 3001
+2. Close app on 3000
+3. Specify different port
 
-Qual delas? (padrão: 1)
+Which one? (default: 1)
 ```
 
 ---
 
-## Técnico
+## Technical
 
-O preview automático usa o script `auto_preview.py`:
+Auto preview uses `auto_preview.py` script:
 
 ```bash
-python .agent/scripts/auto_preview.py start [caminho] [porta]
+python .agent/scripts/auto_preview.py start [port]
 python .agent/scripts/auto_preview.py stop
 python .agent/scripts/auto_preview.py status
 ```
+

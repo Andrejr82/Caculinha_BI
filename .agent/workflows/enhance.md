@@ -1,63 +1,63 @@
 ---
-description: Adicionar ou atualizar recursos em aplicação existente. Usado para desenvolvimento iterativo.
+description: Add or update features in existing application. Used for iterative development.
 ---
 
-# /enhance - Atualizar Aplicação
+# /enhance - Update Application
 
 $ARGUMENTS
 
 ---
 
-## Tarefa
+## Task
 
-Este comando adiciona recursos ou faz atualizações em uma aplicação existente.
+This command adds features or makes updates to existing application.
 
-### Passos:
+### Steps:
 
-1. **Entender o Estado Atual**
-   - Carregar o estado do projeto com `session_manager.py`
-   - Entender os recursos existentes e a tech stack
+1. **Understand Current State**
+   - Load project state with `python .agent/scripts/session_manager.py info`
+   - Understand existing features, tech stack
 
-2. **Planejar Mudanças**
-   - Determinar o que será adicionado/alterado
-   - Detectar arquivos afetados
-   - Verificar dependências
+2. **Plan Changes**
+   - Determine what will be added/changed
+   - Detect affected files
+   - Check dependencies
 
-3. **Apresentar Plano ao Usuário** (para mudanças grandes)
+3. **Present Plan to User** (for major changes)
    ```
-   "Para adicionar o painel administrativo:
-   - Vou criar 15 novos arquivos
-   - Atualizar 8 arquivos
-   - Levará ~10 minutos
+   "To add admin panel:
+   - I'll create 15 new files
+   - Update 8 files
+   - Takes ~10 minutes
    
-   Devo começar?"
+   Should I start?"
    ```
 
-4. **Aplicar**
-   - Chamar os agentes relevantes
-   - Fazer as alterações
-   - Testar
+4. **Apply**
+   - Call relevant agents
+   - Make changes
+   - Test
 
-5. **Atualizar Preview**
-   - Hot reload ou reiniciar
-
----
-
-## Exemplos de Uso
-
-```
-/enhance adicionar modo escuro
-/enhance construir painel administrativo
-/enhance integrar sistema de pagamento
-/enhance adicionar recurso de busca
-/enhance editar página de perfil
-/enhance tornar responsivo
-```
+5. **Update Preview**
+   - Hot reload or restart
 
 ---
 
-## Atenção
+## Usage Examples
 
-- Obtenha aprovação para mudanças grandes
-- Avise sobre pedidos conflitantes (ex: "use Firebase" quando o projeto usa PostgreSQL)
-- Commit de cada mudança com git
+```
+/enhance add dark mode
+/enhance build admin panel
+/enhance integrate payment system
+/enhance add search feature
+/enhance edit profile page
+/enhance make responsive
+```
+
+---
+
+## Caution
+
+- Get approval for major changes
+- Warn on conflicting requests (e.g., "use Firebase" when project uses PostgreSQL)
+- Commit each change with git

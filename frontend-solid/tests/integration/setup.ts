@@ -15,13 +15,13 @@ export interface TestFixtures {
  * IMPORTANTE: Usar credenciais de teste, não produção
  */
 const TEST_USER = {
-    email: 'teste@cacularetail.com.br',
-    password: 'Teste@123'
+    email: 'user@agentbi.com',
+    password: 'user123'
 };
 
 const TEST_ADMIN = {
-    email: 'admin@cacularetail.com.br',
-    password: 'Admin@123'
+    email: 'user@agentbi.com',
+    password: 'user123'
 };
 
 /**
@@ -31,10 +31,10 @@ async function login(page: Page, email: string, password: string) {
     await page.goto('/login');
 
     // Aguardar formulário de login (usando id correto)
-    await page.waitForSelector('#username', { timeout: 10000 });
+    await page.waitForSelector('#email', { timeout: 10000 });
 
     // Preencher credenciais
-    await page.fill('#username', email);
+    await page.fill('#email', email);
     await page.fill('#password', password);
 
     // Submeter formulário

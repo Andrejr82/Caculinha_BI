@@ -2,6 +2,7 @@ import { createSignal, createMemo, Show } from 'solid-js';
 import { Lock, CheckCircle, AlertCircle, Shield, Info } from 'lucide-solid';
 import auth from '@/store/auth';
 import { UserPreferences } from '@/components/UserPreferences';
+import { authApi } from '@/lib/api';
 
 interface PasswordStrength {
   score: number; // 0-4
@@ -73,19 +74,6 @@ export default function Profile() {
       return;
     }
 
-    // The user's instruction implies adding this block, though it's not a direct replacement of an existing line.
-    // Assuming 'setLoading', 'setError', 'apiClient', 'UserProfile', 'setUser' would be defined elsewhere or are placeholders.
-    // This block is inserted where the user indicated.
-    // setLoading(true);
-    // setError(null);
-    // try {
-    //   const response = await apiClient.get<UserProfile>('/api/v2/auth/me');
-    //   setUser(response);
-    // } catch (err) {
-    //   setError('Falha ao carregar perfil do usuário');
-    //   console.error(err);
-    // }
-
     try {
       const token = auth.token();
       if (!token) {
@@ -97,15 +85,10 @@ export default function Profile() {
       formData.append('old_password', currentPass());
       formData.append('new_password', newPass());
 
-      const response = await fetch('/api/v1/auth/change-password', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData
-      });
+      const response = await authApi.changePassword(formData);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Erro ao alterar senha');
+      if (response.status !== 200 && response.status !== 201) {
+        throw new Error('Erro ao alterar senha');
       }
 
       setMessage({ type: 'success', text: 'Senha alterada com sucesso! Você será deslogado em 3 segundos...' });

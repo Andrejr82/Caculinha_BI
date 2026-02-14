@@ -10,39 +10,39 @@ import type {
 export const reportsService = {
   async getAll(): Promise<Report[]> {
     // Connect to FastAPI backend: GET /api/v1/reports
-    return apiClient.get<Report[]>('/api/v1/reports');
+    return apiClient.get<Report[]>('/reports');
   },
 
   async getById(id: string): Promise<Report> {
     // Connect to FastAPI backend: GET /api/v1/reports/{id}
-    return apiClient.get<Report>(`/api/v1/reports/${id}`);
+    return apiClient.get<Report>(`/reports/${id}`);
   },
 
   async create(report: CreateReportDTO): Promise<Report> {
     // Connect to FastAPI backend: POST /api/v1/reports
-    return apiClient.post<Report>('/api/v1/reports', report);
+    return apiClient.post<Report>('/reports', report);
   },
 
   async update(id: string, report: UpdateReportDTO): Promise<Report> {
     // Connect to FastAPI backend: PUT /api/v1/reports/{id}
-    return apiClient.put<Report>(`/api/v1/reports/${id}`, report);
+    return apiClient.put<Report>(`/reports/${id}`, report);
   },
 
   async delete(id: string): Promise<void> {
     // Connect to FastAPI backend: DELETE /api/v1/reports/{id}
-    return apiClient.delete(`/api/v1/reports/${id}`);
+    return apiClient.delete(`/reports/${id}`);
   },
 
   async getTemplates(): Promise<ReportTemplate[]> {
     // Connect to FastAPI backend: GET /api/v1/reports/templates
     // TODO: Backend endpoint not implemented yet
-    return apiClient.get<ReportTemplate[]>('/api/v1/reports/templates');
+    return apiClient.get<ReportTemplate[]>('/reports/templates');
   },
 
   async generatePDF(id: string): Promise<Blob> {
     // Connect to FastAPI backend: POST /api/v1/reports/{id}/generate-pdf
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/reports/${id}/generate-pdf`,
+      `/api/v1/reports/${id}/generate-pdf`,
       {
         method: 'POST',
         headers: {
@@ -59,6 +59,6 @@ export const reportsService = {
   ): Promise<ReportSchedule> {
     // Connect to FastAPI backend: POST /api/v1/reports/{id}/schedule
     // TODO: Backend endpoint not implemented yet
-    return apiClient.post<ReportSchedule>(`/api/v1/reports/${id}/schedule`, schedule);
+    return apiClient.post<ReportSchedule>(`/reports/${id}/schedule`, schedule);
   },
 };

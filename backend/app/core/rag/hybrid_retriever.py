@@ -36,10 +36,11 @@ except ImportError:
     HAS_BM25 = False
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     HAS_GEMINI = True
 except ImportError:
-    logger.warning("google-generativeai não instalado. Embeddings não disponíveis.")
+    logger.warning("google-genai não instalado. Embeddings não disponíveis.")
     HAS_GEMINI = False
 
 
@@ -120,10 +121,10 @@ class HybridRetriever:
             # 2. Inicializar Gemini Embeddings
             if HAS_GEMINI and settings.GEMINI_API_KEY:
                 try:
-                    genai.configure(api_key=settings.GEMINI_API_KEY)
-                    logger.info(f"Gemini configurado para embeddings: {self.embedding_model_name}")
+                    self.embedding_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                    logger.info(f"Gemini Client configurado para embeddings: {self.embedding_model_name}")
                 except Exception as e:
-                    logger.error(f"Erro ao configurar Gemini: {e}")
+                    logger.error(f"Erro ao configurar Gemini Client: {e}")
                     return False
             else:
                 logger.warning("Gemini não disponível. Dense retrieval desabilitado.")
@@ -212,12 +213,15 @@ class HybridRetriever:
             Lista de floats representando o embedding, ou None se falhar
         """
         try:
-            result = genai.embed_content(
+            # New SDK v1 syntax
+            result = self.embedding_client.models.embed_content(
                 model=self.embedding_model_name,
-                content=text,
-                task_type="retrieval_document"
+                contents=text,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
-            return result['embedding']
+            # Result object has 'embeddings' attribute which is a list of Embedding objects
+            # We assume single content, so we take the first one
+            return result.embeddings[0].values
 
         except Exception as e:
             logger.error(f"Erro ao gerar embedding: {e}")
@@ -498,13 +502,17 @@ class HybridRetriever:
         Executa em thread pool para não bloquear event loop.
         """
         try:
-            result = await asyncio.to_thread(
-                genai.embed_content,
-                model=self.embedding_model_name,
-                content=text,
-                task_type="retrieval_document"
-            )
-            return result['embedding']
+            # Wrapper function for the client call
+            def _embed():
+                res = self.embedding_client.models.embed_content(
+                    model=self.embedding_model_name,
+                    contents=text,
+                    config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+                )
+                return res.embeddings[0].values
+
+            result = await asyncio.to_thread(_embed)
+            return result
         except Exception as e:
             logger.error(f"[RAG] Erro ao gerar embedding async: {e}")
             return None

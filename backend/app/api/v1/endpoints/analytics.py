@@ -121,6 +121,21 @@ async def get_top_queries(
         )
 
 
+@router.get("/data")
+async def get_analytics_data(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> Dict[str, Any]:
+    """
+    Legacy contract endpoint kept for compatibility.
+    Returns a lightweight payload confirming analytics availability.
+    """
+    return {
+        "status": "ok",
+        "user": current_user.username,
+        "role": current_user.role,
+    }
+
+
 @router.get("/filter-options")
 async def get_filter_options(
     current_user: Annotated[User, Depends(get_current_active_user)],

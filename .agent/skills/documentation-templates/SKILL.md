@@ -1,194 +1,194 @@
 ---
 name: documentation-templates
-description: Templates de documentação e diretrizes de estrutura. README, docs de API, comentários de código e documentação amigável para IA.
+description: Documentation templates and structure guidelines. README, API docs, code comments, and AI-friendly documentation.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Templates de Documentação
+# Documentation Templates
 
-> Templates e diretrizes de estrutura para tipos comuns de documentação.
+> Templates and structure guidelines for common documentation types.
 
 ---
 
-## 1. Estrutura do README
+## 1. README Structure
 
-### Seções Essenciais (Ordem de Prioridade)
+### Essential Sections (Priority Order)
 
-| Seção | Propósito |
-|-------|-----------|
-| **Título + Descrição Curta** | O que é isso? |
-| **Início Rápido (Quick Start)** | Rodando em < 5 min |
-| **Recursos (Features)** | O que posso fazer? |
-| **Configuração** | Como customizar |
-| **Referência de API** | Link para docs detalhados |
-| **Contribuição** | Como ajudar |
-| **Licença** | Aspectos legais |
+| Section | Purpose |
+|---------|---------|
+| **Title + One-liner** | What is this? |
+| **Quick Start** | Running in <5 min |
+| **Features** | What can I do? |
+| **Configuration** | How to customize |
+| **API Reference** | Link to detailed docs |
+| **Contributing** | How to help |
+| **License** | Legal |
 
-### Template de README
+### README Template
 
 ```markdown
-# Nome do Projeto
+# Project Name
 
-Descrição breve de uma linha.
+Brief one-line description.
 
-## Início Rápido
+## Quick Start
 
-[Passos mínimos para executar]
+[Minimum steps to run]
 
-## Recursos
+## Features
 
-- Recurso 1
-- Recurso 2
+- Feature 1
+- Feature 2
 
-## Configuração
+## Configuration
 
-| Variável | Descrição | Padrão |
-|----------|-----------|--------|
-| PORT | Porta do servidor | 3000 |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| PORT | Server port | 3000 |
 
-## Documentação
+## Documentation
 
-- [Referência de API](./docs/api.md)
-- [Arquitetura](./docs/architecture.md)
+- [API Reference](./docs/api.md)
+- [Architecture](./docs/architecture.md)
 
-## Licença
+## License
 
 MIT
 ```
 
 ---
 
-## 2. Estrutura de Documentação de API
+## 2. API Documentation Structure
 
-### Template por Endpoint
+### Per-Endpoint Template
 
 ```markdown
-## GET /usuarios/:id
+## GET /users/:id
 
-Busca um usuário pelo ID.
+Get a user by ID.
 
-**Parâmetros:**
-| Nome | Tipo | Obrigatório | Descrição |
-|------|------|-------------|-----------|
-| id | string | Sim | ID do Usuário |
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | string | Yes | User ID |
 
-**Resposta:**
-- 200: Objeto do usuário
-- 404: Usuário não encontrado
+**Response:**
+- 200: User object
+- 404: User not found
 
-**Exemplo:**
-[Exemplo de requisição e resposta]
+**Example:**
+[Request and response example]
 ```
 
 ---
 
-## 3. Diretrizes de Comentários de Código
+## 3. Code Comment Guidelines
 
-### Template JSDoc/TSDoc
+### JSDoc/TSDoc Template
 
 ```typescript
 /**
- * Descrição breve do que a função faz.
+ * Brief description of what the function does.
  * 
- * @param nomeParam - Descrição do parâmetro
- * @returns Descrição do valor de retorno
- * @throws TipoErro - Quando este erro ocorre
+ * @param paramName - Description of parameter
+ * @returns Description of return value
+ * @throws ErrorType - When this error occurs
  * 
  * @example
- * const resultado = nomeFuncao(entrada);
+ * const result = functionName(input);
  */
 ```
 
-### Quando Comentar
+### When to Comment
 
-| ✅ Comente | ❌ Não Comente |
-|-----------|----------------|
-| O porquê (lógica de negócio) | O quê (óbvio) |
-| Algoritmos complexos | Cada linha |
-| Comportamento não óbvio | Código autoexplicativo |
-| Contratos de API | Detalhes de implementação |
+| ✅ Comment | ❌ Don't Comment |
+|-----------|-----------------|
+| Why (business logic) | What (obvious) |
+| Complex algorithms | Every line |
+| Non-obvious behavior | Self-explanatory code |
+| API contracts | Implementation details |
 
 ---
 
-## 4. Template de Changelog (Mantenha um Changelog)
+## 4. Changelog Template (Keep a Changelog)
 
 ```markdown
 # Changelog
 
-## [Não lançado]
-### Adicionado
-- Novo recurso
+## [Unreleased]
+### Added
+- New feature
 
 ## [1.0.0] - 2025-01-01
-### Adicionado
-- Lançamento inicial
-### Alterado
-- Dependência atualizada
-### Corrigido
-- Correção de bug
+### Added
+- Initial release
+### Changed
+- Updated dependency
+### Fixed
+- Bug fix
 ```
 
 ---
 
-## 5. Registro de Decisão Arquitetural (ADR)
+## 5. Architecture Decision Record (ADR)
 
 ```markdown
-# ADR-001: [Título]
+# ADR-001: [Title]
 
 ## Status
-Aceito / Obsoleto / Substituído
+Accepted / Deprecated / Superseded
 
-## Contexto
-Por que estamos tomando esta decisão?
+## Context
+Why are we making this decision?
 
-## Decisão
-O que decidimos?
+## Decision
+What did we decide?
 
-## Consequências
-Quais são os trade-offs (prós e contras)?
+## Consequences
+What are the trade-offs?
 ```
 
 ---
 
-## 6. Documentação Amigável para IA (2025)
+## 6. AI-Friendly Documentation (2025)
 
-### Template llms.txt
+### llms.txt Template
 
-Para crawlers e agentes de IA:
+For AI crawlers and agents:
 
 ```markdown
-# Nome do Projeto
-> Objetivo de uma linha.
+# Project Name
+> One-line objective.
 
-## Arquivos Core
-- [src/index.ts]: Entrada principal
-- [src/api/]: Rotas da API
-- [docs/]: Documentação
+## Core Files
+- [src/index.ts]: Main entry
+- [src/api/]: API routes
+- [docs/]: Documentation
 
-## Conceitos Chave
-- Conceito 1: Explicação breve
-- Concept 2: Explicação breve
+## Key Concepts
+- Concept 1: Brief explanation
+- Concept 2: Brief explanation
 ```
 
-### Documentação Pronta para MCP
+### MCP-Ready Documentation
 
-Para indexação RAG:
-- Hierarquia clara de H1-H3
-- Exemplos JSON/YAML para estruturas de dados
-- Diagramas Mermaid para fluxos
-- Seções autocontidas
-
----
-
-## 7. Princípios de Estrutura
-
-| Princípio | Por que |
-|-----------|---------|
-| **Escaneável** | Cabeçalhos, listas, tabelas |
-| **Exemplos primeiro** | Mostre, não apenas diga |
-| **Detalhamento progressivo** | Simples → Complexo |
-| **Atualizado** | Desatualizado = enganoso |
+For RAG indexing:
+- Clear H1-H3 hierarchy
+- JSON/YAML examples for data structures
+- Mermaid diagrams for flows
+- Self-contained sections
 
 ---
 
-> **Lembre-se:** Templates são pontos de partida. Adapte-os às necessidades do seu projeto.
+## 7. Structure Principles
+
+| Principle | Why |
+|-----------|-----|
+| **Scannable** | Headers, lists, tables |
+| **Examples first** | Show, don't just tell |
+| **Progressive detail** | Simple → Complex |
+| **Up to date** | Outdated = misleading |
+
+---
+
+> **Remember:** Templates are starting points. Adapt to your project's needs.

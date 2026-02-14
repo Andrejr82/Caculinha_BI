@@ -100,7 +100,7 @@ class SupabaseUserService:
                 "username": username,
                 "role": role,
                 "full_name": full_name or username,
-                "allowed_segments": allowed_segments or [],
+                "allowed_segments": allowed_segments or ["*"],
                 "is_active": True,
                 "created_at": datetime.utcnow().isoformat()
             }

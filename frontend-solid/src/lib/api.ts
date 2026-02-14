@@ -123,13 +123,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use((response) => {
   return response;
 }, (error) => {
-  if (error.response && error.response.status === 401) {
-    console.warn('⚠️ 401 Unauthorized - Token inválido ou expirado. Deslogando usuário...');
+  if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    console.warn('⚠️ Auth failure during API call - forcing local recovery to /login');
     sessionStorage.removeItem('token');
-    // Forçar recarregamento para limpar estados
-    if (window.location.pathname !== '/login') {
+    sessionStorage.removeItem('refresh_token');
+    localStorage.clear();
+    if (sessionStorage.getItem('auth_recovering') !== '1') {
+      sessionStorage.setItem('auth_recovering', '1');
       window.location.href = '/login';
     }
+  } else if (sessionStorage.getItem('auth_recovering') === '1') {
+    sessionStorage.removeItem('auth_recovering');
   }
   return Promise.reject(error);
 });
@@ -235,6 +239,59 @@ export const rupturasApi = {
     if (une) params.append('une', une);
     return api.get<RupturasSummary>(`/rupturas/summary?${params.toString()}`);
   },
+};
+
+export const preferencesApi = {
+  getCommonKeys: () => api.get<{ keys: any[] }>('/preferences/common/keys'),
+  getUserPreferences: () => api.get<{ preferences: Record<string, string> }>('/preferences'),
+  saveBatch: (preferences: Record<string, string>) => api.put('/preferences/batch', preferences),
+};
+
+export const authApi = {
+  changePassword: (formData: FormData) => api.post('/auth/change-password', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getMe: () => api.get('/auth/me'),
+};
+
+export const dashboardApi = {
+  getSupplierMetrics: () => api.get('/dashboard/suppliers/metrics'),
+  getMetadataSegments: () => api.get('/dashboard/metadata/segments'),
+  getMetadataGroups: (segmento: string) => api.get(`/dashboard/metadata/groups?segmento=${encodeURIComponent(segmento)}`),
+  getMetadataStores: () => api.get('/dashboard/metadata/stores'),
+  getSupplierGroups: (segmento: string) => api.get(`/dashboard/suppliers/groups?segmento=${encodeURIComponent(segmento)}`),
+  getProductList: (segmento: string, grupo?: string) => {
+    const params = new URLSearchParams({ segmento });
+    if (grupo) params.append('grupo', grupo);
+    return api.get(`/dashboard/products/list?${params.toString()}`);
+  },
+  getTopSales: () => api.get('/dashboard/top-vendidos'),
+  getTopMargin: () => api.get('/dashboard/top-margin'),
+  getExecutiveKpis: () => api.get('/dashboard/metrics/executive-kpis'),
+  getCriticalAlerts: () => api.get('/dashboard/alerts/critical'),
+
+  // Tools
+  predictDemand: (payload: any) => api.post('/dashboard/tools/prever_demanda', payload),
+  calculateEOQ: (payload: any) => api.post('/dashboard/tools/calcular_eoq', payload),
+  allocateStock: (payload: any) => api.post('/dashboard/tools/alocar_estoque', payload),
+};
+
+export const diagnosticsApi = {
+  getDbStatus: () => api.get('/diagnostics/db-status'),
+  getConfig: () => api.get('/diagnostics/config'),
+  testConnection: () => api.post('/diagnostics/test-connection'),
+};
+
+export const sharedApi = {
+  getConversation: (shareId: string) => api.get(`/shared/${shareId}`),
+};
+
+export const codeChatApi = {
+  getStats: () => api.get('/code-chat/stats'),
+};
+
+export const playgroundApi = {
+  getInfo: () => api.get('/playground/info'),
 };
 
 export default api;

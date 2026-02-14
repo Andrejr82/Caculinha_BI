@@ -116,6 +116,13 @@ INTENT_PATTERNS = {
     ],
     
     IntentType.ANALYSIS: [
+        # Padrões de negócio comercial (alta prioridade prática)
+        (r"ruptur\w*", 0.92),
+        (r"falta\s+de\s+estoque", 0.90),
+        (r"vend\w*\s+negativ\w*", 0.90),
+        (r"vend\w*\s+ruin\w*", 0.88),
+        (r"piores?\s+grupos?", 0.86),
+
         # Padrões de análise (mais genéricos, menor prioridade)
         (r"analis(e|ar)\s+\w+", 0.80),
         (r"an[aá]lise\s+(de|do|da)", 0.80),

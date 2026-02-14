@@ -1,109 +1,109 @@
 ---
 name: code-review-checklist
-description: Diretrizes de revisão de código cobrindo qualidade de código, segurança e melhores práticas.
+description: Code review guidelines covering code quality, security, and best practices.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Checklist de Revisão de Código
+# Code Review Checklist
 
-## Checklist de Revisão Rápida
+## Quick Review Checklist
 
-### Correção (Correctness)
-- [ ] O código faz o que é suposto fazer?
-- [ ] Casos de borda (edge cases) tratados?
-- [ ] Tratamento de erros implementado?
-- [ ] Sem bugs óbvios?
+### Correctness
+- [ ] Code does what it's supposed to do
+- [ ] Edge cases handled
+- [ ] Error handling in place
+- [ ] No obvious bugs
 
-### Segurança
-- [ ] Entrada validada e sanitizada?
-- [ ] Sem vulnerabilidades de injeção SQL/NoSQL?
-- [ ] Sem vulnerabilidades XSS ou CSRF?
-- [ ] Sem segredos (secrets) ou credenciais sensíveis no código?
-- [ ] **Específico de IA:** Proteção contra Prompt Injection (se aplicável)?
-- [ ] **Específico de IA:** Saídas são sanitizadas antes de serem usadas em sinks críticos?
+### Security
+- [ ] Input validated and sanitized
+- [ ] No SQL/NoSQL injection vulnerabilities
+- [ ] No XSS or CSRF vulnerabilities
+- [ ] No hardcoded secrets or sensitive credentials
+- [ ] **AI-Specific:** Protection against Prompt Injection (if applicable)
+- [ ] **AI-Specific:** Outputs are sanitized before being used in critical sinks
 
 ### Performance
-- [ ] Sem queries N+1?
-- [ ] Sem loops desnecessários?
-- [ ] Caching apropriado?
-- [ ] Impacto no tamanho do bundle considerado?
+- [ ] No N+1 queries
+- [ ] No unnecessary loops
+- [ ] Appropriate caching
+- [ ] Bundle size impact considered
 
-### Qualidade do Código
-- [ ] Nomenclatura clara?
-- [ ] DRY - sem código duplicado?
-- [ ] Princípios SOLID seguidos?
-- [ ] Nível de abstração apropriado?
+### Code Quality
+- [ ] Clear naming
+- [ ] DRY - no duplicate code
+- [ ] SOLID principles followed
+- [ ] Appropriate abstraction level
 
-### Testes
-- [ ] Testes unitários para o código novo?
-- [ ] Casos de borda testados?
-- [ ] Testes legíveis e fáceis de manter?
+### Testing
+- [ ] Unit tests for new code
+- [ ] Edge cases tested
+- [ ] Tests readable and maintainable
 
-### Documentação
-- [ ] Lógica complexa comentada?
-- [ ] APIs públicas documentadas?
-- [ ] README atualizado se necessário?
+### Documentation
+- [ ] Complex logic commented
+- [ ] Public APIs documented
+- [ ] README updated if needed
 
-## Padrões de Revisão de IA & LLM (2025)
+## AI & LLM Review Patterns (2025)
 
-### Lógica & Alucinações
-- [ ] **Chain of Thought:** A lógica segue um caminho verificável?
-- [ ] **Casos de Borda:** A IA considerou estados vazios, timeouts e falhas parciais?
-- [ ] **Estado Externo:** O código está fazendo suposições seguras sobre sistemas de arquivos ou redes?
+### Logic & Hallucinations
+- [ ] **Chain of Thought:** Does the logic follow a verifiable path?
+- [ ] **Edge Cases:** Did the AI account for empty states, timeouts, and partial failures?
+- [ ] **External State:** Is the code making safe assumptions about file systems or networks?
 
-### Revisão de Engenharia de Prompt
+### Prompt Engineering Review
 ```markdown
-// ❌ Prompt vago no código
+// ❌ Vague prompt in code
 const response = await ai.generate(userInput);
 
-// ✅ Prompt estruturado e seguro
+// ✅ Structured & Safe prompt
 const response = await ai.generate({
-  system: "Você é um parser especializado...",
+  system: "You are a specialized parser...",
   input: sanitize(userInput),
   schema: ResponseSchema
 });
 ```
 
-## Anti-Padrões para Sinalizar
+## Anti-Patterns to Flag
 
 ```typescript
-// ❌ Números mágicos
+// ❌ Magic numbers
 if (status === 3) { ... }
 
-// ✅ Constantes nomeadas
+// ✅ Named constants
 if (status === Status.ACTIVE) { ... }
 
-// ❌ Aninhamento profundo (Deep nesting)
+// ❌ Deep nesting
 if (a) { if (b) { if (c) { ... } } }
 
-// ✅ Retornos antecipados (Early returns)
+// ✅ Early returns
 if (!a) return;
 if (!b) return;
 if (!c) return;
-// executa o trabalho
+// do work
 
-// ❌ Funções longas (100+ linhas)
-// ✅ Funções pequenas e focadas
+// ❌ Long functions (100+ lines)
+// ✅ Small, focused functions
 
-// ❌ tipo any
+// ❌ any type
 const data: any = ...
 
-// ✅ Tipagem adequada
+// ✅ Proper types
 const data: UserData = ...
 ```
 
-## Guia de Comentários de Revisão
+## Review Comments Guide
 
 ```
-// Problemas bloqueantes usam 🔴
-🔴 BLOQUEANTE: Vulnerabilidade de injeção SQL aqui
+// Blocking issues use 🔴
+🔴 BLOCKING: SQL injection vulnerability here
 
-// Sugestões importantes usam 🟡
-🟡 SUGESTÃO: Considere usar useMemo para melhoria de performance
+// Important suggestions use 🟡
+🟡 SUGGESTION: Consider using useMemo for performance
 
-// Ajustes menores (nits) usam 🟢
-🟢 AJUSTE: Prefira const em vez de let para variáveis imutáveis
+// Minor nits use 🟢
+🟢 NIT: Prefer const over let for immutable variable
 
-// Perguntas usam ❓
-❓ PERGUNTA: O que acontece se o usuário for nulo aqui?
+// Questions use ❓
+❓ QUESTION: What happens if user is null here?
 ```

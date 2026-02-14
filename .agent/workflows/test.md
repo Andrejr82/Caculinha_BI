@@ -1,133 +1,133 @@
 ---
-description: Comando de geração e execução de testes. Cria e executa testes para o código.
+description: Test generation and test running command. Creates and executes tests for code.
 ---
 
-# /test - Geração e Execução de Testes
+# /test - Test Generation and Execution
 
 $ARGUMENTS
 
 ---
 
-## Propósito
+## Purpose
 
-Este comando gera testes, executa testes existentes ou verifica a cobertura de testes.
+This command generates tests, runs existing tests, or checks test coverage.
 
 ---
 
-## Sub-comandos
+## Sub-commands
 
 ```
-/test                - Executar todos os testes
-/test [arquivo/feature] - Gerar testes para um alvo específico
-/test coverage       - Mostrar relatório de cobertura de testes
-/test watch          - Executar testes no modo watch
+/test                - Run all tests
+/test [file/feature] - Generate tests for specific target
+/test coverage       - Show test coverage report
+/test watch          - Run tests in watch mode
 ```
 
 ---
 
-## Comportamento
+## Behavior
 
-### Gerar Testes
+### Generate Tests
 
-Ao solicitar o teste de um arquivo ou feature:
+When asked to test a file or feature:
 
-1. **Analisar o código**
-   - Identificar funções e métodos
-   - Encontrar casos de borda
-   - Detectar dependências para mock (simulação)
+1. **Analyze the code**
+   - Identify functions and methods
+   - Find edge cases
+   - Detect dependencies to mock
 
-2. **Gerar casos de teste**
-   - Testes de "caminho feliz" (happy path)
-   - Casos de erro
-   - Casos de borda
-   - Testes de integração (se necessário)
+2. **Generate test cases**
+   - Happy path tests
+   - Error cases
+   - Edge cases
+   - Integration tests (if needed)
 
-3. **Escrever os testes**
-   - Usar o framework de teste do projeto (Jest, Vitest, etc.)
-   - Seguir padrões de teste existentes
-   - Mockar dependências externas
+3. **Write tests**
+   - Use project's test framework (Jest, Vitest, etc.)
+   - Follow existing test patterns
+   - Mock external dependencies
 
 ---
 
-## Formato de Saída
+## Output Format
 
-### Para Geração de Testes
+### For Test Generation
 
 ```markdown
-## 🧪 Testes: [Alvo]
+## 🧪 Tests: [Target]
 
-### Plano de Teste
-| Caso de Teste | Tipo | Cobertura |
-|---------------|------|-----------|
-| Deve criar usuário | Unitário | Happy path |
-| Deve rejeitar e-mail inválido | Unitário | Validação |
-| Deve lidar com erro de BD | Unitário | Caso de erro |
+### Test Plan
+| Test Case | Type | Coverage |
+|-----------|------|----------|
+| Should create user | Unit | Happy path |
+| Should reject invalid email | Unit | Validation |
+| Should handle db error | Unit | Error case |
 
-### Testes Gerados
+### Generated Tests
 
-`tests/[arquivo].test.ts`
+`tests/[file].test.ts`
 
-[Bloco de código com os testes]
-
----
-
-Execute com: `npm test`
-```
-
-### Para Execução de Testes
-
-```
-🧪 Executando testes...
-
-✅ auth.test.ts (5 passaram)
-✅ user.test.ts (8 passaram)
-❌ order.test.ts (2 passaram, 1 falhou)
-
-Falhou:
-  ✗ deve calcular o total com desconto
-    Esperado: 90
-    Recebido: 100
-
-Total: 15 testes (14 passaram, 1 falhou)
-```
+[Code block with tests]
 
 ---
 
-## Exemplos
+Run with: `npm test`
+```
+
+### For Test Execution
+
+```
+🧪 Running tests...
+
+✅ auth.test.ts (5 passed)
+✅ user.test.ts (8 passed)
+❌ order.test.ts (2 passed, 1 failed)
+
+Failed:
+  ✗ should calculate total with discount
+    Expected: 90
+    Received: 100
+
+Total: 15 tests (14 passed, 1 failed)
+```
+
+---
+
+## Examples
 
 ```
 /test src/services/auth.service.ts
-/test fluxo de registro de usuário
+/test user registration flow
 /test coverage
-/test corrigir testes que falharam
+/test fix failed tests
 ```
 
 ---
 
-## Padrões de Teste
+## Test Patterns
 
-### Estrutura do Teste Unitário
+### Unit Test Structure
 
 ```typescript
 describe('AuthService', () => {
   describe('login', () => {
-    it('deve retornar token para credenciais válidas', async () => {
-      // Arrange (Preparar)
+    it('should return token for valid credentials', async () => {
+      // Arrange
       const credentials = { email: 'test@test.com', password: 'pass123' };
       
-      // Act (Agir)
+      // Act
       const result = await authService.login(credentials);
       
-      // Assert (Verificar)
+      // Assert
       expect(result.token).toBeDefined();
     });
 
-    it('deve lançar erro para senha inválida', async () => {
-      // Arrange (Preparar)
+    it('should throw for invalid password', async () => {
+      // Arrange
       const credentials = { email: 'test@test.com', password: 'wrong' };
       
-      // Act & Assert (Agir & Verificar)
-      await expect(authService.login(credentials)).rejects.toThrow('Credenciais inválidas');
+      // Act & Assert
+      await expect(authService.login(credentials)).rejects.toThrow('Invalid credentials');
     });
   });
 });
@@ -135,10 +135,10 @@ describe('AuthService', () => {
 
 ---
 
-## Princípios Chave
+## Key Principles
 
-- **Teste o comportamento, não a implementação**
-- **Uma asserção por teste** (quando prático)
-- **Nomes de teste descritivos**
-- **Padrão Arrange-Act-Assert**
-- **Mockar dependências externas**
+- **Test behavior not implementation**
+- **One assertion per test** (when practical)
+- **Descriptive test names**
+- **Arrange-Act-Assert pattern**
+- **Mock external dependencies**

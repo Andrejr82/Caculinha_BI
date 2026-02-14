@@ -1,0 +1,12 @@
+400bb72c (HEAD -> snapshot-fix, origin/snapshot-fix) chore: remove generated artifacts from git tracking (node_modules, caches, runtime data)
+395d235a Merge remote-tracking branch 'origin/main' into snapshot-fix
+ce69bdc8 fix: stabilize bootstrap, deps, admin dashboard and route contracts
+2014d7f3 chore: clean gitignore and stop tracking runtime data
+d84ad8c7 (origin/main, origin/HEAD) Merge pull request #1 from Andrejr82/snapshot-fix
+8703e51f snapshot: stabilized backend + admin dashboard + response scoring + scripts/tests
+6896379a (tag: v1-rc1, main) checkpoint before deep cleanup actions
+0d705fd6 backup before history cleanup
+e002f12b Add gitignore and remove dump artifacts
+9159358a (tag: pre-cleanup) checkpoint pre-cleanup
+5fdec973 (tag: v1.0.0) baseline enterprise cognitive platform v1
+788da9b0 feat: initial commit

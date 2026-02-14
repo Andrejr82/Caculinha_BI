@@ -1,1 +1,2 @@
-# API V1
+"""Legacy v1 compatibility package."""
+

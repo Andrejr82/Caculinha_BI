@@ -1,163 +1,161 @@
 ---
 name: server-management
-description: Princípios de gerenciamento de servidor e tomada de decisão. Gerenciamento de processos, estratégia de monitoramento e decisões de escalonamento. Ensina a pensar, não comandos.
+description: Server management principles and decision-making. Process management, monitoring strategy, and scaling decisions. Teaches thinking, not commands.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Gerenciamento de Servidor
+# Server Management
 
-> Princípios de gerenciamento de servidor para operações em produção.
-> **Aprenda a PENSAR, não a memorizar comandos.**
+> Server management principles for production operations.
+> **Learn to THINK, not memorize commands.**
 
 ---
 
-## 1. Princípios de Gerenciamento de Processos
+## 1. Process Management Principles
 
-### Seleção de Ferramenta
+### Tool Selection
 
-| Cenário | Ferramenta |
-|---------|------------|
-| **App Node.js** | PM2 (clustering, reload) |
-| **Qualquer app** | systemd (nativo do Linux) |
+| Scenario | Tool |
+|----------|------|
+| **Node.js app** | PM2 (clustering, reload) |
+| **Any app** | systemd (Linux native) |
 | **Containers** | Docker/Podman |
-| **Orchestração** | Kubernetes, Docker Swarm |
+| **Orchestration** | Kubernetes, Docker Swarm |
 
-### Objetivos do Gerenciamento de Processos
+### Process Management Goals
 
-| Objetivo | O que significa |
-|----------|-----------------|
-| **Reiniciar em crash** | Recuperação automática |
-| **Reload sem downtime** | Sem interrupção de serviço |
-| **Clustering** | Usar todos os núcleos da CPU |
-| **Persistência** | Sobreviver a reboot do servidor |
+| Goal | What It Means |
+|------|---------------|
+| **Restart on crash** | Auto-recovery |
+| **Zero-downtime reload** | No service interruption |
+| **Clustering** | Use all CPU cores |
+| **Persistence** | Survive server reboot |
 
 ---
 
-## 2. Princípios de Monitoramento
+## 2. Monitoring Principles
 
-### O que Monitorar
+### What to Monitor
 
-| Categoria | Métricas Chave |
-|-----------|----------------|
-| **Disponibilidade** | Uptime, health checks |
-| **Performance** | Tempo de resposta, throughput |
-| **Erros** | Taxa de erro, tipos |
-| **Recursos** | CPU, memória, disco |
+| Category | Key Metrics |
+|----------|-------------|
+| **Availability** | Uptime, health checks |
+| **Performance** | Response time, throughput |
+| **Errors** | Error rate, types |
+| **Resources** | CPU, memory, disk |
 
-### Estratégia de Severidade de Alerta
+### Alert Severity Strategy
 
-| Nível | Resposta |
+| Level | Response |
 |-------|----------|
-| **Crítico** | Ação imediata |
-| **Aviso (Warning)** | Investigar em breve |
-| **Informação (Info)** | Revisar diariamente |
+| **Critical** | Immediate action |
+| **Warning** | Investigate soon |
+| **Info** | Review daily |
 
-### Seleção de Ferramenta de Monitoramento
+### Monitoring Tool Selection
 
-| Necessidade | Opções |
-|-------------|---------|
-| Simples/Grátis | Métricas do PM2, htop |
-| Observabilidade total | Grafana, Datadog |
-| Rastreamento de erros | Sentry |
+| Need | Options |
+|------|---------|
+| Simple/Free | PM2 metrics, htop |
+| Full observability | Grafana, Datadog |
+| Error tracking | Sentry |
 | Uptime | UptimeRobot, Pingdom |
 
 ---
 
-## 3. Princípios de Gerenciamento de Logs
+## 3. Log Management Principles
 
-### Estratégia de Log
+### Log Strategy
 
-| Tipo de Log | Propósito |
-|-------------|-----------|
-| **Logs de aplicação** | Depuração, auditoria |
-| **Logs de acesso** | Análise de tráfego |
-| **Logs de erro** | Detecção de problemas |
+| Log Type | Purpose |
+|----------|---------|
+| **Application logs** | Debug, audit |
+| **Access logs** | Traffic analysis |
+| **Error logs** | Issue detection |
 
-### Princípios de Log
+### Log Principles
 
-1. **Rotacionar logs** para evitar que o disco encha
-2. **Log estruturado** (JSON) para parsing facilitado
-3. **Níveis apropriados** (error/warn/info/debug)
-4. **Sem dados sensíveis** nos logs
+1. **Rotate logs** to prevent disk fill
+2. **Structured logging** (JSON) for parsing
+3. **Appropriate levels** (error/warn/info/debug)
+4. **No sensitive data** in logs
 
 ---
 
-## 4. Decisões de Escalonamento (Scaling)
+## 4. Scaling Decisions
 
-### Quando Escalonar
+### When to Scale
 
-| Sintoma | Solução |
-|---------|---------|
-| CPU alta | Adicionar instâncias (horizontal) |
-| Memória alta | Aumentar RAM ou corrigir vazamento |
-| Resposta lenta | Perfil (profile) primeiro, depois escala |
-| Picos de tráfego | Auto-scaling |
+| Symptom | Solution |
+|---------|----------|
+| High CPU | Add instances (horizontal) |
+| High memory | Increase RAM or fix leak |
+| Slow response | Profile first, then scale |
+| Traffic spikes | Auto-scaling |
 
-### Estratégia de Escalonamento
+### Scaling Strategy
 
-| Tipo | Quando Usar |
+| Type | When to Use |
 |------|-------------|
-| **Vertical** | Correção rápida, instância única |
-| **Horizontal** | Sustentável, distribuído |
-| **Automático** | Tráfego variável |
+| **Vertical** | Quick fix, single instance |
+| **Horizontal** | Sustainable, distributed |
+| **Auto** | Variable traffic |
 
 ---
 
-## 5. Princípios de Health Check (Check de Saúde)
+## 5. Health Check Principles
 
-### O que constitui "Saudável"
+### What Constitutes Healthy
 
-| Verificação | Significado |
-|-------------|-------------|
-| **HTTP 200** | Serviço respondendo |
-| **Banco de dados conectado** | Dados acessíveis |
-| **Dependências OK** | Serviços externos alcancáveis |
-| **Recursos OK** | CPU/memória não esgotados |
+| Check | Meaning |
+|-------|---------|
+| **HTTP 200** | Service responding |
+| **Database connected** | Data accessible |
+| **Dependencies OK** | External services reachable |
+| **Resources OK** | CPU/memory not exhausted |
 
-### Implementação de Health Check
+### Health Check Implementation
 
-- Simples: Apenas retornar 200
-- Profundo: Verificar todas as dependências
-- Escolha com base nas necessidades do balanceador de carga
+- Simple: Just return 200
+- Deep: Check all dependencies
+- Choose based on load balancer needs
 
 ---
 
-## 6. Princípios de Segurança
+## 6. Security Principles
 
-| Área | Princípio |
+| Area | Principle |
 |------|-----------|
-| **Acesso** | Apenas chaves SSH, sem senhas |
-| **Firewall** | Apenas portas necessárias abertas |
-| **Atualizações** | Patches de segurança regulares |
-| **Segredos (Secrets)** | Variáveis de ambiente, não arquivos |
-| **Auditoria** | Logar acessos e mudanças |
+| **Access** | SSH keys only, no passwords |
+| **Firewall** | Only needed ports open |
+| **Updates** | Regular security patches |
+| **Secrets** | Environment vars, not files |
+| **Audit** | Log access and changes |
 
 ---
 
-## 7. Prioridade de Diagnóstico (Troubleshooting)
+## 7. Troubleshooting Priority
 
-Quando algo está errado:
+When something's wrong:
 
-1. **Verificar se está rodando** (status do processo)
-2. **Verificar logs** (mensagens de erro)
-3. **Verificar recursos** (disco, memória, CPU)
-4. **Verificar rede** (portas, DNS)
-5. **Verificar dependências** (banco de dados, APIs)
-
----
-
-## 8. Anti-Padrões
-
-| ❌ NÃO FAÇA | ✅ FAÇA |
-|-------------|---------|
-| Rodar como root | Usar usuário não-root |
-| Ignorar os logs | Configurar rotação de logs |
-| Pular monitoramento | Monitorar desde o primeiro dia |
-| Reinicializações manuais | Configurar auto-restart |
-| Sem backups | Agenda regular de backups |
+1. **Check if running** (process status)
+2. **Check logs** (error messages)
+3. **Check resources** (disk, memory, CPU)
+4. **Check network** (ports, DNS)
+5. **Check dependencies** (database, APIs)
 
 ---
 
-## 10. Conclusão
+## 8. Anti-Patterns
 
-> **Lembre-se:** Um servidor bem gerenciado é entediante. Esse é o objetivo.
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Run as root | Use non-root user |
+| Ignore logs | Set up log rotation |
+| Skip monitoring | Monitor from day one |
+| Manual restarts | Auto-restart config |
+| No backups | Regular backup schedule |
+
+---
+
+> **Remember:** A well-managed server is boring. That's the goal.

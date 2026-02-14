@@ -1,82 +1,81 @@
 ---
 name: api-patterns
-description: Princípios de design de API e tomada de decisão. Seleção entre REST vs GraphQL vs tRPC, formatos de resposta, versionamento, paginação.
+description: API design principles and decision-making. REST vs GraphQL vs tRPC selection, response formats, versioning, pagination.
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 
-# Padrões de API
+# API Patterns
 
-# Agente de Padrões de API
+> API design principles and decision-making for 2025.
+> **Learn to THINK, not copy fixed patterns.**
 
-> Princípios de design de API e tomada de decisão para 2025.
-> **Aprenda a PENSAR, não a copiar padrões fixos.**
+## 🎯 Selective Reading Rule
 
-## 🎯 Regra de Leitura Seletiva
-
-**Leia APENAS os arquivos relevantes para o pedido!** Verifique o mapa de conteúdo, encontre o que precisa.
+**Read ONLY files relevant to the request!** Check the content map, find what you need.
 
 ---
 
-## 📑 Mapa de Conteúdo
+## 📑 Content Map
 
-| Arquivo | Descrição | Quando Ler |
-|---------|-----------|------------|
-| `api-style.md` | Árvore de decisão: REST vs GraphQL vs tRPC | Escolhendo tipo de API |
-| `rest.md` | Nomenclatura de recursos, métodos HTTP, status codes | Projetando API REST |
-| `response.md` | Padrão envelope, formato de erro, paginação | Estrutura de resposta |
-| `graphql.md` | Design de schema, quando usar, segurança | Considerando GraphQL |
-| `trpc.md` | Monorepo TypeScript, segurança de tipos | Projetos TS fullstack |
-| `versioning.md` | Versionamento por URI/Header/Query | Planejando evolução da API |
-| `auth.md` | JWT, OAuth, Passkey, API Keys | Seleção de padrão de auth |
-| `rate-limiting.md` | Token bucket, sliding window | Proteção de API |
-| `documentation.md` | Melhores práticas de OpenAPI/Swagger | Documentação |
-| `security-testing.md` | OWASP API Top 10, testes de auth/authz | Auditorias de segurança |
-
----
-
-## 🔗 Skills Relacionadas
-
-| Necessidade | Skill |
-|-------------|-------|
-| Implementação de API | `@[skills/backend-development]` |
-| Estrutura de dados | `@[skills/database-design]` |
-| Detalhes de segurança | `@[skills/security-hardening]` |
+| File | Description | When to Read |
+|------|-------------|--------------|
+| `api-style.md` | REST vs GraphQL vs tRPC decision tree | Choosing API type |
+| `rest.md` | Resource naming, HTTP methods, status codes | Designing REST API |
+| `response.md` | Envelope pattern, error format, pagination | Response structure |
+| `graphql.md` | Schema design, when to use, security | Considering GraphQL |
+| `trpc.md` | TypeScript monorepo, type safety | TS fullstack projects |
+| `versioning.md` | URI/Header/Query versioning | API evolution planning |
+| `auth.md` | JWT, OAuth, Passkey, API Keys | Auth pattern selection |
+| `rate-limiting.md` | Token bucket, sliding window | API protection |
+| `documentation.md` | OpenAPI/Swagger best practices | Documentation |
+| `security-testing.md` | OWASP API Top 10, auth/authz testing | Security audits |
 
 ---
 
-## ✅ Checklist de Decisão
+## 🔗 Related Skills
 
-Antes de projetar uma API:
-
-- [ ] **Perguntou ao usuário sobre os consumidores da API?**
-- [ ] **Escolheu o estilo de API para ESTE contexto?** (REST/GraphQL/tRPC)
-- [ ] **Definiu um formato de resposta consistente?**
-- [ ] **Planejou a estratégia de versionamento?**
-- [ ] **Considerou necessidades de autenticação?**
-- [ ] **Planejou rate limiting?**
-- [ ] **Abordagem de documentação definida?**
+| Need | Skill |
+|------|-------|
+| API implementation | `@[skills/backend-development]` |
+| Data structure | `@[skills/database-design]` |
+| Security details | `@[skills/security-hardening]` |
 
 ---
 
-## ❌ Anti-Padrões
+## ✅ Decision Checklist
 
-**NÃO FAÇA:**
-- Usar REST como padrão para tudo
-- Usar verbos em endpoints REST (/obterUsuarios)
-- Retornar formatos de resposta inconsistentes
-- Expor erros internos para os clientes
-- Pular rate limiting
+Before designing an API:
 
-**FAÇA:**
-- Escolha o estilo de API baseado no contexto
-- Pergunte sobre os requisitos do cliente
-- Documente detalhadamente
-- Use status codes apropriados
+- [ ] **Asked user about API consumers?**
+- [ ] **Chosen API style for THIS context?** (REST/GraphQL/tRPC)
+- [ ] **Defined consistent response format?**
+- [ ] **Planned versioning strategy?**
+- [ ] **Considered authentication needs?**
+- [ ] **Planned rate limiting?**
+- [ ] **Documentation approach defined?**
+
+---
+
+## ❌ Anti-Patterns
+
+**DON'T:**
+- Default to REST for everything
+- Use verbs in REST endpoints (/getUsers)
+- Return inconsistent response formats
+- Expose internal errors to clients
+- Skip rate limiting
+
+**DO:**
+- Choose API style based on context
+- Ask about client requirements
+- Document thoroughly
+- Use appropriate status codes
 
 ---
 
 ## Script
 
-| Script | Propósito | Comando |
-|--------|-----------|---------|
-| `scripts/api_validator.py` | Validação de endpoints de API | `python scripts/api_validator.py <caminho_projeto>` |
+| Script | Purpose | Command |
+|--------|---------|---------|
+| `scripts/api_validator.py` | API endpoint validation | `python scripts/api_validator.py <project_path>` |
+

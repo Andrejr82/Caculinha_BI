@@ -1,149 +1,149 @@
 ---
 name: tdd-workflow
-description: Princípios do fluxo de desenvolvimento orientado a testes (TDD). Ciclo RED-GREEN-REFACTOR.
+description: Test-Driven Development workflow principles. RED-GREEN-REFACTOR cycle.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Fluxo de TDD
+# TDD Workflow
 
-> Escreva os testes primeiro, o código depois.
+> Write tests first, code second.
 
 ---
 
-## 1. O Ciclo de TDD
+## 1. The TDD Cycle
 
 ```
-🔴 RED → Escreva um teste que falha
+🔴 RED → Write failing test
     ↓
-🟢 GREEN → Escreva o código mínimo para passar
+🟢 GREEN → Write minimal code to pass
     ↓
-🔵 REFACTOR → Melhore a qualidade do código
+🔵 REFACTOR → Improve code quality
     ↓
-   Repita...
+   Repeat...
 ```
 
 ---
 
-## 2. As Três Leis do TDD
+## 2. The Three Laws of TDD
 
-1. Escreva código de produção apenas para fazer um teste falhar passar
-2. Escreva apenas o teste suficiente para demonstrar a falha
-3. Escreva apenas o código suficiente para fazer o teste passar
+1. Write production code only to make a failing test pass
+2. Write only enough test to demonstrate failure
+3. Write only enough code to make the test pass
 
 ---
 
-## 3. Princípios da Fase RED
+## 3. RED Phase Principles
 
-### O que escrever
+### What to Write
 
-| Foco | Exemplo |
+| Focus | Example |
+|-------|---------|
+| Behavior | "should add two numbers" |
+| Edge cases | "should handle empty input" |
+| Error states | "should throw for invalid data" |
+
+### RED Phase Rules
+
+- Test must fail first
+- Test name describes expected behavior
+- One assertion per test (ideally)
+
+---
+
+## 4. GREEN Phase Principles
+
+### Minimum Code
+
+| Principle | Meaning |
+|-----------|---------|
+| **YAGNI** | You Aren't Gonna Need It |
+| **Simplest thing** | Write the minimum to pass |
+| **No optimization** | Just make it work |
+
+### GREEN Phase Rules
+
+- Don't write unneeded code
+- Don't optimize yet
+- Pass the test, nothing more
+
+---
+
+## 5. REFACTOR Phase Principles
+
+### What to Improve
+
+| Area | Action |
+|------|--------|
+| Duplication | Extract common code |
+| Naming | Make intent clear |
+| Structure | Improve organization |
+| Complexity | Simplify logic |
+
+### REFACTOR Rules
+
+- All tests must stay green
+- Small incremental changes
+- Commit after each refactor
+
+---
+
+## 6. AAA Pattern
+
+Every test follows:
+
+| Step | Purpose |
 |------|---------|
-| Comportamento | "deve somar dois números" |
-| Casos de borda | "deve lidar com entrada vazia" |
-| Estados de erro | "deve lançar erro para dados inválidos" |
-
-### Regras da Fase RED
-
-- O teste deve falhar primeiro
-- O nome do teste descreve o comportamento esperado
-- Uma asserção por teste (idealmente)
+| **Arrange** | Set up test data |
+| **Act** | Execute code under test |
+| **Assert** | Verify expected outcome |
 
 ---
 
-## 4. Princípios da Fase GREEN
+## 7. When to Use TDD
 
-### Código Mínimo
-
-| Princípio | Significado |
-|-----------|-------------|
-| **YAGNI** | Você não vai precisar disso (You Aren't Gonna Need It) |
-| **A coisa mais simples**| Escreva o mínimo para passar |
-| **Sem otimização** | Apenas faça funcionar |
-
-### Regras da Fase GREEN
-
-- Não escreva código desnecessário
-- Não otimize ainda
-- Passe no teste, nada mais
+| Scenario | TDD Value |
+|----------|-----------|
+| New feature | High |
+| Bug fix | High (write test first) |
+| Complex logic | High |
+| Exploratory | Low (spike, then TDD) |
+| UI layout | Low |
 
 ---
 
-## 5. Princípios da Fase REFACTOR
+## 8. Test Prioritization
 
-### O que melhorar
-
-| Área | Ação |
-|------|------|
-| Duplicação | Extrair código comum |
-| Nomenclatura | Tornar a intenção clara |
-| Estrutura | Melhorar a organização |
-| Complexidade | Simplificar a lógica |
-
-### Regras da Fase REFACTOR
-
-- Todos os testes devem permanecer verdes
-- Mudanças incrementais pequenas
-- Commit após cada refatoração
-
----
-
-## 6. Padrão AAA
-
-Cada teste segue:
-
-| Passo | Propósito |
-|-------|-----------|
-| **Arrange** (Preparar) | Configurar os dados do teste |
-| **Act** (Agir) | Executar o código sob teste |
-| **Assert** (Verificar) | Verificar o resultado esperado |
-
----
-
-## 7. Quando usar TDD
-
-| Cenário | Valor do TDD |
-|---------|--------------|
-| Novo recurso | Alto |
-| Correção de bug | Alto (escreva o teste primeiro) |
-| Lógica complexa | Alto |
-| Exploratório | Baixo (faça um spike, depois TDD) |
-| Layout de UI | Baixo |
-
----
-
-## 8. Priorização de Testes
-
-| Prioridade | Tipo de Teste |
-|------------|---------------|
-| 1 | Caminho feliz (Happy path) |
-| 2 | Casos de erro |
-| 3 | Casos de borda |
+| Priority | Test Type |
+|----------|-----------|
+| 1 | Happy path |
+| 2 | Error cases |
+| 3 | Edge cases |
 | 4 | Performance |
 
 ---
 
-## 9. Anti-Padrões
+## 9. Anti-Patterns
 
-| ❌ Não faça | ✅ Faça |
-|-------------|---------|
-| Pular a fase RED | Assista ao teste falhar primeiro |
-| Escrever testes depois | Escrever testes antes |
-| Super-dimensionar o início | Mantenha simples |
-| Múltiplas asserções | Um comportamento por teste |
-| Testar implementação | Testar comportamento |
-
----
-
-## 10. TDD Aumentado por IA
-
-### Padrão Multi-Agente
-
-| Agente | Papel |
-|--------|-------|
-| Agente A | Escrever testes que falham (RED) |
-| Agente B | Implementar para passar (GREEN) |
-| Agente C | Otimizar (REFACTOR) |
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Skip the RED phase | Watch test fail first |
+| Write tests after | Write tests before |
+| Over-engineer initial | Keep it simple |
+| Multiple asserts | One behavior per test |
+| Test implementation | Test behavior |
 
 ---
 
-> **Lembre-se:** O teste é a especificação. Se você não consegue escrever um teste, você não entende o requisito.
+## 10. AI-Augmented TDD
+
+### Multi-Agent Pattern
+
+| Agent | Role |
+|-------|------|
+| Agent A | Write failing tests (RED) |
+| Agent B | Implement to pass (GREEN) |
+| Agent C | Optimize (REFACTOR) |
+
+---
+
+> **Remember:** The test is the specification. If you can't write a test, you don't understand the requirement.

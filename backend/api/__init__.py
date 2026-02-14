@@ -1,1 +1,2 @@
-# API Layer
+"""Legacy API compatibility package."""
+

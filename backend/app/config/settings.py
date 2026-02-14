@@ -120,6 +120,9 @@ class Settings(BaseSettings):
     # Groq
     GROQ_API_KEY: str | None = None
     GROQ_MODEL_NAME: str = "llama-3.3-70b-versatile"
+    DEV_FAST_MODE: bool = False
+    LLM_MAX_OUTPUT_TOKENS: int = 2048
+    LLM_HISTORY_MAX_MESSAGES: int = 15
 
     # Modelos de Tarefa
     INTENT_CLASSIFICATION_MODEL: str = "gemini-2.5-pro"
@@ -147,6 +150,24 @@ class Settings(BaseSettings):
     def validate_secret_key(self) -> "Settings":
         if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters")
+        return self
+
+    @model_validator(mode="after")
+    def resolve_paths(self) -> "Settings":
+        """Resolve relative paths to absolute paths based on _base_dir"""
+        # [OK] FIX 2026-02-12: Ensure data paths are absolute relative to backend root
+        # This prevents issues when starting the app from different CWDs (e.g. root vs backend)
+        path_fields = [
+            "PARQUET_DATA_PATH", "PARQUET_FILE_PATH", "CACHE_DIR",
+            "RAG_FAISS_INDEX_PATH", "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH"
+        ]
+        
+        for field in path_fields:
+            val = getattr(self, field, None)
+            if val and isinstance(val, str) and not os.path.isabs(val):
+                abs_path = os.path.normpath(os.path.join(self._base_dir, val))
+                setattr(self, field, abs_path)
+                
         return self
 
     @model_validator(mode="after")
@@ -222,8 +243,23 @@ try:
                     k, v = line.split("=", 1)
                     k = k.strip()
                     v = v.strip()
-                    # Remove quotes if present
-                    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+
+                    # Remove inline comments while preserving # inside quoted strings.
+                    in_single = False
+                    in_double = False
+                    clean_chars: list[str] = []
+                    for ch in v:
+                        if ch == "'" and not in_double:
+                            in_single = not in_single
+                        elif ch == '"' and not in_single:
+                            in_double = not in_double
+                        elif ch == "#" and not in_single and not in_double:
+                            break
+                        clean_chars.append(ch)
+                    v = "".join(clean_chars).strip()
+
+                    # Remove surrounding matching quotes
+                    if len(v) >= 2 and ((v[0] == '"' and v[-1] == '"') or (v[0] == "'" and v[-1] == "'")):
                         v = v[1:-1]
                     
                     # Override or Set

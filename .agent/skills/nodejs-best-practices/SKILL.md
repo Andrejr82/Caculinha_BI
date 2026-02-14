@@ -1,333 +1,333 @@
 ---
 name: nodejs-best-practices
-description: Princípios de desenvolvimento Node.js e tomada de decisão. Seleção de framework, padrões assíncronos, segurança e arquitetura. Ensina a pensar, não a copiar.
+description: Node.js development principles and decision-making. Framework selection, async patterns, security, and architecture. Teaches thinking, not copying.
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 
-# Melhores Práticas de Node.js
+# Node.js Best Practices
 
-> Princípios e tomada de decisão para o desenvolvimento Node.js em 2025.
-> **Aprenda a PENSAR, não a memorizar padrões de código.**
-
----
-
-## ⚠️ Como Usar Esta Skill
-
-Esta skill ensina **princípios de tomada de decisão**, não código fixo para copiar.
-
-- PERGUNTE ao usuário as preferências quando não estiver claro
-- Escolha o framework/padrão com base no CONTEXTO
-- Não use a mesma solução por padrão todas as vezes
+> Principles and decision-making for Node.js development in 2025.
+> **Learn to THINK, not memorize code patterns.**
 
 ---
 
-## 1. Seleção de Framework (2025)
+## ⚠️ How to Use This Skill
 
-### Árvore de Decisão
+This skill teaches **decision-making principles**, not fixed code to copy.
+
+- ASK user for preferences when unclear
+- Choose framework/pattern based on CONTEXT
+- Don't default to same solution every time
+
+---
+
+## 1. Framework Selection (2025)
+
+### Decision Tree
 
 ```
-O que você está construindo?
+What are you building?
 │
 ├── Edge/Serverless (Cloudflare, Vercel)
-│   └── Hono (zero-dependência, cold starts ultra-rápidos)
+│   └── Hono (zero-dependency, ultra-fast cold starts)
 │
-├── API de Alta Performance
-│   └── Fastify (2-3x mais rápido que o Express)
+├── High Performance API
+│   └── Fastify (2-3x faster than Express)
 │
-├── Familiaridade corporativa/equipe
-│   └── NestJS (estruturado, DI, decoradores)
+├── Enterprise/Team familiarity
+│   └── NestJS (structured, DI, decorators)
 │
-├── Legado/Estável/Ecossistema máximo
-│   └── Express (maduro, maior quantidade de middlewares)
+├── Legacy/Stable/Maximum ecosystem
+│   └── Express (mature, most middleware)
 │
-└── Full-stack com frontend
-    └── Next.js API Routes ou tRPC
+└── Full-stack with frontend
+    └── Next.js API Routes or tRPC
 ```
 
-### Princípios de Comparação
+### Comparison Principles
 
-| Fator | Hono | Fastify | Express |
-|-------|------|---------|---------|
-| **Ideal para** | Edge, serverless | Performance | Legado, aprendizado |
-| **Cold start** | Mais rápido | Rápido | Moderado |
-| **Ecossistema** | Em crescimento | Bom | O maior |
-| **TypeScript** | Nativo | Excelente | Bom |
-| **Curva de aprendizado** | Baixa | Média | Baixa |
+| Factor | Hono | Fastify | Express |
+|--------|------|---------|---------|
+| **Best for** | Edge, serverless | Performance | Legacy, learning |
+| **Cold start** | Fastest | Fast | Moderate |
+| **Ecosystem** | Growing | Good | Largest |
+| **TypeScript** | Native | Excellent | Good |
+| **Learning curve** | Low | Medium | Low |
 
-### Perguntas de Seleção para Fazer:
-1. Qual é o alvo de deploy?
-2. O tempo de cold start é crítico?
-3. A equipe já tem experiência prévia?
-4. Existe código legado para manter?
+### Selection Questions to Ask:
+1. What's the deployment target?
+2. Is cold start time critical?
+3. Does team have existing experience?
+4. Is there legacy code to maintain?
 
 ---
 
-## 2. Considerações de Runtime (2025)
+## 2. Runtime Considerations (2025)
 
-### TypeScript Nativo
+### Native TypeScript
 
 ```
 Node.js 22+: --experimental-strip-types
-├── Execute arquivos .ts diretamente
-├── Sem necessidade de etapa de build para projetos simples
-└── Considere para: scripts, APIs simples
+├── Run .ts files directly
+├── No build step needed for simple projects
+└── Consider for: scripts, simple APIs
 ```
 
-### Decisão do Sistema de Módulos
+### Module System Decision
 
 ```
 ESM (import/export)
-├── Padrão moderno
-├── Melhor tree-shaking
-├── Carregamento de módulos assíncrono
-└── Use para: novos projetos
+├── Modern standard
+├── Better tree-shaking
+├── Async module loading
+└── Use for: new projects
 
 CommonJS (require)
-├── Compatibilidade legada
-├── Maior suporte de pacotes npm
-└── Use para: bases de código existentes, alguns casos de borda
+├── Legacy compatibility
+├── More npm packages support
+└── Use for: existing codebases, some edge cases
 ```
 
-### Seleção de Runtime
+### Runtime Selection
 
-| Runtime | Melhor Para |
-|---------|-------------|
-| **Node.js** | Uso geral, maior ecossistema |
-| **Bun** | Performance, bundler integrado |
-| **Deno** | Foco em segurança, TypeScript integrado |
+| Runtime | Best For |
+|---------|----------|
+| **Node.js** | General purpose, largest ecosystem |
+| **Bun** | Performance, built-in bundler |
+| **Deno** | Security-first, built-in TypeScript |
 
 ---
 
-## 3. Princípios de Arquitetura
+## 3. Architecture Principles
 
-### Conceito de Estrutura em Camadas
+### Layered Structure Concept
 
 ```
-Fluxo da Requisição:
+Request Flow:
 │
-├── Camada de Controller/Rota
-│   ├── Lida com especificidades HTTP
-│   ├── Validação de entrada na borda
-│   └── Chama a camada de serviço
+├── Controller/Route Layer
+│   ├── Handles HTTP specifics
+│   ├── Input validation at boundary
+│   └── Calls service layer
 │
-├── Camada de Serviço
-│   ├── Lógica de negócio
-│   ├── Independente de framework
-│   └── Chama a camada de repositório
+├── Service Layer
+│   ├── Business logic
+│   ├── Framework-agnostic
+│   └── Calls repository layer
 │
-└── Camada de Repositório
-    ├── Apenas acesso a dados
-    ├── Consultas ao banco de dados
-    └── Interações com ORM
+└── Repository Layer
+    ├── Data access only
+    ├── Database queries
+    └── ORM interactions
 ```
 
-### Por que Isso Importa:
-- **Testabilidade**: Mockar camadas independentemente
-- **Flexibilidade**: Trocar o banco de dados sem tocar na lógica de negócio
-- **Clareza**: Cada camada tem uma responsabilidade única
+### Why This Matters:
+- **Testability**: Mock layers independently
+- **Flexibility**: Swap database without touching business logic
+- **Clarity**: Each layer has single responsibility
 
-### Quando Simplificar:
-- Scripts pequenos → Único arquivo está OK
-- Protótipos → Menos estrutura é aceitável
-- Sempre pergunte: "Isso vai crescer?"
+### When to Simplify:
+- Small scripts → Single file OK
+- Prototypes → Less structure acceptable
+- Always ask: "Will this grow?"
 
 ---
 
-## 4. Princípios de Tratamento de Erros
+## 4. Error Handling Principles
 
-### Tratamento de Erros Centralizado
-
-```
-Padrão:
-├── Criar classes de erro customizadas
-├── Lançar (throw) de qualquer camada
-├── Capturar no nível superior (middleware)
-└── Formatar resposta consistente
-```
-
-### Filosofia de Resposta de Erro
+### Centralized Error Handling
 
 ```
-O Cliente recebe:
-├── Status HTTP apropriado
-├── Código de erro para tratamento programático
-├── Mensagem amigável ao usuário
-└── SEM detalhes internos (segurança!)
-
-Os Logs recebem:
-├── Stack trace completo
-├── Contexto da requisição
-├── ID do usuário (se aplicável)
-└── Timestamp (data/hora)
+Pattern:
+├── Create custom error classes
+├── Throw from any layer
+├── Catch at top level (middleware)
+└── Format consistent response
 ```
 
-### Seleção de Código de Status (Status Code)
+### Error Response Philosophy
 
-| Situação | Status | Quando |
-|----------|--------|--------|
-| Entrada ruim | 400 | Cliente enviou dados inválidos |
-| Sem auth | 401 | Credenciais ausentes ou inválidas |
-| Sem permissão | 403 | Auth válida, mas não permitido |
-| Não encontrado | 404 | Recurso não existe |
-| Conflito | 409 | Duplicidade ou conflito de estado |
-| Validação | 422 | Schema válido, mas regras de negócio falham |
-| Erro do servidor| 500 | Nossa culpa, logar tudo |
+```
+Client gets:
+├── Appropriate HTTP status
+├── Error code for programmatic handling
+├── User-friendly message
+└── NO internal details (security!)
+
+Logs get:
+├── Full stack trace
+├── Request context
+├── User ID (if applicable)
+└── Timestamp
+```
+
+### Status Code Selection
+
+| Situation | Status | When |
+|-----------|--------|------|
+| Bad input | 400 | Client sent invalid data |
+| No auth | 401 | Missing or invalid credentials |
+| No permission | 403 | Valid auth, but not allowed |
+| Not found | 404 | Resource doesn't exist |
+| Conflict | 409 | Duplicate or state conflict |
+| Validation | 422 | Schema valid but business rules fail |
+| Server error | 500 | Our fault, log everything |
 
 ---
 
-## 5. Princípios de Padrões Assíncronos
+## 5. Async Patterns Principles
 
-### Quando Usar Cada Um
+### When to Use Each
 
-| Padrão | Usar Quando |
-|--------|-------------|
-| `async/await` | Operações assíncronas sequenciais |
-| `Promise.all` | Operações independentes em paralelo |
-| `Promise.allSettled` | Paralelo onde algumas podem falhar |
-| `Promise.race` | Timeout ou a primeira resposta vence |
+| Pattern | Use When |
+|---------|----------|
+| `async/await` | Sequential async operations |
+| `Promise.all` | Parallel independent operations |
+| `Promise.allSettled` | Parallel where some can fail |
+| `Promise.race` | Timeout or first response wins |
 
-### Consciência do Event Loop
+### Event Loop Awareness
 
 ```
-I/O-bound (async ajuda):
-├── Consultas ao banco de dados
-├── Requisições HTTP
-├── Sistema de arquivos
-└── Operações de rede
+I/O-bound (async helps):
+├── Database queries
+├── HTTP requests
+├── File system
+└── Network operations
 
-CPU-bound (async não ajuda):
-├── Operações de criptografia
-├── Processamento de imagens
-├── Cálculos complexos
-└── → Use worker threads ou delegue a tarefa (offload)
+CPU-bound (async doesn't help):
+├── Crypto operations
+├── Image processing
+├── Complex calculations
+└── → Use worker threads or offload
 ```
 
-### Evitando Bloquear o Event Loop
+### Avoiding Event Loop Blocking
 
-- Nunca use métodos síncronos em produção (fs.readFileSync, etc.)
-- Delegue trabalho intensivo de CPU
-- Use streaming para grandes volumes de dados
+- Never use sync methods in production (fs.readFileSync, etc.)
+- Offload CPU-intensive work
+- Use streaming for large data
 
 ---
 
-## 6. Princípios de Validação
+## 6. Validation Principles
 
-### Validar nas Bordas
+### Validate at Boundaries
 
 ```
-Onde validar:
-├── Ponto de entrada da API (body/params da requisição)
-├── Antes de operações no banco de dados
-├── Dados externos (respostas de API, uploads de arquivos)
-└── Variáveis de ambiente (na inicialização)
+Where to validate:
+├── API entry point (request body/params)
+├── Before database operations
+├── External data (API responses, file uploads)
+└── Environment variables (startup)
 ```
 
-### Seleção de Biblioteca de Validação
+### Validation Library Selection
 
-| Biblioteca | Melhor Para |
-|------------|-------------|
-| **Zod** | Foco em TypeScript, inferência |
-| **Valibot** | Bundle menor (tree-shakeable) |
-| **ArkType** | Crítico para performance |
-| **Yup** | Uso existente com React Form |
+| Library | Best For |
+|---------|----------|
+| **Zod** | TypeScript first, inference |
+| **Valibot** | Smaller bundle (tree-shakeable) |
+| **ArkType** | Performance critical |
+| **Yup** | Existing React Form usage |
 
-### Filosofia de Validação
+### Validation Philosophy
 
-- Falhe rápido: Valide cedo
-- Seja específico: Mensagens de erro claras
-- Não confie: Nem mesmo em dados "internos"
+- Fail fast: Validate early
+- Be specific: Clear error messages
+- Don't trust: Even "internal" data
 
 ---
 
-## 7. Princípios de Segurança
+## 7. Security Principles
 
-### Checklist de Segurança (Não é Código)
+### Security Checklist (Not Code)
 
-- [ ] **Validação de entrada**: Todas as entradas validadas
-- [ ] **Consultas parametrizadas**: Sem concatenação de strings para SQL
-- [ ] **Hashing de senha**: bcrypt ou argon2
-- [ ] **Verificação de JWT**: Sempre verifique assinatura e expiração
-- [ ] **Rate limiting**: Proteja-se contra abusos
-- [ ] **Headers de segurança**: Helmet.js ou equivalente
-- [ ] **HTTPS**: Em todos os lugares em produção
-- [ ] **CORS**: Configurado corretamente
-- [ ] **Segredos (Secrets)**: Apenas variáveis de ambiente
-- [ ] **Dependências**: Auditadas regularmente
+- [ ] **Input validation**: All inputs validated
+- [ ] **Parameterized queries**: No string concatenation for SQL
+- [ ] **Password hashing**: bcrypt or argon2
+- [ ] **JWT verification**: Always verify signature and expiry
+- [ ] **Rate limiting**: Protect from abuse
+- [ ] **Security headers**: Helmet.js or equivalent
+- [ ] **HTTPS**: Everywhere in production
+- [ ] **CORS**: Properly configured
+- [ ] **Secrets**: Environment variables only
+- [ ] **Dependencies**: Regularly audited
 
-### Mentalidade de Segurança
+### Security Mindset
 
 ```
-Não confie em nada:
-├── Query params → validar
-├── Request body → validar
-├── Headers → verificar
-├── Cookies → validar
-├── Uploads de arquivos → escanear
-└── APIs externas → validar resposta
+Trust nothing:
+├── Query params → validate
+├── Request body → validate
+├── Headers → verify
+├── Cookies → validate
+├── File uploads → scan
+└── External APIs → validate response
 ```
 
 ---
 
-## 8. Princípios de Teste
+## 8. Testing Principles
 
-### Seleção de Estratégia de Teste
+### Test Strategy Selection
 
-| Tipo | Propósito | Ferramentas |
-|------|-----------|-------------|
-| **Unitário** | Lógica de negócio | node:test, Vitest |
-| **Integração**| Endpoints de API | Supertest |
-| **E2E** | Fluxos completos | Playwright |
+| Type | Purpose | Tools |
+|------|---------|-------|
+| **Unit** | Business logic | node:test, Vitest |
+| **Integration** | API endpoints | Supertest |
+| **E2E** | Full flows | Playwright |
 
-### O que Testar (Prioridades)
+### What to Test (Priorities)
 
-1. **Caminhos críticos**: Auth, pagamentos, core do negócio
-2. **Casos de borda**: Entradas vazias, limites
-3. **Tratamento de erros**: O que acontece quando as coisas falham?
-4. **Não vale a pena testar**: Código do framework, getters triviais
+1. **Critical paths**: Auth, payments, core business
+2. **Edge cases**: Empty inputs, boundaries
+3. **Error handling**: What happens when things fail?
+4. **Not worth testing**: Framework code, trivial getters
 
-### Test Runner Integrado (Node.js 22+)
+### Built-in Test Runner (Node.js 22+)
 
 ```
 node --test src/**/*.test.ts
-├── Sem dependência externa
-├── Bom relatório de cobertura
-└── Modo watch disponível
+├── No external dependency
+├── Good coverage reporting
+└── Watch mode available
 ```
 
 ---
 
-## 10. Anti-Padrões a Evitar
+## 10. Anti-Patterns to Avoid
 
-### ❌ NÃO FAÇA:
-- Usar Express para novos projetos edge (use Hono)
-- Usar métodos síncronos em código de produção
-- Colocar lógica de negócio em controllers
-- Pular validação de entrada
-- Hardcodar segredos (secrets)
-- Confiar em dados externos sem validação
-- Bloquear o event loop com trabalho de CPU
+### ❌ DON'T:
+- Use Express for new edge projects (use Hono)
+- Use sync methods in production code
+- Put business logic in controllers
+- Skip input validation
+- Hardcode secrets
+- Trust external data without validation
+- Block event loop with CPU work
 
-### ✅ FAÇA:
-- Escolher o framework com base no contexto
-- Perguntar ao usuário as preferências quando não estiver claro
-- Usar arquitetura em camadas para projetos que crescem
-- Validar todas as entradas
-- Usar variáveis de ambiente para segredos
-- Fazer perfil (profile) antes de otimizar
-
----
-
-## 11. Checklist de Decisão
-
-Antes de implementar:
-
-- [ ] **Perguntou ao usuário sobre a preferência de stack?**
-- [ ] **Escolheu o framework para ESTE contexto?** (não apenas o padrão)
-- [ ] **Considerou o alvo de deploy?**
-- [ ] **Planejou a estratégia de tratamento de erros?**
-- [ ] **Identificou os pontos de validação?**
-- [ ] **Considerou os requisitos de segurança?**
+### ✅ DO:
+- Choose framework based on context
+- Ask user for preferences when unclear
+- Use layered architecture for growing projects
+- Validate all inputs
+- Use environment variables for secrets
+- Profile before optimizing
 
 ---
 
-> **Lembre-se**: As melhores práticas de Node.js tratam-se de tomada de decisão, não de memorizar padrões. Cada projeto merece uma análise fresca baseada em seus requisitos.
+## 11. Decision Checklist
+
+Before implementing:
+
+- [ ] **Asked user about stack preference?**
+- [ ] **Chosen framework for THIS context?** (not just default)
+- [ ] **Considered deployment target?**
+- [ ] **Planned error handling strategy?**
+- [ ] **Identified validation points?**
+- [ ] **Considered security requirements?**
+
+---
+
+> **Remember**: Node.js best practices are about decision-making, not memorizing patterns. Every project deserves fresh consideration based on its requirements.

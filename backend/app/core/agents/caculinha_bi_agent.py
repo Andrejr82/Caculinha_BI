@@ -88,6 +88,7 @@ from backend.app.core.utils.field_mapper import FieldMapper
 
 # Import TypeConverter para serialização segura
 from backend.app.core.utils.serializers import TypeConverter, safe_json_dumps
+from backend.app.config.settings import settings
 
 # Import Tool Scoping - Security 2025
 from backend.app.core.utils.tool_scoping import ToolPermissionManager, get_scoped_tools
@@ -182,46 +183,49 @@ class CaculinhaBIAgent:
 
         # Dynamically add OPTIONAL tools (ML/Deep Learning dependencies)
         optional_tools = []
+        if settings.DEV_FAST_MODE:
+            logger.info("[DEV_FAST_MODE] Optional expensive tools disabled by default.")
+        else:
         
         # 1. Anomaly Detection (SciPy/Stats dependency)
-        try:
-            from backend.app.core.tools.anomaly_detection import analisar_anomalias
-            optional_tools.append(analisar_anomalias)
-        except ImportError:
-            logger.warning("[WARNING] Anomaly Detection tools missing (dependency issue).")
+            try:
+                from backend.app.core.tools.anomaly_detection import analisar_anomalias
+                optional_tools.append(analisar_anomalias)
+            except ImportError:
+                logger.warning("[WARNING] Anomaly Detection tools missing (dependency issue).")
 
         # 2. Purchasing Tools (StatsModels/Torch dependency)
-        try:
-            from backend.app.core.tools.purchasing_tools import (
-                calcular_eoq,
-                prever_demanda,
-                alocar_estoque_lojas
-            )
-            optional_tools.extend([calcular_eoq, prever_demanda, alocar_estoque_lojas])
-        except ImportError:
-            logger.warning("[WARNING] Purchasing tools missing (likely StatsModels/Torch issue).")
+            try:
+                from backend.app.core.tools.purchasing_tools import (
+                    calcular_eoq,
+                    prever_demanda,
+                    alocar_estoque_lojas
+                )
+                optional_tools.extend([calcular_eoq, prever_demanda, alocar_estoque_lojas])
+            except ImportError:
+                logger.warning("[WARNING] Purchasing tools missing (likely StatsModels/Torch issue).")
 
         # 3. Advanced Analytics Tools (SciPy/Sklearn dependency) - NOVO 2026-01-24
         # Ferramentas STEM para Gemini 2.5 Pro: regressão, anomalias, correlação
-        try:
-            from backend.app.core.tools.advanced_analytics_tool import (
-                analise_regressao_vendas,
-                detectar_anomalias_vendas,
-                analise_correlacao_produtos
-            )
-            optional_tools.extend([
-                analise_regressao_vendas,
-                detectar_anomalias_vendas,
-                analise_correlacao_produtos
-            ])
-            logger.info("[OK] Advanced Analytics tools loaded (Gemini 2.5 Pro STEM features)")
-        except ImportError as e:
-            logger.warning(f"[WARNING] Advanced Analytics tools missing (SciPy/Sklearn issue): {e}")
+            try:
+                from backend.app.core.tools.advanced_analytics_tool import (
+                    analise_regressao_vendas,
+                    detectar_anomalias_vendas,
+                    analise_correlacao_produtos
+                )
+                optional_tools.extend([
+                    analise_regressao_vendas,
+                    detectar_anomalias_vendas,
+                    analise_correlacao_produtos
+                ])
+                logger.info("[OK] Advanced Analytics tools loaded (Gemini 2.5 Pro STEM features)")
+            except ImportError as e:
+                logger.warning(f"[WARNING] Advanced Analytics tools missing (SciPy/Sklearn issue): {e}")
 
         # 4. RAG Tools (LangChain/FAISS/Torch dependency)
         # Already handled via self.buscar_produtos_inteligente logic in _register_retriever_tools
         # But for 'all_bi_tools' list used for scoping, we add it if enabled
-        if self.enable_rag and self.buscar_produtos_inteligente:
+        if self.enable_rag and self.buscar_produtos_inteligente and not settings.DEV_FAST_MODE:
              optional_tools.append(self.buscar_produtos_inteligente)
 
         all_bi_tools = core_tools + optional_tools
@@ -286,6 +290,13 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         except Exception as e:
             logger.warning(f"[ERROR] Dynamic Schema Injection Failed: {e}. Using static prompt.")
             self.system_prompt = SYSTEM_PROMPT
+
+        if settings.DEV_FAST_MODE:
+            self.system_prompt += (
+                "\n\n## MODO DEV FAST\n"
+                "- Responda objetivamente em no máximo 8 linhas.\n"
+                "- Evite chamadas de ferramenta caras, a menos que sejam estritamente necessárias.\n"
+            )
 
 
     def _convert_tools_to_gemini_format(self, tools: List[BaseTool]) -> Dict[str, List[Dict[str, Any]]]:
@@ -490,6 +501,214 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         return new_schema
 
+    def _normalize_tool_arguments(self, func_name: str, func_args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normaliza argumentos de tool-call para reduzir falhas por drift de schema
+        entre providers (ex.: string vs integer).
+        """
+        args = dict(func_args or {})
+
+        # Normalização genérica de limite.
+        if "limite" in args and args["limite"] is not None:
+            raw = args["limite"]
+            try:
+                if isinstance(raw, str):
+                    raw = raw.strip()
+                limit_val = int(raw)
+                if limit_val <= 0:
+                    limit_val = 10
+                args["limite"] = limit_val
+            except (TypeError, ValueError):
+                args["limite"] = 10
+
+        # Compatibilidade para ferramenta de gráfico.
+        if func_name == "gerar_grafico_universal_v2":
+            for key in ("filtro_une", "filtro_produto"):
+                if key in args and args[key] is not None:
+                    args[key] = str(args[key])
+
+            if "tipo_grafico" in args and isinstance(args["tipo_grafico"], str):
+                mapping = {"barras": "bar", "linhas": "line"}
+                args["tipo_grafico"] = mapping.get(args["tipo_grafico"].lower(), args["tipo_grafico"])
+
+        return args
+
+    def _execute_tool_with_recovery(self, tool_to_run: Any, func_name: str, func_args: Dict[str, Any]) -> Any:
+        """
+        Executa ferramenta com normalização e uma tentativa de recuperação.
+        """
+        normalized_args = self._normalize_tool_arguments(func_name, func_args)
+        try:
+            return tool_to_run.invoke(normalized_args)
+        except Exception as first_error:
+            # Retry defensivo para casos de validação estrita de tipo.
+            retry_args = dict(normalized_args)
+            if "limite" in retry_args and retry_args["limite"] is not None:
+                retry_args["limite"] = str(retry_args["limite"])
+
+            logger.warning(
+                f"Tool {func_name} falhou na 1a tentativa ({first_error}). "
+                f"Tentando recuperação com argumentos coercidos."
+            )
+            return tool_to_run.invoke(retry_args)
+
+    def _should_use_deterministic_path(self, tool_name: str, confidence: float) -> bool:
+        """
+        Define quando executar ferramenta diretamente sem rodada LLM,
+        reduzindo custo e falhas em consultas determinísticas.
+        """
+        deterministic_tools = {
+            "encontrar_rupturas_criticas",
+            "consultar_dados_flexivel",
+        }
+        return tool_name in deterministic_tools and confidence >= 0.80
+
+    def _format_deterministic_result(
+        self,
+        user_query: str,
+        tool_name: str,
+        tool_result: Any,
+    ) -> Dict[str, Any]:
+        """
+        Formata saída de ferramenta determinística para resposta de negócio.
+        """
+        if not isinstance(tool_result, dict):
+            return {
+                "type": "text",
+                "result": {"mensagem": "Resultado recebido em formato inesperado."},
+            }
+
+        if tool_result.get("error"):
+            return {
+                "type": "text",
+                "result": {"mensagem": f"Não consegui concluir a análise: {tool_result.get('error')}"},
+            }
+
+        query_lower = user_query.lower()
+
+        if tool_name == "encontrar_rupturas_criticas":
+            total = int(tool_result.get("total_criticos", 0) or 0)
+            produtos = tool_result.get("produtos_criticos", []) or []
+            if total == 0:
+                msg = tool_result.get("mensagem") or "Não encontrei rupturas críticas no recorte atual."
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            # Consolidar por segmento para visão executiva.
+            seg_counts: Dict[str, int] = {}
+            for p in produtos:
+                seg = str(p.get("segmento", "N/A"))
+                seg_counts[seg] = seg_counts.get(seg, 0) + 1
+            top_segments = sorted(seg_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            seg_line = ", ".join([f"{s}: {c}" for s, c in top_segments]) if top_segments else "N/A"
+
+            msg = (
+                f"Identifiquei {total} rupturas críticas no recorte atual. "
+                f"Segmentos mais afetados: {seg_line}. "
+                "Posso detalhar os produtos críticos por grupo/UNE em seguida.\n"
+                "Evidência: fonte=admmat.parquet, regra=estoque_cd<=0 e estoque_atual<linha_verde, "
+                f"amostra_exibida={len(produtos)}."
+            )
+            return {"type": "text", "result": {"mensagem": msg}}
+
+        if tool_name == "consultar_dados_flexivel":
+            resultados = tool_result.get("resultados", []) or []
+            if not resultados:
+                msg = tool_result.get("mensagem") or "Não encontrei dados para este recorte."
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            # Caso especial: perguntas sobre vendas negativas/ruins.
+            if any(k in query_lower for k in ["negativ", "ruin", "piores grupos", "vendaas ruins"]):
+                group_totals: Dict[str, float] = {}
+                for row in resultados:
+                    if not isinstance(row, dict):
+                        continue
+                    group = str(row.get("NOMEGRUPO") or row.get("nomegrupo") or "SEM_GRUPO")
+                    segment = str(row.get("NOMESEGMENTO") or row.get("nomesegmento") or "SEM_SEGMENTO")
+                    key = f"{group} ({segment})"
+                    venda = row.get("valor") or row.get("VENDA_30DD") or row.get("venda_30dd") or 0
+                    try:
+                        venda_f = float(venda)
+                    except (TypeError, ValueError):
+                        venda_f = 0.0
+                    group_totals[key] = group_totals.get(key, 0.0) + venda_f
+
+                negativos = [(g, v) for g, v in group_totals.items() if v < 0]
+                negativos.sort(key=lambda x: x[1])  # mais negativo primeiro
+                top_neg = negativos[:10]
+
+                if not top_neg:
+                    return {
+                        "type": "text",
+                        "result": {"mensagem": "Não encontrei grupos com vendas negativas no recorte atual."},
+                    }
+
+                linhas = [f"{idx+1}. {g}: {v:,.2f}" for idx, (g, v) in enumerate(top_neg)]
+                msg = (
+                    "Diagnóstico: identifiquei grupos com vendas negativas no recorte atual.\n"
+                    "Top grupos críticos:\n"
+                    + "\n".join(linhas)
+                    + "\nAção recomendada: revisar preço/mix/ruptura desses grupos e validar se houve devoluções ou ajustes contábeis no período."
+                    + f"\nEvidência: métrica=SUM(VENDA_30DD), grupos_analisados={len(group_totals)}, grupos_negativos={len(negativos)}."
+                )
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            # Default determinístico para consulta flexível.
+            return {
+                "type": "text",
+                "result": {"mensagem": tool_result.get("mensagem") or f"Consulta retornou {len(resultados)} registros."},
+            }
+
+        return {
+            "type": "text",
+            "result": {"mensagem": "Consulta executada com sucesso."},
+        }
+
+    def _build_clarification_if_needed(self, user_query: str, tool_name: str, confidence: float) -> Optional[Dict[str, Any]]:
+        """
+        Detecta consultas comerciais vagas e retorna pergunta de desambiguação.
+        """
+        q = (user_query or "").lower().strip()
+        if confidence < 0.70:
+            return None
+
+        vague_markers = ["ruins", "negativa", "negativas", "piores", "melhores", "desempenho"]
+        if not any(m in q for m in vague_markers):
+            return None
+
+        has_time_window = bool(
+            any(
+                token in q
+                for token in [
+                    "30d", "30 dias", "7 dias", "90 dias", "hoje", "ontem",
+                    "semana", "mensal", "mês", "mes", "trimestre", "ano",
+                    "últimos", "ultimos"
+                ]
+            )
+            or __import__("re").search(r"\b\d+\s*dias?\b", q)
+        )
+        has_scope = any(token in q for token in ["grupo", "grupos", "segmento", "segmentos", "une", "loja", "lojas"])
+
+        if has_scope:
+            # Regra comercial: se recorte já está claro, usa janela padrão de 30 dias.
+            return None
+
+        if tool_name not in {"consultar_dados_flexivel", "gerar_grafico_universal_v2"}:
+            return None
+
+        if has_time_window:
+            msg = (
+                "Para te responder com precisão comercial, confirme o recorte da análise:\n"
+                "por grupo, segmento ou UNE?\n"
+                "Exemplo: 'top grupos com venda negativa nos últimos 30 dias na UNE 135'."
+            )
+        else:
+            msg = (
+                "Para te responder com precisão comercial, confirme o recorte da análise:\n"
+                "por grupo, segmento ou UNE?\n"
+                "Se você não informar período, vou usar os últimos 30 dias como padrão."
+            )
+        return {"type": "text", "result": {"mensagem": msg}}
+
     async def run_async(
         self, 
         user_query: str, 
@@ -529,6 +748,40 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         logger.info(f"[ROUTER] Extracted params: {tool_selection.tool_params}")
         logger.info(f"[ROUTER] Reasoning: {tool_selection.reasoning}")
 
+        clarification = self._build_clarification_if_needed(
+            user_query,
+            tool_selection.tool_name,
+            tool_selection.confidence,
+        )
+        if clarification is not None:
+            logger.info("[CLARIFICATION] Consulta vaga detectada. Retornando pergunta guiada.")
+            return clarification
+
+        # ========================================================================
+        # CAMADA 2.5: DETERMINISTIC EXECUTION PATH (LOW COST / HIGH RELIABILITY)
+        # Executa ferramentas determinísticas diretamente quando a confiança é alta.
+        # ========================================================================
+        if self._should_use_deterministic_path(tool_selection.tool_name, tool_selection.confidence):
+            logger.info(
+                f"[DETERMINISTIC] Executando {tool_selection.tool_name} sem rodada LLM "
+                f"(confidence={tool_selection.confidence:.2f})"
+            )
+            if on_progress:
+                await on_progress({"type": "tool_progress", "tool": tool_selection.tool_name, "status": "executing"})
+
+            tool_to_run = next((t for t in self.bi_tools if t.name == tool_selection.tool_name), None)
+            if tool_to_run is not None:
+                try:
+                    tool_result = await asyncio.to_thread(
+                        self._execute_tool_with_recovery,
+                        tool_to_run,
+                        tool_selection.tool_name,
+                        tool_selection.tool_params,
+                    )
+                    return self._format_deterministic_result(user_query, tool_selection.tool_name, tool_result)
+                except Exception as e:
+                    logger.warning(f"[DETERMINISTIC] Falhou, voltando para fluxo LLM: {e}")
+
         # START RAG WARMING
         await self._start_rag_warming()
 
@@ -537,7 +790,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # OPTIMIZATION: Context Pruning
         if chat_history:
             filtered_history = [msg for msg in chat_history if msg.get("role") != "system"]
-            recent_history = filtered_history[-15:] if len(filtered_history) > 15 else filtered_history
+            max_history = settings.LLM_HISTORY_MAX_MESSAGES if settings.DEV_FAST_MODE else 15
+            recent_history = filtered_history[-max_history:] if len(filtered_history) > max_history else filtered_history
 
             for msg in recent_history:
                 role = msg.get("role", "user")
@@ -686,7 +940,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         if tool_to_run:
                             try:
                                 # Execute tool (Blocking call wrapped in thread)
-                                tool_output = await asyncio.to_thread(tool_to_run.invoke, func_args)
+                                tool_output = await asyncio.to_thread(
+                                    self._execute_tool_with_recovery,
+                                    tool_to_run,
+                                    func_name,
+                                    func_args,
+                                )
                                 
                                 # Convert MapComposite
                                 def convert_mapcomposite(obj):
@@ -911,7 +1170,10 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                                 "chart_spec": chart_data
                             },
                             "chart_spec": chart_data,
-                            "text_override": "Aqui está o gráfico solicitado."
+                            "text_override": func_content.get("mensagem")
+                                or func_content.get("summary", {}).get("mensagem")
+                                or func_content.get("analysis")
+                                or "Gráfico gerado com base nos dados atuais."
                         }
                 except:
                     continue
@@ -933,16 +1195,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # Ref: https://ai.google.dev/gemini-api/docs/system-instructions
         messages = []
 
-        # OPTIMIZATION 2025: Context Pruning - Manter apenas últimas 15 mensagens (7 turnos)
-        # Ref: Llama-3 supports 128k context, we can increase history significantly.
-        # https://signoz.io/guides/open-ai-api-latency/
+        # OPTIMIZATION: Context pruning for cost control in dev-fast mode.
         if chat_history:
             # Filtrar mensagens system
             filtered_history = [msg for msg in chat_history if msg.get("role") != "system"]
-
-            # CRITICAL: Prunning - Pegar apenas últimas            # FIX 2026-01-27: Aumentado de 15 para 30 mensagens (memória 2x maior)
-            # Context7 Ultimate: 30 mensagens = ~60k tokens (safe para Gemini 2.5 Pro)
-            recent_history = filtered_history[-30:] if len(filtered_history) > 30 else filtered_history
+            max_history = settings.LLM_HISTORY_MAX_MESSAGES if settings.DEV_FAST_MODE else 30
+            recent_history = filtered_history[-max_history:] if len(filtered_history) > max_history else filtered_history
 
             for msg in recent_history:
                 role = msg.get("role", "user")
@@ -1062,7 +1320,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         if tool_to_run:
                             try:
                                 # Execute tool
-                                tool_output = tool_to_run.invoke(func_args)
+                                tool_output = self._execute_tool_with_recovery(
+                                    tool_to_run,
+                                    func_name,
+                                    func_args,
+                                )
 
                                 # CRITICAL FIX: Detectar se gerou gráfico com sucesso
                                 if isinstance(tool_output, dict):
@@ -1290,7 +1552,10 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                                 "chart_spec": chart_data
                             },
                             "chart_spec": chart_data,
-                            "text_override": "Aqui está o gráfico solicitado."
+                            "text_override": func_content.get("mensagem")
+                                or func_content.get("summary", {}).get("mensagem")
+                                or func_content.get("analysis")
+                                or "Gráfico gerado com base nos dados atuais."
                         }
                 except:
                     continue
@@ -1368,7 +1633,10 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
 
     def _generate_error_response(self, error_msg: str) -> Dict[str, Any]:
+        message = str(error_msg or "").strip()
+        if not message:
+            message = "falha temporaria no servico de IA"
         return {
             "type": "text",
-            "result": f"Desculpe, encontrei um erro ao processar sua solicitação: {error_msg}"
+            "result": f"Nao foi possivel concluir a analise agora ({message}). Tente novamente em instantes."
         }

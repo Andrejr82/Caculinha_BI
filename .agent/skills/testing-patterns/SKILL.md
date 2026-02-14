@@ -1,178 +1,178 @@
 ---
 name: testing-patterns
-description: Padrões e princípios de teste. Estratégias de unitário, integração e mock.
+description: Testing patterns and principles. Unit, integration, mocking strategies.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Padrões de Teste
+# Testing Patterns
 
-> Princípios para suítes de teste confiáveis.
+> Principles for reliable test suites.
 
 ---
 
-## 1. Pirâmide de Testes
+## 1. Testing Pyramid
 
 ```
-        /\          E2E (Poucos)
-       /  \         Fluxos críticos
+        /\          E2E (Few)
+       /  \         Critical flows
       /----\
-     /      \       Integração (Alguns)
-    /--------\      API, consultas ao BD
+     /      \       Integration (Some)
+    /--------\      API, DB queries
    /          \
-  /------------\    Unitário (Muitos)
-                    Funções, classes
+  /------------\    Unit (Many)
+                    Functions, classes
 ```
 
 ---
 
-## 2. Padrão AAA
+## 2. AAA Pattern
 
-| Passo | Propósito |
-|-------|-----------|
-| **Arrange** (Preparar) | Configurar os dados do teste |
-| **Act** (Agir) | Executar o código sob teste |
-| **Assert** (Verificar) | Verificar o resultado |
-
----
-
-## 3. Seleção do Tipo de Teste
-
-### Quando Usar Cada Um
-
-| Tipo | Ideal Para | Velocidade |
-|------|------------|------------|
-| **Unitário** | Funções puras, lógica | Rápido (<50ms) |
-| **Integração** | API, BD, serviços | Médio |
-| **E2E** | Fluxos críticos do usuário | Lento |
+| Step | Purpose |
+|------|---------|
+| **Arrange** | Set up test data |
+| **Act** | Execute code under test |
+| **Assert** | Verify outcome |
 
 ---
 
-## 4. Princípios de Teste Unitário
+## 3. Test Type Selection
 
-### Bons Testes Unitários
+### When to Use Each
 
-| Princípio | Significado |
-|-----------|-------------|
-| Rápido | < 100ms cada |
-| Isolado | Sem dependências externas |
-| Repetível | Sempre o mesmo resultado |
-| Auto-verificável | Sem verificação manual |
-| Oportuno | Escrito junto com o código |
-
-### O que Testar Unitariamente
-
-| Testar | Não Testar |
-|--------|------------|
-| Lógica de negócio | Código do framework |
-| Casos de borda | Bibliotecas de terceiros |
-| Tratamento de erros | Getters simples |
+| Type | Best For | Speed |
+|------|----------|-------|
+| **Unit** | Pure functions, logic | Fast (<50ms) |
+| **Integration** | API, DB, services | Medium |
+| **E2E** | Critical user flows | Slow |
 
 ---
 
-## 5. Princípios de Teste de Integração
+## 4. Unit Test Principles
 
-### O que Testar
+### Good Unit Tests
 
-| Área | Foco |
-|------|------|
-| Endpoints de API | Requisição/Resposta |
-| Banco de Dados | Consultas, transações |
-| Serviços externos | Contratos |
+| Principle | Meaning |
+|-----------|---------|
+| Fast | < 100ms each |
+| Isolated | No external deps |
+| Repeatable | Same result always |
+| Self-checking | No manual verification |
+| Timely | Written with code |
 
-### Setup/Teardown (Configuração/Limpeza)
+### What to Unit Test
 
-| Fase | Ação |
-|------|------|
-| Before All (Antes de todos) | Conectar recursos |
-| Before Each (Antes de cada) | Resetar estado |
-| After Each (Depois de cada) | Limpar |
-| After All (Depois de todos) | Desconectar |
+| Test | Don't Test |
+|------|------------|
+| Business logic | Framework code |
+| Edge cases | Third-party libs |
+| Error handling | Simple getters |
 
 ---
 
-## 6. Princípios de Mocking (Simulação)
+## 5. Integration Test Principles
 
-### Quando Mockar
+### What to Test
 
-| Mockar | Não Mockar |
-|--------|------------|
-| APIs externas | O código sob teste |
-| Banco de dados (unitário) | Dependências simples |
-| Tempo/aleatoriedade | Funções puras |
-| Rede | Bancos de dados em memória |
+| Area | Focus |
+|------|-------|
+| API endpoints | Request/response |
+| Database | Queries, transactions |
+| External services | Contracts |
 
-### Tipos de Mock
+### Setup/Teardown
 
-| Tipo | Uso |
+| Phase | Action |
+|-------|--------|
+| Before All | Connect resources |
+| Before Each | Reset state |
+| After Each | Clean up |
+| After All | Disconnect |
+
+---
+
+## 6. Mocking Principles
+
+### When to Mock
+
+| Mock | Don't Mock |
+|------|------------|
+| External APIs | The code under test |
+| Database (unit) | Simple dependencies |
+| Time/random | Pure functions |
+| Network | In-memory stores |
+
+### Mock Types
+
+| Type | Use |
 |------|-----|
-| Stub | Retornar valores fixos |
-| Spy | Rastrear chamadas |
-| Mock | Definir expectativas |
-| Fake | Implementação simplificada |
+| Stub | Return fixed values |
+| Spy | Track calls |
+| Mock | Set expectations |
+| Fake | Simplified implementation |
 
 ---
 
-## 7. Organização de Testes
+## 7. Test Organization
 
-### Nomenclatura
+### Naming
 
-| Padrão | Exemplo |
-|--------|---------|
-| Comportamento esperado | "deve retornar erro quando..." |
-| Condição (When) | "quando usuário não encontrado..." |
-| Dado-quando-então | "dado X, quando Y, então Z" |
-
-### Agrupamento
-
-| Nível | Uso |
-|-------|-----|
-| describe | Agrupar testes relacionados |
-| it/test | Caso individual |
-| beforeEach | Configuração comum |
-
----
-
-## 8. Dados de Teste
-
-### Estratégias
-
-| Abordagem | Uso |
-|-----------|-----|
-| Factories | Gerar dados de teste |
-| Fixtures | Conjuntos de dados predefinidos |
-| Builders | Criação fluente de objetos |
-
-### Princípios
-
-- Use dados realistas
-- Randomize valores não essenciais (faker)
-- Compartilhe fixtures comuns
-- Mantenha os dados mínimos
-
----
-
-## 9. Melhores Práticas
-
-| Prática | Por que |
+| Pattern | Example |
 |---------|---------|
-| Uma asserção por teste | Razão de falha clara |
-| Testes independentes | Sem dependência de ordem |
-| Testes rápidos | Executar frequentemente |
-| Nomes descritivos | Auto-documentado |
-| Limpeza (Clean up) | Evitar efeitos colaterais |
+| Should behavior | "should return error when..." |
+| When condition | "when user not found..." |
+| Given-when-then | "given X, when Y, then Z" |
+
+### Grouping
+
+| Level | Use |
+|-------|-----|
+| describe | Group related tests |
+| it/test | Individual case |
+| beforeEach | Common setup |
 
 ---
 
-## 10. Anti-Padrões
+## 8. Test Data
 
-| ❌ Não faça | ✅ Faça |
-|-------------|---------|
-| Testar implementação | Testar comportamento |
-| Duplicar código de teste | Usar factories |
-| Setup de teste complexo | Simplificar ou dividir |
-| Ignorar testes instáveis | Corrigir a causa raiz |
-| Pular a limpeza | Resetar o estado |
+### Strategies
+
+| Approach | Use |
+|----------|-----|
+| Factories | Generate test data |
+| Fixtures | Predefined datasets |
+| Builders | Fluent object creation |
+
+### Principles
+
+- Use realistic data
+- Randomize non-essential values (faker)
+- Share common fixtures
+- Keep data minimal
 
 ---
 
-> **Lembre-se:** Testes são documentação. Se alguém não conseguir entender o que o código faz através dos testes, reescreva-os.
+## 9. Best Practices
+
+| Practice | Why |
+|----------|-----|
+| One assert per test | Clear failure reason |
+| Independent tests | No order dependency |
+| Fast tests | Run frequently |
+| Descriptive names | Self-documenting |
+| Clean up | Avoid side effects |
+
+---
+
+## 10. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Test implementation | Test behavior |
+| Duplicate test code | Use factories |
+| Complex test setup | Simplify or split |
+| Ignore flaky tests | Fix root cause |
+| Skip cleanup | Reset state |
+
+---
+
+> **Remember:** Tests are documentation. If someone can't understand what the code does from the tests, rewrite them.

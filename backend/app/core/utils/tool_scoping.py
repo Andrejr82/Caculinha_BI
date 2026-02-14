@@ -13,6 +13,10 @@ from langchain_core.tools import BaseTool
 
 logger = logging.getLogger(__name__)
 
+def _tool_name(tool) -> str:
+    """Resolve tool name for both BaseTool instances and plain callables."""
+    return getattr(tool, "name", None) or getattr(tool, "__name__", "")
+
 
 class ToolPermissionManager:
     """Gerencia permissões de ferramentas por role de usuário"""
@@ -118,13 +122,13 @@ class ToolPermissionManager:
         allowed_tool_names = set(permissions["allowed_tools"])
         filtered_tools = [
             tool for tool in all_tools
-            if tool.name in allowed_tool_names
+            if _tool_name(tool) in allowed_tool_names
         ]
 
         logger.info(
             f"User role '{user_role}' has access to {len(filtered_tools)}/{len(all_tools)} tools"
         )
-        logger.debug(f"Allowed tools: {[t.name for t in filtered_tools]}")
+        logger.debug(f"Allowed tools: [{', '.join(_tool_name(t) for t in filtered_tools)}]")
 
         return filtered_tools
 

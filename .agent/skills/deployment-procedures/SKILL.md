@@ -1,241 +1,241 @@
 ---
 name: deployment-procedures
-description: Princípios de deploy em produção e tomada de decisão. Workflows de deploy seguro, estratégias de rollback e verificação. Ensina a pensar, não scripts.
+description: Production deployment principles and decision-making. Safe deployment workflows, rollback strategies, and verification. Teaches thinking, not scripts.
 allowed-tools: Read, Glob, Grep, Bash
 ---
 
-# Procedimentos de Deploy
+# Deployment Procedures
 
-> Princípios de deploy e tomada de decisão para releases seguras em produção.
-> **Aprenda a PENSAR, não a memorizar scripts.**
-
----
-
-## ⚠️ Como Usar Esta Skill
-
-Esta skill ensina **princípios de deploy**, não scripts bash para copiar.
-
-- Cada deploy é único
-- Entenda o PORQUÊ de cada passo
-- Adapte os procedimentos à sua plataforma
+> Deployment principles and decision-making for safe production releases.
+> **Learn to THINK, not memorize scripts.**
 
 ---
 
-## 1. Seleção de Plataforma
+## ⚠️ How to Use This Skill
 
-### Árvore de Decisão
+This skill teaches **deployment principles**, not bash scripts to copy.
+
+- Every deployment is unique
+- Understand the WHY behind each step
+- Adapt procedures to your platform
+
+---
+
+## 1. Platform Selection
+
+### Decision Tree
 
 ```
-O que você está implantando?
+What are you deploying?
 │
-├── Site estático / JAMstack
+├── Static site / JAMstack
 │   └── Vercel, Netlify, Cloudflare Pages
 │
-├── Web app simples
-│   ├── Gerenciado → Railway, Render, Fly.io
-│   └── Controle → VPS + PM2/Docker
+├── Simple web app
+│   ├── Managed → Railway, Render, Fly.io
+│   └── Control → VPS + PM2/Docker
 │
-├── Microserviços
-│   └── Orquestração de containers
+├── Microservices
+│   └── Container orchestration
 │
 └── Serverless
     └── Edge functions, Lambda
 ```
 
-### Cada Plataforma Tem Procedimentos Diferentes
+### Each Platform Has Different Procedures
 
-| Plataforma | Método de Deploy |
-|------------|------------------|
+| Platform | Deployment Method |
+|----------|------------------|
 | **Vercel/Netlify** | Git push, auto-deploy |
-| **Railway/Render** | Git push ou CLI |
-| **VPS + PM2** | SSH + passos manuais |
-| **Docker** | Push de imagem + orquestração |
+| **Railway/Render** | Git push or CLI |
+| **VPS + PM2** | SSH + manual steps |
+| **Docker** | Image push + orchestration |
 | **Kubernetes** | kubectl apply |
 
 ---
 
-## 2. Princípios Pré-Deploy
+## 2. Pre-Deployment Principles
 
-### As 4 Categorias de Verificação
+### The 4 Verification Categories
 
-| Categoria | O que verificar |
-|-----------|-----------------|
-| **Qualidade do Código** | Testes passando, lint limpo, revisado |
-| **Build** | Build de produção funciona, sem avisos |
-| **Ambiente** | Vars de ambiente configuradas, segredos atuais |
-| **Segurança** | Backup feito, plano de rollback pronto |
+| Category | What to Check |
+|----------|--------------|
+| **Code Quality** | Tests passing, linting clean, reviewed |
+| **Build** | Production build works, no warnings |
+| **Environment** | Env vars set, secrets current |
+| **Safety** | Backup done, rollback plan ready |
 
-### Checklist Pré-Deploy
+### Pre-Deployment Checklist
 
-- [ ] Todos os testes passando
-- [ ] Código revisado e aprovado
-- [ ] Build de produção com sucesso
-- [ ] Variáveis de ambiente verificadas
-- [ ] Migrações de banco de dados prontas (se houver)
-- [ ] Plano de rollback documentado
-- [ ] Equipe notificada
-- [ ] Monitoramento pronto
+- [ ] All tests passing
+- [ ] Code reviewed and approved
+- [ ] Production build successful
+- [ ] Environment variables verified
+- [ ] Database migrations ready (if any)
+- [ ] Rollback plan documented
+- [ ] Team notified
+- [ ] Monitoring ready
 
 ---
 
-## 3. Princípios do Workflow de Deploy
+## 3. Deployment Workflow Principles
 
-### O Processo de 5 Fases
+### The 5-Phase Process
 
 ```
-1. PREPARAR
-   └── Verificar código, build, vars de ambiente
+1. PREPARE
+   └── Verify code, build, env vars
 
 2. BACKUP
-   └── Salvar o estado atual antes de mudar
+   └── Save current state before changing
 
-3. IMPLANTAR (DEPLOY)
-   └── Executar com o monitoramento aberto
+3. DEPLOY
+   └── Execute with monitoring open
 
-4. VERIFICAR
-   └── Check de saúde (health check), logs, fluxos chave
+4. VERIFY
+   └── Health check, logs, key flows
 
-5. CONFIRMAR ou REVERTER (ROLLBACK)
-   └── Tudo bem? Confirme. Problemas? Rollback.
+5. CONFIRM or ROLLBACK
+   └── All good? Confirm. Issues? Rollback.
 ```
 
-### Princípios das Fases
+### Phase Principles
 
-| Fase | Princípio |
-|------|-----------|
-| **Preparar** | Nunca faça deploy de código não testado |
-| **Backup** | Não é possível fazer rollback sem backup |
-| **Implantar** | Assista acontecer, não vá embora |
-| **Verificar** | Confie, mas verifique |
-| **Confirmar** | Tenha o gatilho de rollback pronto |
-
----
-
-## 4. Verificação Pós-Deploy
-
-### O que Verificar
-
-| Verificação | Por que |
-|-------------|---------|
-| **Endpoint de Saúde (Health)** | O serviço está rodando |
-| **Logs de erro** | Sem novos erros |
-| **Fluxos chave do usuário** | Recursos críticos funcionam |
-| **Performance** | Tempos de resposta aceitáveis |
-
-### Janela de Verificação
-
-- **Primeiros 5 minutos**: Monitoramento ativo
-- **15 minutos**: Confirmar que está estável
-- **1 hora**: Verificação final
-- **Dia seguinte**: Revisar métricas
+| Phase | Principle |
+|-------|-----------|
+| **Prepare** | Never deploy untested code |
+| **Backup** | Can't rollback without backup |
+| **Deploy** | Watch it happen, don't walk away |
+| **Verify** | Trust but verify |
+| **Confirm** | Have rollback trigger ready |
 
 ---
 
-## 5. Princípios de Rollback (Reversão)
+## 4. Post-Deployment Verification
 
-### Quando Fazer Rollback
+### What to Verify
 
-| Sintoma | Ação |
-|---------|------|
-| Serviço fora do ar | Rollback imediato |
-| Erros críticos | Rollback |
-| Performance >50% degradada | Considerar rollback |
-| Problemas menores | Corrigir pra frente (fix forward) se for rápido |
+| Check | Why |
+|-------|-----|
+| **Health endpoint** | Service is running |
+| **Error logs** | No new errors |
+| **Key user flows** | Critical features work |
+| **Performance** | Response times acceptable |
 
-### Estratégia de Rollback por Plataforma
+### Verification Window
 
-| Plataforma | Método de Rollback |
-|------------|-------------------|
-| **Vercel/Netlify** | Redisparo do commit anterior |
-| **Railway/Render** | Rollback no dashboard |
-| **VPS + PM2** | Restaurar backup, reiniciar |
-| **Docker** | Tag de imagem anterior |
+- **First 5 minutes**: Active monitoring
+- **15 minutes**: Confirm stable
+- **1 hour**: Final verification
+- **Next day**: Review metrics
+
+---
+
+## 5. Rollback Principles
+
+### When to Rollback
+
+| Symptom | Action |
+|---------|--------|
+| Service down | Rollback immediately |
+| Critical errors | Rollback |
+| Performance >50% degraded | Consider rollback |
+| Minor issues | Fix forward if quick |
+
+### Rollback Strategy by Platform
+
+| Platform | Rollback Method |
+|----------|----------------|
+| **Vercel/Netlify** | Redeploy previous commit |
+| **Railway/Render** | Rollback in dashboard |
+| **VPS + PM2** | Restore backup, restart |
+| **Docker** | Previous image tag |
 | **K8s** | kubectl rollout undo |
 
-### Princípios de Rollback
+### Rollback Principles
 
-1. **Velocidade sobre perfeição**: Reverter primeiro, depurar depois
-2. **Não acumule erros**: Um rollback, não múltiplas mudanças
-3. **Comunique**: Avise a equipe o que aconteceu
-4. **Post-mortem**: Entenda o porquê após estar estável
-
----
-
-## 6. Deploy com Zero Downtime (Sem Interrupção)
-
-### Estratégias
-
-| Estratégia | Como Funciona |
-|------------|---------------|
-| **Rolling** | Substitui instâncias uma por uma |
-| **Blue-Green** | Alterna o tráfego entre ambientes |
-| **Canary** | Mudança gradual de tráfego |
-
-### Princípios de Seleção
-
-| Cenário | Estratégia |
-|---------|------------|
-| Release padrão | Rolling |
-| Mudança de alto risco | Blue-green (rollback fácil) |
-| Precisa de validação | Canary (testar com tráfego real) |
+1. **Speed over perfection**: Rollback first, debug later
+2. **Don't compound errors**: One rollback, not multiple changes
+3. **Communicate**: Tell team what happened
+4. **Post-mortem**: Understand why after stable
 
 ---
 
-## 7. Procedimentos de Emergência
+## 6. Zero-Downtime Deployment
 
-### Prioridade com Serviço Fora do Ar
+### Strategies
 
-1. **Avaliar**: Qual é o sintoma?
-2. **Correção rápida**: Reiniciar se não estiver claro
-3. **Rollback**: Se reiniciar não ajudar
-4. **Investigar**: Após estar estável
+| Strategy | How It Works |
+|----------|--------------|
+| **Rolling** | Replace instances one by one |
+| **Blue-Green** | Switch traffic between environments |
+| **Canary** | Gradual traffic shift |
 
-### Ordem de Investigação
+### Selection Principles
 
-| Verificação | Problemas Comuns |
-|-------------|------------------|
-| **Logs** | Erros, exceções |
-| **Recursos** | Disco cheio, memória |
-| **Rede** | DNS, firewall |
-| **Dependências** | Banco de dados, APIs |
-
----
-
-## 8. Anti-Padrões
-
-| ❌ NÃO FAÇA | ✅ FAÇA |
-|-------------|---------|
-| Deploy na sexta-feira | Deploy no início da semana |
-| Apressar o deploy | Siga o processo |
-| Pular o staging | Sempre teste primeiro |
-| Deploy sem backup | Backup antes do deploy |
-| Ir embora após o deploy | Monitore por 15+ min |
-| Múltiplas mudanças de uma vez | Uma mudança por vez |
+| Scenario | Strategy |
+|----------|----------|
+| Standard release | Rolling |
+| High-risk change | Blue-green (easy rollback) |
+| Need validation | Canary (test with real traffic) |
 
 ---
 
-## 9. Checklist de Decisão
+## 7. Emergency Procedures
 
-Antes de fazer o deploy:
+### Service Down Priority
 
-- [ ] **Procedimento apropriado para a plataforma?**
-- [ ] **Estratégia de backup pronta?**
-- [ ] **Plano de rollback documentado?**
-- [ ] **Monitoramento configurado?**
-- [ ] **Equipe notificada?**
-- [ ] **Tempo para monitorar depois?**
+1. **Assess**: What's the symptom?
+2. **Quick fix**: Restart if unclear
+3. **Rollback**: If restart doesn't help
+4. **Investigate**: After stable
 
----
+### Investigation Order
 
-## 10. Melhores Práticas
-
-1. **Deploys pequenos e frequentes** em vez de grandes releases
-2. **Feature flags** para mudanças arriscadas
-3. **Automatize** passos repetitivos
-4. **Documente** cada deployment
-5. **Revise** o que deu errado após problemas
-6. **Teste o rollback** antes de precisar dele
+| Check | Common Issues |
+|-------|--------------|
+| **Logs** | Errors, exceptions |
+| **Resources** | Disk full, memory |
+| **Network** | DNS, firewall |
+| **Dependencies** | Database, APIs |
 
 ---
 
-> **Lembre-se:** Cada deploy é um risco. Minimize o risco através da preparação, não da velocidade.
+## 8. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Deploy on Friday | Deploy early in week |
+| Rush deployment | Follow the process |
+| Skip staging | Always test first |
+| Deploy without backup | Backup before deploy |
+| Walk away after deploy | Monitor for 15+ min |
+| Multiple changes at once | One change at a time |
+
+---
+
+## 9. Decision Checklist
+
+Before deploying:
+
+- [ ] **Platform-appropriate procedure?**
+- [ ] **Backup strategy ready?**
+- [ ] **Rollback plan documented?**
+- [ ] **Monitoring configured?**
+- [ ] **Team notified?**
+- [ ] **Time to monitor after?**
+
+---
+
+## 10. Best Practices
+
+1. **Small, frequent deploys** over big releases
+2. **Feature flags** for risky changes
+3. **Automate** repetitive steps
+4. **Document** every deployment
+5. **Review** what went wrong after issues
+6. **Test rollback** before you need it
+
+---
+
+> **Remember:** Every deployment is a risk. Minimize risk through preparation, not speed.

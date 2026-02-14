@@ -13,7 +13,8 @@ from main import app
 @pytest.mark.asyncio
 async def test_login_success():
     """Test successful login"""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    import httpx
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": "admin123"}
@@ -28,7 +29,8 @@ async def test_login_success():
 @pytest.mark.asyncio
 async def test_login_invalid_credentials():
     """Test login with invalid credentials"""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    import httpx
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": "wrong"}
@@ -43,7 +45,8 @@ async def test_get_current_user():
     # Create test token
     token = create_access_token({"sub": "test-user-id", "username": "test", "role": "user"})
     
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    import httpx
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(
             "/api/v1/auth/me",
             headers={"Authorization": f"Bearer {token}"}

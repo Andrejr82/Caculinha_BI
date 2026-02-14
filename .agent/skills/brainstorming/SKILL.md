@@ -1,163 +1,163 @@
 ---
 name: brainstorming
-description: Protocolo de questionamento socrático + comunicação com o usuário. OBRIGATÓRIO para pedidos complexos, novas features ou requisitos incertos. Inclui relato de progresso e tratamento de erro.
+description: Socratic questioning protocol + user communication. MANDATORY for complex requests, new features, or unclear requirements. Includes progress reporting and error handling.
 allowed-tools: Read, Glob, Grep
 ---
 
-# Protocolo de Brainstorming & Comunicação
+# Brainstorming & Communication Protocol
 
-> **OBRIGATÓRIO:** Use para pedidos complexos/vagos, novas features, atualizações.
-
----
-
-## 🛑 SOCRATIC GATE (APLICAÇÃO)
-
-### Quando Ativar
-
-| Padrão | Ação |
-|--------|------|
-| "Construa/Crie/Faça [coisa]" sem detalhes | 🛑 PERGUNTE 3 questões |
-| Feature complexa ou arquitetura | 🛑 Esclareça antes de implementar |
-| Pedido de atualização/mudança | 🛑 Confirme o escopo |
-| Requisitos vagos | 🛑 Pergunte o propósito, usuários, restrições |
-
-### 🚫 OBRIGATÓRIO: 3 Questões Antes da Implementação
-
-1. **PARE** - NÃO comece a codificar
-2. **PERGUNTE** - No mínimo 3 questões:
-   - 🎯 Propósito: Qual problema você está resolvendo?
-   - 👥 Usuários: Quem vai usar isso?
-   - 📦 Escopo: O que é essencial vs desejável?
-3. **AGUARDE** - Obtenha resposta antes de prosseguir
+> **MANDATORY:** Use for complex/vague requests, new features, updates.
 
 ---
 
-## 🧠 Geração Dinâmica de Questões
+## 🛑 SOCRATIC GATE (ENFORCEMENT)
 
-**⛔ NUNCA use templates estáticos.** Leia `dynamic-questioning.md` para os princípios.
+### When to Trigger
 
-### Princípios Core
+| Pattern | Action |
+|---------|--------|
+| "Build/Create/Make [thing]" without details | 🛑 ASK 3 questions |
+| Complex feature or architecture | 🛑 Clarify before implementing |
+| Update/change request | 🛑 Confirm scope |
+| Vague requirements | 🛑 Ask purpose, users, constraints |
 
-| Princípio | Significado |
-|-----------|-------------|
-| **Questões Revelam Consequências** | Cada pergunta se conecta a uma decisão arquitetural |
-| **Contexto Antes do Conteúdo** | Entenda o contexto (greenfield/feature/refactor/debug) primeiro |
-| **Questões Mínimas Viáveis** | Cada pergunta deve eliminar caminhos de implementação |
-| **Gere Dados, Não Suposições** | Não adivinhe—pergunte apresentando trade-offs |
+### 🚫 MANDATORY: 3 Questions Before Implementation
 
-### Processo de Geração de Questões
+1. **STOP** - Do NOT start coding
+2. **ASK** - Minimum 3 questions:
+   - 🎯 Purpose: What problem are you solving?
+   - 👥 Users: Who will use this?
+   - 📦 Scope: Must-have vs nice-to-have?
+3. **WAIT** - Get response before proceeding
+
+---
+
+## 🧠 Dynamic Question Generation
+
+**⛔ NEVER use static templates.** Read `dynamic-questioning.md` for principles.
+
+### Core Principles
+
+| Principle | Meaning |
+|-----------|---------|
+| **Questions Reveal Consequences** | Each question connects to an architectural decision |
+| **Context Before Content** | Understand greenfield/feature/refactor/debug context first |
+| **Minimum Viable Questions** | Each question must eliminate implementation paths |
+| **Generate Data, Not Assumptions** | Don't guess—ask with trade-offs |
+
+### Question Generation Process
 
 ```
-1. Analisar pedido → Extrair domínio, features, indicadores de escala
-2. Identificar pontos de decisão → Bloqueantes vs. adiáveis
-3. Gerar questões → Prioridade: P0 (bloqueante) > P1 (alto valor) > P2 (desejável)
-4. Formatar com trade-offs → O que, Por que, Opções, Padrão
+1. Parse request → Extract domain, features, scale indicators
+2. Identify decision points → Blocking vs. deferable
+3. Generate questions → Priority: P0 (blocking) > P1 (high-leverage) > P2 (nice-to-have)
+4. Format with trade-offs → What, Why, Options, Default
 ```
 
-### Formato de Questão (OBRIGATÓRIO)
+### Question Format (MANDATORY)
 
 ```markdown
-### [PRIORIDADE] **[PONTO DE DECISÃO]**
+### [PRIORITY] **[DECISION POINT]**
 
-**Pergunta:** [Pergunta clara]
+**Question:** [Clear question]
 
-**Por que Isso Importa:**
-- [Consequência arquitetural]
-- [Afeta: custo/complexidade/cronograma/escala]
+**Why This Matters:**
+- [Architectural consequence]
+- [Affects: cost/complexity/timeline/scale]
 
-**Opções:**
-| Opção | Prós | Contras | Melhor Para |
-|-------|------|---------|-------------|
-| A | [+] | [-] | [Caso de uso] |
+**Options:**
+| Option | Pros | Cons | Best For |
+|--------|------|------|----------|
+| A | [+] | [-] | [Use case] |
 
-**Se Não Especificado:** [Padrão + justificativa]
+**If Not Specified:** [Default + rationale]
 ```
 
-**Para bancos de questões e algoritmos específicos de domínio**, veja: `dynamic-questioning.md`
+**For detailed domain-specific question banks and algorithms**, see: `dynamic-questioning.md`
 
 ---
 
-## Relato de Progresso (BASEADO EM PRINCÍPIOS)
+## Progress Reporting (PRINCIPLE-BASED)
 
-**PRINCÍPIO:** Transparência gera confiança. O status deve estar visível e ser acionável.
+**PRINCIPLE:** Transparency builds trust. Status must be visible and actionable.
 
-### Formato do Quadro de Status
+### Status Board Format
 
-| Agente | Status | Tarefa Atual | Progresso |
-|--------|--------|--------------|-----------|
-| [Nome do Agente] | ✅🔄⏳❌⚠️ | [Descrição da tarefa] | [% ou contagem] |
+| Agent | Status | Current Task | Progress |
+|-------|--------|--------------|----------|
+| [Agent Name] | ✅🔄⏳❌⚠️ | [Task description] | [% or count] |
 
-### Ícones de Status
+### Status Icons
 
-| Ícone | Significado | Uso |
-|-------|-------------|-----|
-| ✅ | Concluído | Tarefa finalizada com sucesso |
-| 🔄 | Executando | Atualmente processando |
-| ⏳ | Aguardando | Bloqueado, esperando dependência |
-| ❌ | Erro | Falhou, precisa de atenção |
-| ⚠️ | Aviso | Problema potencial, não bloqueante |
-
----
-
-## Tratamento de Erros (BASEADO EM PRINCÍPIOS)
-
-**PRINCÍPIO:** Erros são oportunidades para comunicação clara.
-
-### Padrão de Resposta de Erro
-
-```
-1. Reconheça o erro
-2. Explique o que aconteceu (de forma amigável ao usuário)
-3. Ofereça soluções específicas com trade-offs
-4. Peça ao usuário para escolher ou fornecer alternativa
-```
-
-### Categorias de Erro
-
-| Categoria | Estratégia de Resposta |
-|-----------|------------------------|
-| **Conflito de Porta** | Ofereça porta alternativa ou feche a existente |
-| **Dependência Faltando** | Instale automaticamente ou peça permissão |
-| **Falha de Build** | Mostre o erro específico + correção sugerida |
-| **Erro Obscuro** | Peça detalhes: screenshot, saída do console |
+| Icon | Meaning | Usage |
+|------|---------|-------|
+| ✅ | Completed | Task finished successfully |
+| 🔄 | Running | Currently executing |
+| ⏳ | Waiting | Blocked, waiting for dependency |
+| ❌ | Error | Failed, needs attention |
+| ⚠️ | Warning | Potential issue, not blocking |
 
 ---
 
-## Mensagem de Conclusão (BASEADO EM PRINCÍPIOS)
+## Error Handling (PRINCIPLE-BASED)
 
-**PRINCÍPIO:** Celebre o sucesso, guie os próximos passos.
+**PRINCIPLE:** Errors are opportunities for clear communication.
 
-### Estrutura de Conclusão
+### Error Response Pattern
 
 ```
-1. Confirmação de sucesso (celebre brevemente)
-2. Resumo do que foi feito (concreto)
-3. Como verificar/testar (acionável)
-4. Sugestão de próximos passos (proativo)
+1. Acknowledge the error
+2. Explain what happened (user-friendly)
+3. Offer specific solutions with trade-offs
+4. Ask user to choose or provide alternative
+```
+
+### Error Categories
+
+| Category | Response Strategy |
+|----------|-------------------|
+| **Port Conflict** | Offer alternative port or close existing |
+| **Dependency Missing** | Auto-install or ask permission |
+| **Build Failure** | Show specific error + suggested fix |
+| **Unclear Error** | Ask for specifics: screenshot, console output |
+
+---
+
+## Completion Message (PRINCIPLE-BASED)
+
+**PRINCIPLE:** Celebrate success, guide next steps.
+
+### Completion Structure
+
+```
+1. Success confirmation (celebrate briefly)
+2. Summary of what was done (concrete)
+3. How to verify/test (actionable)
+4. Next steps suggestion (proactive)
 ```
 
 ---
 
-## Princípios de Comunicação
+## Communication Principles
 
-| Princípio | Implementação |
-|-----------|---------------|
-| **Conciso** | Sem detalhes desnecessários, vá ao ponto |
-| **Visual** | Use emojis (✅🔄⏳❌) para escaneamento rápido |
-| **Específico** | "~2 minutos" não "espere um pouco" |
-| **Alternativas** | Ofereça múltiplos caminhos quando estiver travado |
-| **Proativo** | Sugira o próximo passo após a conclusão |
+| Principle | Implementation |
+|-----------|----------------|
+| **Concise** | No unnecessary details, get to point |
+| **Visual** | Use emojis (✅🔄⏳❌) for quick scanning |
+| **Specific** | "~2 minutes" not "wait a bit" |
+| **Alternatives** | Offer multiple paths when stuck |
+| **Proactive** | Suggest next step after completion |
 
 ---
 
-## Anti-Padrões (EVITE)
+## Anti-Patterns (AVOID)
 
-| Anti-Padrão | Por quê |
-|-------------|---------|
-| Pular para soluções antes de entender | Desperdiça tempo no problema errado |
-| Assumir requisitos sem perguntar | Gera saída errada |
-| Excesso de engenharia na primeira versão | Atrasa a entrega de valor |
-| Ignorar restrições | Cria soluções inutilizáveis |
-| Frases como "Eu acho que" | Incerteza → Pergunte em vez disso |
+| Anti-Pattern | Why |
+|--------------|-----|
+| Jumping to solutions before understanding | Wastes time on wrong problem |
+| Assuming requirements without asking | Creates wrong output |
+| Over-engineering first version | Delays value delivery |
+| Ignoring constraints | Creates unusable solutions |
+| "I think" phrases | Uncertainty → Ask instead |
 
 ---
