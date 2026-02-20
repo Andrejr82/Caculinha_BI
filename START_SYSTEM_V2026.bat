@@ -22,9 +22,9 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-where node >nul 2>nul
+where bun >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [ERRO] Node.js nao encontrado no PATH.
+    echo [ERRO] Bun nao encontrado no PATH.
     pause
     exit /b 1
 )
@@ -45,7 +45,7 @@ if not exist "backend\data\parquet\admmat.parquet" (
     exit /b 1
 )
 
-REM 3) Limpeza preventiva de portas para evitar conflito no npm/vite e uvicorn
+REM 3) Limpeza preventiva de portas para evitar conflito no bun/vite e uvicorn
 echo [CHECK] Liberando portas 8000 e 3000, se necessario...
 call :KillPort 8000
 call :KillPort 3000
@@ -70,7 +70,7 @@ echo [FRONTEND] Iniciando SolidJS em 3000...
 pushd "frontend-solid"
 if not exist "node_modules" (
     echo [INFO] Instalando dependencias do frontend...
-    call npm install
+    call bun install
     if %ERRORLEVEL% neq 0 (
         echo [ERRO] Falha ao instalar dependencias do frontend.
         popd
@@ -78,7 +78,7 @@ if not exist "node_modules" (
         exit /b 1
     )
 )
-start "Caculinha BI - Frontend" cmd /k "npm run dev -- --host 127.0.0.1 --port 3000"
+start "Caculinha BI - Frontend" cmd /k "bun run dev -- --host 127.0.0.1 --port 3000"
 popd
 
 echo.
