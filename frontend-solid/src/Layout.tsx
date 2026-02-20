@@ -5,7 +5,7 @@ import {
   AlertTriangle, Truck, BookOpen, Terminal, Database, Lock, Shield, Lightbulb, HelpCircle, Code, Info,
   ChevronLeft, ChevronRight, TrendingUp, BarChart3, Package
 } from 'lucide-solid';
-import { For, Show, children, createSignal } from 'solid-js';
+import { For, Show, children, createSignal, createResource } from 'solid-js';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Logo } from '@/components';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
@@ -18,6 +18,25 @@ export default function Layout(props: any) {
 
   // Estado para controlar sidebar retrátil
   const [isCollapsed, setIsCollapsed] = createSignal(false);
+  const [playgroundEnabledForUser] = createResource(
+    () => `${auth.isAuthenticated()}|${auth.user()?.username || ''}|${auth.user()?.role || ''}`,
+    async () => {
+      if (userRole() === 'admin') return true;
+      if (!auth.isAuthenticated()) return false;
+      try {
+        const token = sessionStorage.getItem('token');
+        const response = await fetch('/api/v1/playground/info', {
+          method: 'GET',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return data?.playground_access_enabled === true;
+      } catch {
+        return false;
+      }
+    }
+  );
 
   // ✅ ACESSIBILIDADE: Keyboard shortcuts (mantidos)
   useKeyboardShortcut([
@@ -85,7 +104,7 @@ export default function Layout(props: any) {
         { href: '/code-chat', icon: Code, label: 'Code Chat', roles: ['admin'] },
         { href: '/examples', icon: Lightbulb, label: 'Exemplos', roles: ['admin'] },
         { href: '/learning', icon: BookOpen, label: 'Aprendizado', roles: ['admin'] },
-        { href: '/playground', icon: Terminal, label: 'Playground', roles: ['admin'] },
+        { href: '/playground', icon: Terminal, label: 'Playground', roles: ['admin', 'user'] },
       ]
     },
     {
@@ -157,7 +176,11 @@ export default function Layout(props: any) {
         <nav class="flex-1 overflow-y-auto overflow-x-hidden py-4 min-h-0 w-full custom-scrollbar">
           <For each={menuItems}>
             {(group) => {
-              const visibleItems = group.items.filter(item => item.roles.includes(userRole()) || item.roles.includes('*'));
+              const visibleItems = group.items.filter(item => {
+                if (!(item.roles.includes(userRole()) || item.roles.includes('*'))) return false;
+                if (item.href === '/playground' && userRole() !== 'admin' && !playgroundEnabledForUser()) return false;
+                return true;
+              });
 
               return (
                 <Show when={visibleItems.length > 0}>

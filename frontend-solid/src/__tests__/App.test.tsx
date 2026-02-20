@@ -2,7 +2,6 @@ import { render, screen } from '@solidjs/testing-library';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Router, Route } from '@solidjs/router';
 import Login from '../pages/Login';
-import Dashboard from '../pages/Dashboard';
 import Chat from '../pages/Chat';
 
 describe('App Component Tests', () => {

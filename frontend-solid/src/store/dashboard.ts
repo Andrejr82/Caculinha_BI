@@ -26,7 +26,7 @@ function createDashboardStore() {
     isLive: true
   });
 
-  let intervalId: number;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
 
   const fetchData = async () => {
     if (!state.data.length) setState('isLoading', true); // Só mostra loading no primeiro load
@@ -62,7 +62,10 @@ function createDashboardStore() {
   };
 
   const stopPolling = () => {
-    clearInterval(intervalId);
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
     setState('isLive', false);
   };
 

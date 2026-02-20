@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Literal
 import os
 
-from pydantic import Field, field_validator, model_validator, RedisDsn
+from pydantic import AliasChoices, Field, field_validator, model_validator, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -88,7 +88,10 @@ class Settings(BaseSettings):
     LEARNING_MAX_EXAMPLES: int = 1000
 
     # Security
-    SECRET_KEY: str = Field(default=None) # Must be set in environment
+    SECRET_KEY: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SECRET_KEY", "JWT_SECRET"),
+    )  # Must be set in environment
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -112,6 +115,8 @@ class Settings(BaseSettings):
     # AI / LLM - Multi-provider Support
     # FIX 2026-01-09: Groq é o LLM principal (mais rápido, sem rate limit frequente)
     LLM_PROVIDER: Literal["google", "groq", "mock"] = "google"
+    # Ordem opcional de fallback (csv), ex: "groq,google"
+    LLM_FALLBACK_PROVIDERS: str = "groq,google"
     PLAYGROUND_MODE: Literal["local_only", "hybrid_optional", "remote_required"] = "local_only"
     PLAYGROUND_CANARY_ENABLED: bool = False
     PLAYGROUND_CANARY_ALLOWED_ROLES: str = "admin"
@@ -150,6 +155,22 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = Field(default="")  # Required for admin operations
     USE_SUPABASE_AUTH: bool = Field(default=True)  # Enabled by default per user request
 
+    # Competitive Intelligence (Pesquisa Concorrencial)
+    COMPETITIVE_INTEL_ENABLED: bool = True
+    COMPETITIVE_PROVIDER_PRIORITY: str = "playwright,crawler,websearch,social,mercadolivre,serpapi,bellart,manual"
+    COMPETITIVE_ALLOWED_STATES: str = "RJ,MG,ES"
+    COMPETITIVE_HTTP_TIMEOUT_SEC: int = 10
+    COMPETITIVE_TOTAL_TIMEOUT_SEC: int = 25
+    COMPETITIVE_MAX_RESULTS: int = 20
+    COMPETITIVE_MANUAL_FILE: str = "data/reference/competitive_prices.json"
+    COMPETITIVE_DOMAIN_WHITELIST: str = (
+        "bellartdecor.com.br,kalunga.com.br,americanas.com.br,casaevideo.com.br,"
+        "lebiscuit.com.br,mercadolivre.com.br,amazon.com.br,shopee.com.br,oamigao.com.br,tubaraoatacadao.com.br,"
+        "instagram.com,facebook.com"
+    )
+    SERPAPI_API_KEY: str | None = None
+    SERPAPI_ENGINE: str = "google_shopping"
+
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
         if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
@@ -163,7 +184,8 @@ class Settings(BaseSettings):
         # This prevents issues when starting the app from different CWDs (e.g. root vs backend)
         path_fields = [
             "PARQUET_DATA_PATH", "PARQUET_FILE_PATH", "CACHE_DIR",
-            "RAG_FAISS_INDEX_PATH", "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH"
+            "RAG_FAISS_INDEX_PATH", "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH",
+            "COMPETITIVE_MANUAL_FILE",
         ]
         
         for field in path_fields:
@@ -276,3 +298,4 @@ except Exception as e:
     pass
 
 settings = get_settings()
+

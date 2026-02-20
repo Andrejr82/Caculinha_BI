@@ -11,13 +11,12 @@ import Login from './pages/Login';
 import SharedConversation from './pages/SharedConversation';
 
 // ✅ PERFORMANCE: Lazy imports (code splitting - carregadas sob demanda)
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const DashboardV2 = lazy(() => import('./pages/DashboardV2'));
+const Dashboard = lazy(() => import('./pages/DashboardPrototype'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Learning = lazy(() => import('./pages/Learning'));
-const Playground = lazy(() => import('./pages/Playground'));
+const PlaygroundOps = lazy(() => import('./pages/PlaygroundOps'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Rupturas = lazy(() => import('./pages/Rupturas'));
@@ -132,7 +131,9 @@ function App() {
       {/* Rotas Protegidas - Dentro do Layout */}
       <Route path="/" component={Layout}>
         <Route path="/dashboard" component={() => <PrivateRoute component={<Dashboard />} />} />
-        <Route path="/dashboard-v2" component={() => <PrivateRoute component={<DashboardV2 />} />} />
+        <Route path="/dashboard-classico" component={() => <Navigate href="/dashboard" />} />
+        <Route path="/dashboard-v2" component={() => <Navigate href="/dashboard" />} />
+        <Route path="/dashboard-prototipo" component={() => <PrivateRoute component={<Dashboard />} />} />
         <Route path="/metrics" component={() => <RoleRoute component={<Analytics />} requiredRole="admin" />} />
         <Route path="/rupturas" component={() => <PrivateRoute component={<Rupturas />} />} />
         <Route path="/transfers" component={() => <PrivateRoute component={<Transfers />} />} />
@@ -140,7 +141,7 @@ function App() {
         <Route path="/chat" component={() => <PrivateRoute component={<Chat />} />} />
         <Route path="/examples" component={() => <RoleRoute component={<Examples />} requiredRole="admin" />} />
         <Route path="/learning" component={() => <RoleRoute component={<Learning />} requiredRole="admin" />} />
-        <Route path="/playground" component={() => <RoleRoute component={<Playground />} requiredRole="admin" />} />
+        <Route path="/playground" component={() => <PrivateRoute component={<PlaygroundOps />} />} />
         <Route path="/code-chat" component={() => <RoleRoute component={<CodeChat />} requiredRole="admin" />} />
         <Route path="/diagnostics" component={() => <RoleRoute component={<Diagnostics />} requiredRole="admin" />} />
         <Route path="/help" component={() => <PrivateRoute component={<Help />} />} />

@@ -53,6 +53,11 @@ from backend.app.core.data_source_manager import get_data_manager # Para injeç�
 # Import NEW universal chart tool - Context7 2025 Best Practice
 from backend.app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
 from backend.app.core.tools.test_minimal import teste_minimal  # DEBUG: Ferramenta mínima para teste
+try:
+    from backend.app.core.tools.competitive_intelligence_tool import pesquisar_precos_concorrentes
+except (ImportError, OSError):
+    logger.warning("Competitive Intelligence Tool unavailable. Agent seguirá sem pesquisa concorrencial.")
+    pesquisar_precos_concorrentes = None
 
 # Import legacy chart tools for compatibility
 from backend.app.core.tools.chart_tools import (
@@ -151,6 +156,7 @@ class CaculinhaBIAgent:
         core_tools = [
             consultar_dados_flexivel,  # Consulta genérica
             gerar_grafico_universal_v2,  # Visualização
+            pesquisar_precos_concorrentes,  # Pesquisa concorrencial externa
             calcular_abastecimento_une,  # Abastecimento
             encontrar_rupturas_criticas,  # Rupturas
             consultar_dicionario_dados,  # FIX 2026-02-04: Restaurado para schema discovery
@@ -302,19 +308,28 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
     def _convert_tools_to_gemini_format(self, tools: List[BaseTool]) -> Dict[str, List[Dict[str, Any]]]:
         declarations = []
         for tool in tools:
-            # Generate schema using LangChain's standardized method
-            # compatible with Pydantic v1 and v2
-            try:
-                schema = tool.get_input_schema().model_json_schema()
-            except AttributeError:
-                # Fallback for older Pydantic or specific Tool implementations
-                if hasattr(tool, 'args_schema') and tool.args_schema:
-                    if hasattr(tool.args_schema, 'schema'):
-                         schema = tool.args_schema.schema()
-                    else:
-                         schema = {}
-                else:
-                    schema = {}
+            # Normalize tool metadata for both LangChain tools and plain callables.
+            tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", None)
+            tool_description = getattr(tool, "description", None) or getattr(tool, "__doc__", "") or ""
+            if not tool_name:
+                logger.warning(f"Skipping tool without resolvable name: {type(tool)}")
+                continue
+
+            # Generate schema using LangChain's standardized method when available.
+            # For plain callables, fallback to empty object schema.
+            schema = {}
+            if hasattr(tool, "get_input_schema"):
+                try:
+                    schema = tool.get_input_schema().model_json_schema()
+                except AttributeError:
+                    if hasattr(tool, "args_schema") and tool.args_schema:
+                        if hasattr(tool.args_schema, "schema"):
+                            schema = tool.args_schema.schema()
+                        else:
+                            schema = {}
+            elif hasattr(tool, "args_schema") and tool.args_schema:
+                if hasattr(tool.args_schema, "schema"):
+                    schema = tool.args_schema.schema()
             
             # Clean schema to be compatible with Gemini (remove anyOf, titles)
             cleaned_schema = self._clean_schema(schema)
@@ -327,8 +342,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             }
 
             declarations.append({
-                "name": tool.name,
-                "description": tool.description,
+                "name": str(tool_name),
+                "description": str(tool_description).strip(),
                 "parameters": parameters
             })
         
@@ -484,12 +499,24 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # Handle anyOf
         if "anyOf" in new_schema:
             options = new_schema.pop("anyOf")
-            valid_option = next((opt for opt in options if opt.get("type") != "null"), None)
-            if valid_option:
-                cleaned_child = self._clean_schema(valid_option)
-                new_schema.update(cleaned_child)
+            non_null_options = [opt for opt in options if opt.get("type") != "null"]
+
+            # Se houver múltiplos tipos primitivos (ex: boolean|string), usamos string
+            # para evitar validação estrita entre providers (Groq/Gemini).
+            primitive_types = {
+                opt.get("type")
+                for opt in non_null_options
+                if isinstance(opt, dict) and opt.get("type") in {"string", "boolean", "integer", "number"}
+            }
+            if len(primitive_types) > 1:
+                new_schema["type"] = "string"
             else:
-                new_schema["type"] = "string" 
+                valid_option = non_null_options[0] if non_null_options else None
+                if valid_option:
+                    cleaned_child = self._clean_schema(valid_option)
+                    new_schema.update(cleaned_child)
+                else:
+                    new_schema["type"] = "string"
 
         # Recurse
         if "properties" in new_schema:
@@ -531,6 +558,38 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 mapping = {"barras": "bar", "linhas": "line"}
                 args["tipo_grafico"] = mapping.get(args["tipo_grafico"].lower(), args["tipo_grafico"])
 
+        # Compatibilidade defensiva para consulta flexível (Groq costuma serializar tipos como string).
+        if func_name == "consultar_dados_flexivel":
+            # ordem_desc: aceitar "true"/"false"/"1"/"0"/etc
+            if "ordem_desc" in args:
+                raw_order = args.get("ordem_desc")
+                if isinstance(raw_order, str):
+                    args["ordem_desc"] = raw_order.strip().lower() in {"true", "1", "yes", "sim", "y"}
+                elif raw_order is None:
+                    args["ordem_desc"] = True
+
+            # Converte JSON-string de filtros para dict quando apropriado
+            if "filtros" in args and isinstance(args.get("filtros"), str):
+                raw_filters = args["filtros"].strip()
+                if raw_filters.startswith("{") and raw_filters.endswith("}"):
+                    try:
+                        args["filtros"] = json.loads(raw_filters)
+                    except Exception:
+                        pass
+
+            # Converte colunas/agrupar_por de JSON-string para lista quando apropriado
+            for list_key in ("colunas", "agrupar_por"):
+                raw_value = args.get(list_key)
+                if isinstance(raw_value, str):
+                    raw_value = raw_value.strip()
+                    if raw_value.startswith("[") and raw_value.endswith("]"):
+                        try:
+                            parsed = json.loads(raw_value)
+                            if isinstance(parsed, list):
+                                args[list_key] = parsed
+                        except Exception:
+                            pass
+
         return args
 
     def _execute_tool_with_recovery(self, tool_to_run: Any, func_name: str, func_args: Dict[str, Any]) -> Any:
@@ -538,8 +597,16 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         Executa ferramenta com normalização e uma tentativa de recuperação.
         """
         normalized_args = self._normalize_tool_arguments(func_name, func_args)
+
+        def _invoke(tool_obj: Any, args: Dict[str, Any]) -> Any:
+            if hasattr(tool_obj, "invoke"):
+                return tool_obj.invoke(args)
+            if callable(tool_obj):
+                return tool_obj(**args)
+            raise TypeError(f"Ferramenta '{func_name}' não é invocável")
+
         try:
-            return tool_to_run.invoke(normalized_args)
+            return _invoke(tool_to_run, normalized_args)
         except Exception as first_error:
             # Retry defensivo para casos de validação estrita de tipo.
             retry_args = dict(normalized_args)
@@ -550,17 +617,360 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 f"Tool {func_name} falhou na 1a tentativa ({first_error}). "
                 f"Tentando recuperação com argumentos coercidos."
             )
-            return tool_to_run.invoke(retry_args)
+            return _invoke(tool_to_run, retry_args)
+
+    def _tool_name(self, tool_obj: Any) -> str:
+        return str(getattr(tool_obj, "name", None) or getattr(tool_obj, "__name__", "") or "")
+
+    def _find_tool_by_name(self, name: str) -> Any:
+        for t in self.bi_tools:
+            if self._tool_name(t) == name:
+                return t
+        return None
+
+    def _is_chart_request(self, query: str) -> bool:
+        q = (query or "").lower()
+        return any(k in q for k in ["gráfico", "grafico", "plot", "visual", "barra", "pizza", "linha"])
+
+    def _is_small_talk_query(self, query: str) -> bool:
+        q = (query or "").strip().lower()
+        if not q:
+            return False
+        small_talk_patterns = [
+            "qual é o seu nome", "qual e o seu nome", "seu nome", "quem é você", "quem e voce", "quem é voce",
+            "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
+            "tudo bem", "como vai", "o que você faz", "o que voce faz", "ajuda", "help",
+        ]
+        # Evita capturar perguntas de negócio que contenham palavras comuns
+        business_terms = ["venda", "estoque", "une", "loja", "segmento", "produto", "gráfico", "grafico", "sql", "python"]
+        if any(t in q for t in business_terms):
+            return False
+        return any(p in q for p in small_talk_patterns)
+
+    def _small_talk_response(self, query: str) -> Dict[str, Any]:
+        q = (query or "").strip().lower()
+        if "nome" in q:
+            msg = "Meu nome é Caçulinha. Posso ajudar com análises comerciais, vendas, estoque e concorrência."
+        elif any(k in q for k in ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite"]):
+            msg = "Olá! Sou o Caçulinha. Me diga o que você quer analisar (ex.: vendas por UNE, ruptura, preços de concorrentes)."
+        else:
+            msg = (
+                "Posso te ajudar com análises de vendas, estoque, transferências e pesquisa concorrencial. "
+                "Exemplo: 'total de vendas por UNE no segmento ARTES no RJ'."
+            )
+        return {"type": "text", "result": {"mensagem": msg}}
+
+    def _normalize_progress_tool(self, tool_name: str) -> str:
+        mapping = {
+            "Pensando": "system.thinking",
+            "Processando resposta": "system.finalizing",
+            "consultar_dados_flexivel": "tool.data_query",
+            "consultar_dados_gerais": "tool.metadata_query",
+            "gerar_grafico_universal": "tool.chart",
+            "gerar_grafico_universal_v2": "tool.chart",
+            "pesquisar_precos_concorrentes": "tool.competitive_research",
+        }
+        return mapping.get(str(tool_name or ""), f"tool.{str(tool_name or 'generic')}")
+
+    async def _emit_progress(self, on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]], tool_name: str, status: str) -> None:
+        if not on_progress:
+            return
+        await on_progress(
+            {
+                "type": "tool_progress",
+                "tool": self._normalize_progress_tool(tool_name),
+                "status": status,
+            }
+        )
+
+    def _requires_governed_path(self, intent: Any, tool_name: str, confidence: float, query: str) -> bool:
+        """
+        Fluxo governado para reduzir variação e aumentar assertividade em produção.
+        """
+        intent_val = getattr(intent, "value", str(intent))
+        q = (query or "").lower()
+        high_value_intents = {"data_query", "visualization", "analysis"}
+        explicit_business = any(k in q for k in ["vendas", "venda", "total", "segmento", "une", "lojas"])
+        explicit_competitive = any(
+            k in q for k in [
+                "concorrente", "concorrência", "cotação", "cotacao", "pesquisa de preço",
+                "pesquisa de preco", "americanas", "amigão", "amigao", "tid", "bellart",
+                "tubarão", "tubarao", "kalunga", "casa&video", "casa e video"
+            ]
+        )
+        return (
+            (intent_val in high_value_intents and confidence >= 0.60)
+            or explicit_business
+            or explicit_competitive
+            or tool_name in {"gerar_grafico_universal_v2", "pesquisar_precos_concorrentes"}
+        )
+
+    def _is_explicit_business_query(self, query: str) -> bool:
+        q = (query or "").lower()
+        return any(k in q for k in ["vendas", "venda", "total", "segmento", "une", "lojas"])
+
+    def _format_governed_chart_result(self, user_query: str, tool_result: Dict[str, Any], tool_params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if not isinstance(tool_result, dict):
+            return {"type": "text", "result": {"mensagem": "Não consegui gerar o gráfico no momento."}}
+        if tool_result.get("status") != "success":
+            msg = tool_result.get("message") or tool_result.get("error") or "Falha ao gerar gráfico."
+            return {"type": "text", "result": {"mensagem": f"Não consegui gerar o gráfico: {msg}"}}
+
+        summary = tool_result.get("summary", {}) if isinstance(tool_result.get("summary"), dict) else {}
+        top3 = summary.get("top_3", []) if isinstance(summary.get("top_3"), list) else []
+        def _fmt_num(v: Any) -> str:
+            try:
+                fv = float(v or 0)
+            except Exception:
+                return str(v)
+            return f"{fv:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        top_rows = top3[:3] if top3 else []
+        filtros = (tool_params or {}).get("filtros", {}) if isinstance(tool_params, dict) else {}
+        recorte = []
+        if filtros:
+            friendly = []
+            key_alias = {
+                "UNE": "Loja (UNE)",
+                "NOMESEGMENTO": "Segmento",
+                "NOMEGRUPO": "Grupo",
+            }
+            for k, v in filtros.items():
+                friendly.append(f"{key_alias.get(str(k), str(k))}: {v}")
+            if friendly:
+                recorte.extend(friendly)
+        if (tool_params or {}).get("filtro_segmento"):
+            recorte.append(f"Segmento: {tool_params.get('filtro_segmento')}")
+        recorte_txt = "\n".join([f"- {r}" for r in recorte]) if recorte else "- Sem filtros adicionais"
+
+        resumo = str(summary.get("mensagem") or "Gráfico gerado com os dados solicitados.")
+        resumo = resumo.replace(",", "X").replace(".", ",").replace("X", ".")
+
+        tabela_top = "| UNE | Vendas (R$) |\n|---|---|\n"
+        if top_rows:
+            for item in top_rows:
+                tabela_top += f"| {item.get('dimensao', '-')} | {_fmt_num(item.get('valor', 0))} |\n"
+        else:
+            tabela_top += "| - | - |\n"
+
+        msg = (
+            "## Resumo executivo\n"
+            + f"- {resumo}\n"
+            + "\n\n## Tabela operacional\n"
+            + tabela_top
+            + "\n\n## Ação recomendada\n"
+            + "Use o gráfico para priorizar UNEs com baixo desempenho e ajustar plano comercial/abastecimento."
+            + f"\n\n## Recorte e evidência\n{recorte_txt}"
+        )
+        return {
+            "type": "text",
+            "result": {"mensagem": msg},
+            "chart_data": tool_result.get("chart_data"),
+        }
+
+    def _extract_segment_from_query(self, query: str) -> Optional[str]:
+        import re
+        q = (query or "").strip()
+        patterns = [
+            r"(?:do|da|de)?\s*segmento\s+([a-zA-ZÀ-ÿ0-9 _-]+?)(?:\s+em\s+|\s+na\s+|\s+no\s+|$)",
+            r"\bsegmento\s+([a-zA-ZÀ-ÿ0-9 _-]+)$",
+        ]
+        for p in patterns:
+            m = re.search(p, q, flags=re.IGNORECASE)
+            if m:
+                seg = m.group(1).strip()
+                if seg:
+                    return seg.upper()
+        return None
+
+    def _extract_state_from_query(self, query: str) -> Optional[str]:
+        import re
+        q = (query or "").upper()
+        for uf in ("RJ", "MG", "ES"):
+            if re.search(rf"\b{uf}\b", q):
+                return uf
+        for label, uf in [("RIO DE JANEIRO", "RJ"), ("MINAS GERAIS", "MG"), ("ESPÍRITO SANTO", "ES"), ("ESPIRITO SANTO", "ES")]:
+            if label in q:
+                return uf
+        return None
+
+    def _is_competitive_query(self, query: str) -> bool:
+        q = (query or "").lower()
+        return any(
+            k in q for k in [
+                "concorrente", "concorrência", "cotação", "cotacao",
+                "pesquisa de preço", "pesquisa de preco", "comparar preço",
+                "comparar preco", "americanas", "amigão", "amigao",
+                "bellart", "tid", "tubarão", "tubarao", "kalunga",
+                "casa&video", "casa e video",
+            ]
+        )
+
+    def _extract_competitors_from_query(self, query: str) -> str:
+        q = (query or "").lower()
+        names = []
+        mappings = [
+            ("kalunga", ["kalunga"]),
+            ("casa&video", ["casa&video", "casa e video", "casa video", "casaevideo"]),
+            ("le biscuit", ["le biscuit", "lebiscuit"]),
+            ("americanas", ["americanas", "lojas americanas"]),
+            ("amigao", ["amigão", "amigao"]),
+            ("tid's", ["tid's", "tids", " tid "]),
+            ("bellart", ["bellart"]),
+            ("tubarao", ["tubarão", "tubarao"]),
+            ("amazon", ["amazon"]),
+            ("shopee", ["shopee"]),
+            ("mercado livre", ["mercado livre", "mercadolivre", "meli"]),
+        ]
+        for canonical, aliases in mappings:
+            if any(alias in q for alias in aliases):
+                names.append(canonical)
+        unique = []
+        for n in names:
+            if n not in unique:
+                unique.append(n)
+        return ",".join(unique)
+
+    def _resolve_query_with_history_context(self, user_query: str, chat_history: Optional[List[Dict[str, Any]]]) -> str:
+        """
+        Resolve follow-up curto/ambíguo com base na última pergunta do usuário.
+        """
+        query = (user_query or "").strip()
+        if not query or not chat_history:
+            return query
+
+        q_lower = query.lower()
+        has_domain_scope = any(
+            k in q_lower for k in ["venda", "estoque", "segmento", "categoria", "grupo", "produto", "une", "loja", "grafico", "gráfico"]
+        )
+        followup_marker = any(
+            k in q_lower for k in ["completa", "completo", "essas", "dessas", "delas", "agora", "continua", "continue", "detalhe"]
+        )
+        if has_domain_scope and not followup_marker:
+            return query
+
+        wants_period_refine = any(k in q_lower for k in ["refine por periodo", "refinar por periodo", "por período", "por periodo"])
+
+        last_user_query = None
+        candidate_queries: List[str] = []
+        for msg in reversed(chat_history):
+            if str(msg.get("role", "")).lower() == "user":
+                content = str(msg.get("content", "")).strip()
+                if content and content.lower() != q_lower:
+                    candidate_queries.append(content)
+
+        if wants_period_refine:
+            # Prioriza última pergunta analítica (não gráfica) para refinamento temporal.
+            for c in candidate_queries:
+                c_low = c.lower()
+                if any(k in c_low for k in ["venda", "vendas", "segmento", "une", "loja"]) and not self._is_chart_request(c_low):
+                    last_user_query = c
+                    break
+
+        if not last_user_query:
+            last_user_query = candidate_queries[0] if candidate_queries else None
+
+        if not last_user_query:
+            return query
+
+        merged = (
+            f"{last_user_query}. "
+            f"Continuação solicitada: {query}. "
+            "Mantenha o recorte anterior e amplie apenas o detalhamento pedido."
+        )
+        logger.info(f"[CONTEXT] Follow-up resolvido. atual='{query}' base='{last_user_query}'")
+        return merged
+
+    def _enrich_tool_selection_for_business(self, user_query: str, tool_selection: Any) -> None:
+        """
+        Ajusta roteamento/parâmetros para perguntas comerciais comuns, mantendo dados reais.
+        """
+        q = (user_query or "").lower()
+        is_all_stores = any(k in q for k in ["todas as lojas", "todas lojas", "todas as unes", "todas unes"])
+        segment = self._extract_segment_from_query(user_query)
+        state = self._extract_state_from_query(user_query) or "RJ"
+
+        if self._is_competitive_query(user_query):
+            competitors = self._extract_competitors_from_query(user_query)
+            tool_selection.tool_name = "pesquisar_precos_concorrentes"
+            tool_selection.tool_params = {
+                "descricao_produto": user_query,
+                "segmento": segment or "",
+                "estado": state,
+                "cidade": "",
+                "limite": "15",
+                "concorrentes": competitors,
+            }
+            tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.92)
+            return
+
+        # Pedido explícito de gráfico: direciona para ferramenta de visualização.
+        if self._is_chart_request(user_query):
+            tool_selection.tool_name = "gerar_grafico_universal_v2"
+            tool_selection.tool_params = {
+                "descricao": user_query,
+                "quebra_por": "LOJA",
+                "tipo_grafico": "bar",
+                "limite": 200 if is_all_stores else 50,
+                "filtro_segmento": segment,
+            }
+            tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.90)
+            return
+
+        # Perguntas de vendas por segmento em todas as lojas: reforça recorte correto.
+        if tool_selection.tool_name == "consultar_dados_flexivel":
+            params = dict(tool_selection.tool_params or {})
+            filtros = params.get("filtros", {})
+            if not isinstance(filtros, dict):
+                filtros = {}
+
+            if is_all_stores:
+                # Remove filtro por UNE indevido quando a pergunta pede toda a rede.
+                filtros.pop("UNE", None)
+                filtros.pop("une", None)
+                params["limite"] = 500
+
+            if segment and not any(k.upper() in {"NOMESEGMENTO", "SEGMENTO"} for k in filtros.keys()):
+                filtros["NOMESEGMENTO"] = segment
+
+            # Garante colunas suficientes para consolidação executiva por UNE.
+            cols = params.get("colunas")
+            if not isinstance(cols, list):
+                cols = []
+            for required in ["UNE", "VENDA_30DD", "ESTOQUE_UNE", "NOMESEGMENTO", "NOME", "PRODUTO"]:
+                if required not in cols:
+                    cols.append(required)
+
+            # Pedido explícito de "total" por UNE/loja: força agregação correta.
+            is_sales_by_store_request = (
+                any(k in q for k in ["une", "unes", "loja", "lojas"])
+                and any(k in q for k in ["venda", "vendas"])
+                and (is_all_stores or any(k in q for k in ["total", "venda total", "por une", "por loja", "todas"]))
+            )
+            if is_sales_by_store_request:
+                tool_selection.tool_name = "consultar_dados_flexivel"
+                tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.90)
+                params["agregacao"] = "SUM"
+                params["coluna_agregacao"] = "VENDA_30DD"
+                params["agrupar_por"] = ["UNE"]
+                params["ordenar_por"] = "valor"
+                params["ordem_desc"] = True
+                params["limite"] = 200 if is_all_stores else max(int(params.get("limite", 50) or 50), 50)
+                params["colunas"] = ["UNE"]
+            else:
+                params["colunas"] = cols
+
+            params["filtros"] = filtros
+            tool_selection.tool_params = params
 
     def _should_use_deterministic_path(self, tool_name: str, confidence: float) -> bool:
         """
         Define quando executar ferramenta diretamente sem rodada LLM,
         reduzindo custo e falhas em consultas determinísticas.
         """
-        deterministic_tools = {
-            "encontrar_rupturas_criticas",
-            "consultar_dados_flexivel",
-        }
+        # Para consultas de dados comerciais, priorizamos decisão da LLM
+        # (tool selection + síntese contextual), evitando respostas engessadas.
+        deterministic_tools = {"encontrar_rupturas_criticas"}
         return tool_name in deterministic_tools and confidence >= 0.80
 
     def _format_deterministic_result(
@@ -568,6 +978,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         user_query: str,
         tool_name: str,
         tool_result: Any,
+        tool_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Formata saída de ferramenta determinística para resposta de negócio.
@@ -610,11 +1021,135 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             )
             return {"type": "text", "result": {"mensagem": msg}}
 
+        if tool_name == "pesquisar_precos_concorrentes":
+            itens = tool_result.get("itens", []) or []
+            total_itens = int(tool_result.get("total_itens", len(itens)) or len(itens))
+            providers = tool_result.get("providers_used", []) or []
+            fontes = tool_result.get("fontes_consultadas", []) or []
+            escopo = tool_result.get("escopo", {}) if isinstance(tool_result.get("escopo"), dict) else {}
+            quality = tool_result.get("quality_gate", {}) if isinstance(tool_result.get("quality_gate"), dict) else {}
+            fallback_benchmark = bool(tool_result.get("fallback_benchmark_aplicado", False))
+
+            if total_itens <= 0:
+                msg = tool_result.get("mensagem") or "Sem referências concorrenciais no momento."
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            def _fmt_money(v: Any) -> str:
+                try:
+                    fv = float(v)
+                    return f"{fv:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return str(v or "-")
+
+            top = itens[:10]
+            header = "| Concorrente | Produto | Preço (R$) | Fonte |\n|---|---|---|---|\n"
+            rows = []
+            for item in top:
+                if not isinstance(item, dict):
+                    continue
+                rows.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            str(item.get("concorrente") or "-"),
+                            str(item.get("produto") or "-"),
+                            _fmt_money(item.get("preco")),
+                            str(item.get("fonte") or "-"),
+                        ]
+                    )
+                    + " |"
+                )
+            table_md = header + ("\n".join(rows) if rows else "| - | - | - | - |")
+            preco_medio = tool_result.get("preco_medio_referencia")
+            preco_medio_txt = _fmt_money(preco_medio) if preco_medio is not None else "N/D"
+            scope_txt = ", ".join(
+                [
+                    f"Estado: {escopo.get('estado', '-')}",
+                    f"Cidade: {escopo.get('cidade', '-') or '-'}",
+                    f"Segmento: {escopo.get('segmento', '-') or '-'}",
+                ]
+            )
+            providers_txt = ", ".join(providers) if providers else "manual"
+            quality_txt = f"validados={quality.get('validated', total_itens)}, descartados={quality.get('discarded', 0)}"
+            fontes_lines = []
+            for f in fontes[:5]:
+                if not isinstance(f, dict):
+                    continue
+                domain = str(f.get("dominio") or "n/a")
+                url = str(f.get("url") or "").strip()
+                source = str(f.get("fonte") or "n/a")
+                comp = str(f.get("concorrente") or "n/a")
+                if url:
+                    fontes_lines.append(f"- {comp} | {source} | {domain} | {url}")
+                else:
+                    fontes_lines.append(f"- {comp} | {source} | {domain}")
+            fontes_txt = "\n".join(fontes_lines) if fontes_lines else "- Sem URL pública validada."
+            fallback_note = (
+                "\n- Observação: concorrente-alvo sem evidência suficiente; benchmark de mercado online aplicado automaticamente."
+                if fallback_benchmark else ""
+            )
+            msg = (
+                "## Resumo executivo\n"
+                f"- Pesquisa concorrencial concluída com {total_itens} referências.\n"
+                f"- Preço médio de referência: R$ {preco_medio_txt}.\n"
+                f"- Fontes consultadas: {providers_txt}.\n"
+                + fallback_note
+                + "\n## Tabela operacional\n"
+                + table_md
+                + "\n\n## Ação recomendada\n"
+                + "Use a menor faixa de preço como referência de negociação e valide prazo/frete antes de decidir compra."
+                + "\n\n## Recorte e evidência\n"
+                + f"- {scope_txt}\n- Método: {tool_result.get('metodo_consulta', 'fallback_externo')}.\n- Quality Gate: {quality_txt}.\n"
+                + "## Fontes\n"
+                + fontes_txt
+            )
+            return {"type": "text", "result": {"mensagem": msg}}
+
         if tool_name == "consultar_dados_flexivel":
             resultados = tool_result.get("resultados", []) or []
             if not resultados:
                 msg = tool_result.get("mensagem") or "Não encontrei dados para este recorte."
                 return {"type": "text", "result": {"mensagem": msg}}
+
+            def _fmt(v: Any) -> str:
+                if v is None:
+                    return "-"
+                if isinstance(v, bool):
+                    return "Sim" if v else "Não"
+                if isinstance(v, (int, np.integer)):
+                    return str(int(v))
+                if isinstance(v, (float, np.floating)):
+                    fv = float(v)
+                    if abs(fv - round(fv)) < 1e-9:
+                        return str(int(round(fv)))
+                    return f"{fv:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                return str(v)
+
+            def _table(rows: List[Dict[str, Any]], cols: List[str], max_rows: int = 10) -> str:
+                display_map = {
+                    "UNE": "Loja (UNE)",
+                    "valor": "Venda (R$)",
+                    "TOTAL_VENDAS": "Venda (R$)",
+                    "VENDA_30DD": "Venda 30 dias (R$)",
+                    "VENDA_30DD_TOTAL": "Venda 30 dias (R$)",
+                    "ESTOQUE_UNE": "Estoque na loja",
+                    "ESTOQUE_UNE_TOTAL": "Estoque na loja",
+                    "ITENS": "Quantidade de itens",
+                    "NOMESEGMENTO": "Segmento",
+                    "NOMECATEGORIA": "Categoria",
+                    "NOME": "Produto",
+                    "PRODUTO": "Código do produto",
+                }
+                display_cols = [display_map.get(c, c.replace("_", " ").title()) for c in cols]
+                header = "| " + " | ".join(display_cols) + " |"
+                sep = "|" + "|".join(["---" for _ in cols]) + "|"
+                body_lines = []
+                for r in rows[:max_rows]:
+                    body_lines.append("| " + " | ".join(_fmt(r.get(c)) for c in cols) + " |")
+                table_md = "\n".join([header, sep] + body_lines)
+                if len(rows) > max_rows:
+                    table_md += f"\n... (+{len(rows) - max_rows} linhas)"
+                return table_md
 
             # Caso especial: perguntas sobre vendas negativas/ruins.
             if any(k in query_lower for k in ["negativ", "ruin", "piores grupos", "vendaas ruins"]):
@@ -652,10 +1187,127 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 )
                 return {"type": "text", "result": {"mensagem": msg}}
 
+            # Caso especial: resultado agregado por UNE (colunas UNE + valor).
+            if all(isinstance(r, dict) and "UNE" in r and "valor" in r for r in resultados[:1]):
+                rows = []
+                total = 0.0
+                for r in resultados:
+                    try:
+                        v = float(r.get("valor", 0) or 0)
+                    except (TypeError, ValueError):
+                        v = 0.0
+                    total += v
+                    rows.append({"UNE": r.get("UNE"), "TOTAL_VENDAS": v})
+                rows.sort(key=lambda x: float(x.get("TOTAL_VENDAS", 0) or 0), reverse=True)
+
+                filtros = (tool_params or {}).get("filtros", {}) if isinstance(tool_params, dict) else {}
+                key_alias = {
+                    "UNE": "Loja (UNE)",
+                    "NOMESEGMENTO": "Segmento",
+                    "NOMEGRUPO": "Grupo",
+                }
+                filtros_txt = "Sem filtros adicionais"
+                if isinstance(filtros, dict) and filtros:
+                    parts = []
+                    for k, v in filtros.items():
+                        k_str = str(k or "").strip()
+                        if not k_str:
+                            k_str = "Filtro"
+                        label = key_alias.get(k_str, k_str)
+                        parts.append(f"{label}: {v}")
+                    if parts:
+                        filtros_txt = "; ".join(parts)
+                top_une = rows[0]["UNE"] if rows else "N/A"
+                msg = (
+                    "## Resumo\n"
+                    f"Total de vendas por UNE consolidado com sucesso. "
+                    f"UNEs analisadas: {len(rows)}. UNE líder: {top_une}. Total geral: {_fmt(total)}."
+                    "\n\n## Tabela operacional\n"
+                    + _table(rows, ["UNE", "TOTAL_VENDAS"], max_rows=50)
+                    + "\n\n## Ação recomendada\n"
+                    "Priorizar plano comercial nas UNEs com menor venda total e revisar sortimento/campanha local."
+                    + "\n\n## Recorte e evidência\n"
+                    + f"- {filtros_txt}\n- Métrica: soma de vendas por UNE."
+                )
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            # Resposta executiva para perguntas de vendas em todas as lojas/UNEs.
+            if (
+                any(k in query_lower for k in ["venda", "vendas"])
+                and any(k in query_lower for k in ["todas as lojas", "todas as unes", "todas as unes", "todas lojas"])
+                and all("UNE" in r for r in resultados[:1])
+                and all("VENDA_30DD" in r for r in resultados[:1])
+            ):
+                agg: Dict[str, Dict[str, float]] = {}
+                for r in resultados:
+                    une = str(r.get("UNE", "N/A"))
+                    venda = r.get("VENDA_30DD", 0) or 0
+                    estoque = r.get("ESTOQUE_UNE", 0) or 0
+                    try:
+                        venda_f = float(venda)
+                    except (TypeError, ValueError):
+                        venda_f = 0.0
+                    try:
+                        estoque_f = float(estoque)
+                    except (TypeError, ValueError):
+                        estoque_f = 0.0
+                    if une not in agg:
+                        agg[une] = {"venda": 0.0, "estoque": 0.0, "linhas": 0.0}
+                    agg[une]["venda"] += venda_f
+                    agg[une]["estoque"] += estoque_f
+                    agg[une]["linhas"] += 1.0
+
+                rows = [
+                    {
+                        "UNE": une,
+                        "VENDA_30DD_TOTAL": vals["venda"],
+                        "ESTOQUE_UNE_TOTAL": vals["estoque"],
+                        "ITENS": int(vals["linhas"]),
+                    }
+                    for une, vals in agg.items()
+                ]
+                rows.sort(key=lambda x: float(x.get("VENDA_30DD_TOTAL", 0) or 0), reverse=True)
+
+                total_venda = sum(float(r.get("VENDA_30DD_TOTAL", 0) or 0) for r in rows)
+                total_estoque = sum(float(r.get("ESTOQUE_UNE_TOTAL", 0) or 0) for r in rows)
+                top_une = rows[0]["UNE"] if rows else "N/A"
+                filtros = (tool_params or {}).get("filtros", {}) if isinstance(tool_params, dict) else {}
+
+                segment_hint = ""
+                if "segmento" in query_lower and not any(
+                    k.upper() in {"NOMESEGMENTO", "SEGMENTO", "NOME_SEGMENTO"} for k in filtros.keys()
+                ):
+                    segment_hint = (
+                        "\nObservação: não encontrei filtro explícito de segmento aplicado nesta execução. "
+                        "Posso refazer com filtro de segmento para precisão."
+                    )
+
+                msg = (
+                    "## Resumo\n"
+                    f"Consolidei vendas e estoque por UNE no recorte consultado. "
+                    f"UNE líder: {top_une}. Venda total: {_fmt(total_venda)}. Estoque total: {_fmt(total_estoque)}."
+                    "\n\n## Tabela operacional\n"
+                    + _table(rows, ["UNE", "VENDA_30DD_TOTAL", "ESTOQUE_UNE_TOTAL", "ITENS"], max_rows=12)
+                    + "\n\n## Ação recomendada\n"
+                    "Priorizar as UNEs com menor venda total e estoque elevado para plano comercial/abastecimento dirigido."
+                    + segment_hint
+                )
+                return {"type": "text", "result": {"mensagem": msg}}
+
             # Default determinístico para consulta flexível.
+            first = resultados[0] if resultados else {}
+            cols = list(first.keys())[:6] if isinstance(first, dict) else []
+            msg = (
+                "## Resumo\n"
+                f"Consulta executada com sucesso. Registros retornados: {len(resultados)}."
+                "\n\n## Tabela operacional\n"
+                + (_table(resultados, cols, max_rows=8) if cols else "Sem colunas para exibir.")
+                + "\n\n## Ação recomendada\n"
+                "Se quiser, eu refino por período, UNE, segmento ou grupo para entregar uma leitura executiva."
+            )
             return {
                 "type": "text",
-                "result": {"mensagem": tool_result.get("mensagem") or f"Consulta retornou {len(resultados)} registros."},
+                "result": {"mensagem": msg},
             }
 
         return {
@@ -668,6 +1320,23 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         Detecta consultas comerciais vagas e retorna pergunta de desambiguação.
         """
         q = (user_query or "").lower().strip()
+
+        # Refinamento por período sem período explícito: pedir confirmação antes de executar.
+        wants_period_refine = any(k in q for k in ["refine por periodo", "refinar por periodo", "por período", "por periodo"])
+        has_period_value = bool(__import__("re").search(r"\b(\d+)\s*(dias?|mes(es)?|semanas?|anos?)\b", q) or any(
+            k in q for k in ["hoje", "ontem", "semana", "mensal", "mês", "mes", "trimestre", "ano", "últimos", "ultimos"]
+        ))
+        if wants_period_refine and not has_period_value:
+            return {
+                "type": "text",
+                "result": {
+                    "mensagem": (
+                        "Para refinar por período, confirme o intervalo desejado.\n"
+                        "Exemplos: últimos 30 dias, últimos 90 dias, mês atual, trimestre atual."
+                    )
+                },
+            }
+
         if confidence < 0.70:
             return None
 
@@ -719,6 +1388,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         Async version of run method with Universal Tool Selection System.
         """
         logger.info(f"CaculinhaBIAgent (Modern Async): Processing query: {user_query}")
+        resolved_query = self._resolve_query_with_history_context(user_query, chat_history)
+        if resolved_query != user_query:
+            logger.info(f"[CONTEXT] Query enriquecida para roteamento: {resolved_query}")
+        if self._is_small_talk_query(resolved_query):
+            logger.info("[SMALLTALK] Resposta direta sem uso de ferramentas.")
+            return self._small_talk_response(resolved_query)
 
         # ========================================================================
         # CAMADA 1: INTENT CLASSIFICATION (NEW 2026-01-24)
@@ -726,7 +1401,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         from backend.app.core.utils.intent_classifier import classify_intent
         from backend.app.core.utils.query_router import route_query
         
-        intent_result = classify_intent(user_query)
+        intent_result = classify_intent(resolved_query)
         logger.info(
             f"[INTENT] Classified as {intent_result.intent.value} "
             f"(confidence: {intent_result.confidence:.2f}, "
@@ -738,7 +1413,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # ========================================================================
         tool_selection = route_query(
             intent=intent_result.intent,
-            query=user_query,
+            query=resolved_query,
             confidence=intent_result.confidence
         )
         logger.info(
@@ -748,14 +1423,51 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         logger.info(f"[ROUTER] Extracted params: {tool_selection.tool_params}")
         logger.info(f"[ROUTER] Reasoning: {tool_selection.reasoning}")
 
+        # Ajustes comerciais de alto valor (gráfico explícito, toda rede, segmento).
+        self._enrich_tool_selection_for_business(resolved_query, tool_selection)
+        logger.info(
+            f"[ROUTER] Adjusted tool: {tool_selection.tool_name} "
+            f"(confidence: {tool_selection.confidence:.2f}, params: {tool_selection.tool_params})"
+        )
+
         clarification = self._build_clarification_if_needed(
-            user_query,
+            resolved_query,
             tool_selection.tool_name,
             tool_selection.confidence,
         )
         if clarification is not None:
             logger.info("[CLARIFICATION] Consulta vaga detectada. Retornando pergunta guiada.")
             return clarification
+
+        # ========================================================================
+        # CAMADA 2.4: GOVERNED TOOL EXECUTION (PRODUÇÃO)
+        # Seleção controlada de ferramenta para reduzir variação e erro.
+        # ========================================================================
+        if self._requires_governed_path(intent_result.intent, tool_selection.tool_name, tool_selection.confidence, resolved_query):
+            tool_to_run = self._find_tool_by_name(tool_selection.tool_name)
+            if tool_to_run is not None:
+                try:
+                    await self._emit_progress(on_progress, tool_selection.tool_name, "executing")
+
+                    tool_result = await asyncio.to_thread(
+                        self._execute_tool_with_recovery,
+                        tool_to_run,
+                        tool_selection.tool_name,
+                        tool_selection.tool_params,
+                    )
+
+                    if tool_selection.tool_name == "gerar_grafico_universal_v2":
+                        return self._format_governed_chart_result(resolved_query, tool_result, tool_selection.tool_params)
+
+                    if tool_selection.tool_name in {"consultar_dados_flexivel", "pesquisar_precos_concorrentes"}:
+                        return self._format_deterministic_result(
+                            resolved_query,
+                            tool_selection.tool_name,
+                            tool_result,
+                            tool_selection.tool_params,
+                        )
+                except Exception as e:
+                    logger.warning(f"[GOVERNED] Falha na execução governada ({tool_selection.tool_name}): {e}. Fallback para fluxo LLM.")
 
         # ========================================================================
         # CAMADA 2.5: DETERMINISTIC EXECUTION PATH (LOW COST / HIGH RELIABILITY)
@@ -767,9 +1479,9 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 f"(confidence={tool_selection.confidence:.2f})"
             )
             if on_progress:
-                await on_progress({"type": "tool_progress", "tool": tool_selection.tool_name, "status": "executing"})
+                await self._emit_progress(on_progress, tool_selection.tool_name, "executing")
 
-            tool_to_run = next((t for t in self.bi_tools if t.name == tool_selection.tool_name), None)
+            tool_to_run = self._find_tool_by_name(tool_selection.tool_name)
             if tool_to_run is not None:
                 try:
                     tool_result = await asyncio.to_thread(
@@ -778,7 +1490,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         tool_selection.tool_name,
                         tool_selection.tool_params,
                     )
-                    return self._format_deterministic_result(user_query, tool_selection.tool_name, tool_result)
+                    return self._format_deterministic_result(
+                        resolved_query,
+                        tool_selection.tool_name,
+                        tool_result,
+                        tool_selection.tool_params,
+                    )
                 except Exception as e:
                     logger.warning(f"[DETERMINISTIC] Falhou, voltando para fluxo LLM: {e}")
 
@@ -803,7 +1520,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         try:
             # [OK] FIX: Timeout de 500ms para não bloquear (continua sem RAG se demorar)
             rag_context_str = await asyncio.wait_for(
-                self._get_rag_examples(user_query, top_k=1),  # [OK] Reduzido de 2 para 1 exemplo
+                self._get_rag_examples(resolved_query, top_k=1),  # [OK] Reduzido de 2 para 1 exemplo
                 timeout=0.5  # 500ms timeout
             )
         except asyncio.TimeoutError:
@@ -816,10 +1533,10 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # Combinar query do usuário com o contexto RAG (se houver)
         # BEST PRACTICE: Contexto ANTES da Query (Recency Bias)
         if rag_context_str:
-            full_prompt_content = rag_context_str + "\n\n" + "PERGUNTA DO USUÁRIO AGORA:\n" + user_query
+            full_prompt_content = rag_context_str + "\n\n" + "PERGUNTA DO USUÁRIO AGORA:\n" + resolved_query
             logger.info("[RAG] Contexto PREPENDED na mensagem do usuário (Context Fencing)")
         else:
-            full_prompt_content = user_query
+            full_prompt_content = resolved_query
 
         # Add current user query (enhanced)
         messages.append({"role": "user", "content": full_prompt_content})
@@ -888,8 +1605,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         while current_turn < max_turns:
             try:
                 # Notify thinking
-                if on_progress:
-                    await on_progress({"type": "tool_progress", "tool": "Pensando", "status": "start"})
+                await self._emit_progress(on_progress, "Pensando", "start")
 
                 # Call LLM with tools (Blocking call wrapped in thread)
                 # self.llm is GeminiLLMAdapter which is synchronous
@@ -932,10 +1648,9 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                             return func_name, {"error": "Invalid JSON arguments"}
 
                         # Notify tool start
-                        if on_progress:
-                            await on_progress({"type": "tool_progress", "tool": func_name, "status": "executing"})
+                        await self._emit_progress(on_progress, func_name, "executing")
 
-                        tool_to_run = next((t for t in self.bi_tools if t.name == func_name), None)
+                        tool_to_run = self._find_tool_by_name(func_name)
                         
                         if tool_to_run:
                             try:
@@ -1018,8 +1733,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 content = response.get("content", "")
 
                 # Notify finalizing
-                if on_progress:
-                     await on_progress({"type": "tool_progress", "tool": "Processando resposta", "status": "finishing"})
+                await self._emit_progress(on_progress, "Processando resposta", "finishing")
 
                 # Same logic as run() for parsing result...
                 # (Duplicating logic from run() to ensure consistency)
@@ -1188,6 +1902,9 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         3. Repeat until LLM returns text.
         """
         logger.info(f"CaculinhaBIAgent (Modern): Processing query: {user_query}")
+        if self._is_small_talk_query(user_query):
+            logger.info("[SMALLTALK] Resposta direta sem uso de ferramentas (sync).")
+            return self._small_talk_response(user_query)
 
         # [OK] CRITICAL FIX: NÃO incluir system como mensagem
         # System instruction já está configurada no GeminiLLMAdapter via system_instruction parameter
@@ -1314,7 +2031,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         logger.info(f"Agent calling tool: {func_name} with args: {func_args}")
                         
                         # Find the matching tool
-                        tool_to_run = next((t for t in self.bi_tools if t.name == func_name), None)
+                        tool_to_run = self._find_tool_by_name(func_name)
                         
                         tool_result = None
                         if tool_to_run:

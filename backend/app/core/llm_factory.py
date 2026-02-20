@@ -3,6 +3,7 @@ import sys
 from typing import Optional, List, Dict, Any
 from backend.app.config.settings import settings
 from backend.app.core.llm_groq_adapter import GroqLLMAdapter
+from backend.app.core.llm_base import BaseLLMAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -49,26 +50,69 @@ class SmartLLM:
     FIX 2026-01-09: Gemini é opcional - continua funcionando se API key expirada.
     """
     
+    _PROVIDER_ALIASES = {
+        "google": "google",
+        "gemini": "google",
+        "groq": "groq",
+        "mock": "mock",
+    }
+
+    class _MockLLMAdapter(BaseLLMAdapter):
+        provider = "mock"
+        model_name = "mock-llm"
+
+        def get_capabilities(self) -> BaseLLMAdapter.Capabilities:
+            return BaseLLMAdapter.Capabilities(chat=True, tools=False, streaming=False, json_mode=False)
+
+        def get_completion(self, messages: List[Dict[str, Any]], tools: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            prompt = ""
+            if messages:
+                prompt = str(messages[-1].get("content", "")).strip()
+            return {"content": f"[MOCK] Resposta simulada para: {prompt}"}
+
+        async def generate_response(self, prompt: str) -> str:
+            return f"[MOCK] Resposta simulada para: {prompt}"
+
     def __init__(self, primary: Optional[str] = None):
-        # FIX 2026-02-04: Usar configuração do .env, com Google Gemini como padrão
-        self.primary = primary or settings.LLM_PROVIDER or "google"
+        self.primary = self._normalize_provider(primary or settings.LLM_PROVIDER or "google")
         self._groq = None  # Lazy init
         self._gemini = None  # Lazy init
+        self._mock = None
         self.system_instruction = None  # Será setado pelo CaculinhaBIAgent
         self.dev_fast_mode = bool(getattr(settings, "DEV_FAST_MODE", False))
-        
-        # FIX DEFINITIVO 2026-01-09: Verificar se Gemini está disponível no startup
-        # Só marca como disponível se API key existir e parecer válida
+
         gemini_key = getattr(settings, 'GEMINI_API_KEY', None) or ""
         self._gemini_available = bool(gemini_key and len(gemini_key) > 10 and "expired" not in gemini_key.lower())
         if self.dev_fast_mode and self.primary == "groq":
-            # In dev-fast with Groq primary, disable Gemini fallback to avoid extra cost/noise.
             self._gemini_available = False
-        
+
         if not self._gemini_available:
             logger.info("SmartLLM: Gemini desabilitado (sem API key válida). Usando apenas Groq.")
-        
-        logger.info(f"SmartLLM initialized: primary={self.primary}, gemini_available={self._gemini_available}")
+
+        self.provider_chain = self._build_provider_chain(self.primary)
+        logger.info(
+            f"SmartLLM initialized: primary={self.primary}, chain={self.provider_chain}, "
+            f"gemini_available={self._gemini_available}"
+        )
+
+    def _normalize_provider(self, provider: str) -> str:
+        key = (provider or "").strip().lower()
+        return self._PROVIDER_ALIASES.get(key, "groq")
+
+    def _build_provider_chain(self, primary: str) -> List[str]:
+        configured = [
+            self._normalize_provider(item)
+            for item in str(getattr(settings, "LLM_FALLBACK_PROVIDERS", "groq,google")).split(",")
+            if item and str(item).strip()
+        ]
+        chain = [primary] + configured
+        seen = set()
+        unique_chain: List[str] = []
+        for item in chain:
+            if item not in seen:
+                unique_chain.append(item)
+                seen.add(item)
+        return unique_chain
 
 
     @property
@@ -90,6 +134,63 @@ class SmartLLM:
                 return None
         return self._gemini
 
+    @property
+    def mock(self):
+        if self._mock is None:
+            self._mock = self._MockLLMAdapter()
+        return self._mock
+
+    def _get_adapter(self, provider: str):
+        if provider == "groq":
+            try:
+                return self.groq
+            except Exception as e:
+                logger.warning(f"Groq indisponível: {e}")
+                return None
+        if provider == "google":
+            return self.gemini
+        if provider == "mock":
+            return self.mock
+        return None
+
+    def get_provider_status(self) -> Dict[str, Any]:
+        providers: List[Dict[str, Any]] = []
+        for provider in self.provider_chain:
+            adapter = self._get_adapter(provider)
+            if adapter is None:
+                providers.append(
+                    {
+                        "provider": provider,
+                        "available": False,
+                        "model": None,
+                        "capabilities": None,
+                    }
+                )
+                continue
+
+            capabilities = {}
+            try:
+                caps = adapter.get_capabilities()
+                capabilities = {
+                    "chat": bool(getattr(caps, "chat", False)),
+                    "tools": bool(getattr(caps, "tools", False)),
+                    "streaming": bool(getattr(caps, "streaming", False)),
+                    "json_mode": bool(getattr(caps, "json_mode", False)),
+                }
+            except Exception:
+                capabilities = {"chat": True, "tools": False, "streaming": False, "json_mode": False}
+
+            providers.append(
+                {
+                    "provider": provider,
+                    "available": True,
+                    "model": getattr(adapter, "model_name", None),
+                    "capabilities": capabilities,
+                }
+            )
+
+        return {"primary": self.primary, "chain": self.provider_chain, "providers": providers}
+
     def _is_rate_limit_error(self, error_str: str) -> bool:
         """Check if error indicates rate limiting"""
         error_lower = error_str.lower()
@@ -101,6 +202,8 @@ class SmartLLM:
 
     def _sanitize_user_error(self, raw_error: str) -> str:
         err = (raw_error or "").lower()
+        if "tool_use_failed" in err or "tool call validation failed" in err:
+            return "Falha de validacao de parametros na chamada de ferramenta. Ajuste a pergunta ou tente novamente."
         if self._is_rate_limit_error(err):
             return "Quota estourada / configure billing / tente depois."
         if self._is_payload_too_large_error(err):
@@ -141,102 +244,85 @@ class SmartLLM:
         return self._compact_messages_for_fallback(messages)
 
     async def generate_response(self, prompt: str) -> str:
-        """Async generation with fallback"""
-        primary_adapter = self.groq if self.primary == "groq" else self.gemini
-        
-        # Se primário for Gemini mas não está disponível, usar Groq
-        if primary_adapter is None:
-            primary_adapter = self.groq
-        
-        try:
-            return await primary_adapter.generate_response(prompt)
-        except Exception as e:
-            if self._is_rate_limit_error(str(e)) and self.gemini:
-                logger.warning(f"Rate limit! Usando fallback Gemini...")
-                return await self.gemini.generate_response(prompt)
-            raise e
+        """Async generation with provider-chain fallback."""
+        last_error = "Nenhum provedor LLM disponível"
+        for provider in self.provider_chain:
+            adapter = self._get_adapter(provider)
+            if adapter is None:
+                continue
+            try:
+                if hasattr(adapter, "generate_response"):
+                    return await adapter.generate_response(prompt)
+                result = adapter.get_completion([{"role": "user", "content": prompt}], tools=None)
+                if "error" not in result:
+                    return str(result.get("content", ""))
+                last_error = str(result.get("error", "erro desconhecido"))
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Falha em {provider} durante generate_response: {e}")
+        raise Exception(self._sanitize_user_error(last_error))
 
     def generate_with_history(self, messages, system_instruction=None, **kwargs):
         """
         Gera resposta com histórico, delegando para o adapter ativo.
         """
-        # Determine active adapter
-        adapter = self.gemini if self.primary == "google" else self.groq
-        
-        if adapter is None:
-             adapter = self.groq # Fallback default
-             
-        if not adapter:
-             raise Exception("Nenhum adaptador LLM disponível em SmartLLM")
-             
-        prepared_messages = self._prepare_messages_for_primary(messages)
+        last_error = "Nenhum adaptador LLM disponível em SmartLLM"
+        for idx, provider in enumerate(self.provider_chain):
+            adapter = self._get_adapter(provider)
+            if adapter is None:
+                continue
 
-        # Tentar chamar o método no adapter
-        if hasattr(adapter, "generate_with_history"):
-            return adapter.generate_with_history(prepared_messages, system_instruction, **kwargs)
-        
-        # Fallback se o adapter não tiver o método (ex: Groq antigo)
-        # Tenta usar get_completion ignorando system_instruction dinâmico se necessário
-        # Mas ideal é que todos adapters tenham a interface consistente.
-        logger.warning(f"Adapter {type(adapter).__name__} não tem generate_with_history. Usando get_completion.")
-        result = adapter.get_completion(prepared_messages)
-        if "error" in result:
-             raise Exception(result["error"])
-        return result.get("content", "")
+            prepared_messages = self._prepare_messages_for_primary(messages) if idx == 0 else self._compact_messages_for_fallback(messages)
+            try:
+                if self.system_instruction and hasattr(adapter, "system_instruction"):
+                    adapter.system_instruction = self.system_instruction
+
+                if hasattr(adapter, "generate_with_history"):
+                    return adapter.generate_with_history(prepared_messages, system_instruction, **kwargs)
+
+                result = adapter.get_completion(prepared_messages)
+                if "error" not in result:
+                    return result.get("content", "")
+                last_error = str(result.get("error", "erro desconhecido"))
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Falha em {provider} durante generate_with_history: {e}")
+
+        raise Exception(self._sanitize_user_error(last_error))
 
     def get_completion(self, messages: List[Dict[str, str]], tools: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Sync completion with automatic fallback on rate limit.
-        Suporta fallback bidirecional (Groq -> Gemini OU Gemini -> Groq).
+        Sync completion with provider-chain fallback.
         """
-        # 1. Identificar Primário e Secundário
-        if self.primary == "google":
-            primary_adapter = self.gemini
-            secondary_adapter = self.groq
-            secondary_name = "Groq"
-        else:
-            primary_adapter = self.groq
-            secondary_adapter = self.gemini
-            secondary_name = "Gemini"
-        
-        # Se primário (Gemini) não estiver disponível, degradar para Secundário imediatamente
-        if primary_adapter is None:
-            logger.info(f"Adapter primário ({self.primary}) indisponível. Usando {secondary_name} como fallback imediato.")
-            primary_adapter = secondary_adapter
-            secondary_adapter = None # Não há terceira opção
-        
-        # Propagar instruções de sistema
-        if self.system_instruction:
-            primary_adapter.system_instruction = self.system_instruction
-            if secondary_adapter:
-                secondary_adapter.system_instruction = self.system_instruction
-        
-        # 2. Tentar Primário
-        primary_messages = self._prepare_messages_for_primary(messages)
-        result = primary_adapter.get_completion(primary_messages, tools)
-        
-        # 3. Verificar Falha e Tentar Secundário
-        if "error" in result and secondary_adapter:
-            error_str = str(result.get("error", ""))
-            
-            # Decisão de Fallback: Rate Limit OU Erro de API 5xx do Google
-            # Google as vezes retorna 500/503 em vez de 429
-            should_fallback = self._is_rate_limit_error(error_str) or ("50" in error_str and self.primary == "google")
-            
-            if should_fallback:
-                logger.warning(f"[RETRY] Erro no primário ({self.primary}): {error_str}. Tentando fallback para {secondary_name}...")
+        errors: List[str] = []
 
-                compact_messages = self._compact_messages_for_fallback(messages)
-                fallback_result = secondary_adapter.get_completion(compact_messages, tools)
-                
-                if "error" not in fallback_result:
-                    logger.info(f"[OK] Fallback para {secondary_name} funcionou!")
-                    return fallback_result
-                else:
-                    logger.warning(f"[ERROR] Fallback também falhou: {fallback_result.get('error')}")
-                    return {"error": self._sanitize_user_error(str(fallback_result.get("error", "")))}
-        
-        if "error" in result:
-            return {"error": self._sanitize_user_error(str(result.get("error", "")))}
+        for idx, provider in enumerate(self.provider_chain):
+            adapter = self._get_adapter(provider)
+            if adapter is None:
+                errors.append(f"{provider}: indisponível")
+                continue
 
-        return result
+            request_messages = self._prepare_messages_for_primary(messages) if idx == 0 else self._compact_messages_for_fallback(messages)
+
+            try:
+                if self.system_instruction and hasattr(adapter, "system_instruction"):
+                    adapter.system_instruction = self.system_instruction
+
+                result = adapter.get_completion(request_messages, tools)
+                if not isinstance(result, dict):
+                    errors.append(f"{provider}: resposta inválida")
+                    continue
+
+                if "error" in result:
+                    errors.append(f"{provider}: {result.get('error')}")
+                    logger.warning(f"[RETRY] {provider} falhou: {result.get('error')}")
+                    continue
+
+                result["provider"] = provider
+                return result
+            except Exception as e:
+                errors.append(f"{provider}: {e}")
+                logger.warning(f"[RETRY] {provider} exceção: {e}", exc_info=True)
+
+        final_error = " | ".join(errors) if errors else "Nenhum provedor LLM disponível"
+        return {"error": self._sanitize_user_error(final_error)}

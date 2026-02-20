@@ -1,30 +1,36 @@
-// frontend-solid/src/lib/export.ts
-
 import { format } from 'date-fns';
-import { enUS } from 'date-fns/locale';
+import { ptBR } from 'date-fns/locale';
 
-/**
- * Exports an array of objects to a CSV file.
- * @param data The array of objects to export.
- * @param filename The name of the CSV file.
- */
-export const exportToCsv = (data: any[], filename: string) => {
-  if (!data || data.length === 0) {
-    alert("Nenhum dado para exportar.");
-    return;
+const escapeCsvCell = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  const raw = String(value);
+  if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
+    return `"${raw.replace(/"/g, '""')}"`;
   }
+  return raw;
+};
 
-  // Get headers from the first object's keys
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+export const exportToCsv = (data: Record<string, unknown>[], filename: string) => {
+  if (!Array.isArray(data) || data.length === 0) return;
+
   const headers = Object.keys(data[0]);
-  
-  // Create CSV header row
-  const csvRows = [];
-  csvRows.push(headers.join(','));
+  const rows = data.map((row) => headers.map((header) => escapeCsvCell(row[header])).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  downloadBlob(blob, filename.toLowerCase().endsWith('.csv') ? filename : `${filename}.csv`);
+};
 
-  // Add data rows
-  for (const row of data) {
-    const values = headers.map(header => {
-      const value = row[header];
-      // Handle values that might contain commas or newlines
-      if (typeof value === 'string' && (value.includes(',') || value.includes('\n'))) {
-        return `"${value.replace(/
+export const formatDateTime = (value: Date | string | number) =>
+  format(new Date(value), "dd/MM/yyyy HH:mm", { locale: ptBR });
+

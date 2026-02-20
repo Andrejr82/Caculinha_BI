@@ -17,6 +17,7 @@ class GroqLLMAdapter(BaseLLMAdapter):
 
     def __init__(self, model_name: Optional[str] = None, api_key: Optional[str] = None, system_instruction: Optional[str] = None):
         self.logger = logging.getLogger(__name__)
+        self.provider = "groq"
         
         api_key = api_key or settings.GROQ_API_KEY
         if not api_key:
@@ -32,6 +33,14 @@ class GroqLLMAdapter(BaseLLMAdapter):
         self.max_output_tokens = settings.LLM_MAX_OUTPUT_TOKENS if settings.DEV_FAST_MODE else max(settings.LLM_MAX_OUTPUT_TOKENS, 1024)
         
         self.logger.info(f"[OK] GroqLLMAdapter inicializado: {self.model_name}")
+
+    def get_capabilities(self) -> BaseLLMAdapter.Capabilities:
+        return BaseLLMAdapter.Capabilities(
+            chat=True,
+            tools=True,
+            streaming=False,
+            json_mode=False,
+        )
 
     def get_completion(
         self, 

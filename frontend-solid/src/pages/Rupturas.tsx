@@ -51,7 +51,7 @@ export default function Rupturas() {
 
   const loadData = async () => {
     setLoading(true);
-    setError(null);
+    setError('');
     try {
       const segmento = selectedSegmento() || undefined;
       const une = selectedUne() || undefined;

@@ -218,6 +218,30 @@ def _admat_une_operational_checklist(json_mode: bool) -> str:
     )
 
 
+def _sql_total_sales_all_unes(json_mode: bool) -> str:
+    sql = (
+        "SELECT\n"
+        "  v.une,\n"
+        "  SUM(v.valor_total) AS venda_total\n"
+        "FROM vendas v\n"
+        "GROUP BY v.une\n"
+        "ORDER BY venda_total DESC;\n"
+    )
+    return build_structured_response(
+        json_mode=json_mode,
+        summary="Consolidar venda total por UNE para visão comparativa de performance.",
+        table_headers=["Coluna", "Descrição"],
+        table_rows=[
+            ["une", "Identificador da unidade (UNE)"],
+            ["venda_total", "Soma do valor total vendido por UNE"],
+        ],
+        action="Executar a query e usar o ranking para priorizar ações comerciais por unidade.",
+        template=sql,
+        language="sql",
+        dialect="sqlserver",
+    )
+
+
 def resolve_playground_rule(message: str, json_mode: bool = False) -> Optional[PlaygroundRuleResult]:
     text = (message or "").lower()
     if not text.strip():
@@ -259,7 +283,20 @@ def resolve_playground_rule(message: str, json_mode: bool = False) -> Optional[P
             intent="sql.sugestao_transferencia_lojas",
         )
 
-    if "admat" in text or "une" in text or "linha verde" in text or "media comum" in text or "média comum" in text:
+    if (
+        ("query" in text or "sql" in text)
+        and ("venda total" in text or ("venda" in text and "total" in text))
+        and ("une" in text or "unes" in text or "loja" in text)
+    ):
+        return PlaygroundRuleResult(
+            matched=True,
+            response=_sql_total_sales_all_unes(json_mode=json_mode),
+            source="rules-engine",
+            confidence=0.96,
+            intent="sql.venda_total_por_une",
+        )
+
+    if "admat" in text or "linha verde" in text or "media comum" in text or "média comum" in text:
         return PlaygroundRuleResult(
             matched=True,
             response=_admat_une_operational_checklist(json_mode=json_mode),

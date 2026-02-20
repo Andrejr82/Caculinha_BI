@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 import logging
 import os
+from decimal import Decimal
 from typing import Dict, Any, List, Optional, Union
 from backend.app.core.utils.error_handler import error_handler_decorator
 
@@ -35,10 +36,21 @@ def _safe_serialize(value):
     """Converte valor para JSON-safe."""
     if pd.isna(value) or value is None:
         return None
+    elif isinstance(value, Decimal):
+        # Evita saídas com precisão excessiva (ex.: 8.0000000000000000)
+        f = float(value)
+        if abs(f - round(f)) < 1e-9:
+            return int(round(f))
+        return round(f, 2)
     elif isinstance(value, (np.integer, np.int64, np.int32)):
         return int(value)
     elif isinstance(value, (np.floating, np.float64, np.float32)):
-        return float(value) if not np.isnan(value) else None
+        if np.isnan(value):
+            return None
+        f = float(value)
+        if abs(f - round(f)) < 1e-9:
+            return int(round(f))
+        return round(f, 2)
     elif isinstance(value, (pd.Timestamp, np.datetime64)):
         return str(value)
     elif isinstance(value, bytes):
@@ -318,10 +330,28 @@ def consultar_dados_flexivel(
         mensagem_tabela = f"Encontrei {len(resultados)} resultados:\n\n"
         if len(resultados) > 0:
             cols_to_show = list(df_final.columns)[:4]
+
+            def _fmt_cell(v: Any) -> str:
+                if v is None:
+                    return "-"
+                if isinstance(v, float):
+                    if abs(v - round(v)) < 1e-9:
+                        return str(int(round(v)))
+                    return f"{v:.2f}"
+                s = str(v)
+                # Limpa números com precisão exagerada vindos como texto
+                try:
+                    fv = float(s)
+                    if abs(fv - round(fv)) < 1e-9:
+                        return str(int(round(fv)))
+                    return f"{fv:.2f}"
+                except Exception:
+                    return s
+
             mensagem_tabela += "| " + " | ".join(cols_to_show) + " |\n"
             mensagem_tabela += "|" + "|".join(["---" for _ in range(len(cols_to_show))]) + "|\n"
             for item in resultados[:3]:
-                mensagem_tabela += "| " + " | ".join([str(item.get(c, "-"))[:25] for c in cols_to_show]) + " |\n"
+                mensagem_tabela += "| " + " | ".join([_fmt_cell(item.get(c, "-"))[:25] for c in cols_to_show]) + " |\n"
             if len(resultados) > 3:
                 mensagem_tabela += f"\n*(...e mais {len(resultados)-3} resultados)*"
 

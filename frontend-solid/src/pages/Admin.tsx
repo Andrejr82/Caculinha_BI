@@ -1,6 +1,6 @@
 import { Shield, Users, Database, Settings, RefreshCw, CheckCircle, AlertCircle, Plus, Edit, Trash2, X } from 'lucide-solid';
 import { createSignal, Show, For, createResource, createMemo } from 'solid-js';
-import { adminApi, analyticsApi, UserData, CreateUserPayload, UpdateUserPayload, AuditLogItem, PlaygroundCanaryAccessItem, PlaygroundSqlAccessItem } from '@/lib/api';
+import { adminApi, analyticsApi, UserData, CreateUserPayload, UpdateUserPayload, AuditLogItem, PlaygroundCanaryAccessItem, PlaygroundSqlAccessItem, PlaygroundAccessItem } from '@/lib/api';
 
 export default function Admin() {
   const [syncing, setSyncing] = createSignal(false);
@@ -8,6 +8,7 @@ export default function Admin() {
   const [activeTab, setActiveTab] = createSignal<'sync' | 'users'>('sync');
   const [showOnlySqlEnabled, setShowOnlySqlEnabled] = createSignal(false);
   const [showOnlyCanaryEnabled, setShowOnlyCanaryEnabled] = createSignal(false);
+  const [showOnlyPlaygroundEnabled, setShowOnlyPlaygroundEnabled] = createSignal(false);
   const [showAuditPanel, setShowAuditPanel] = createSignal(false);
   const [showUserModal, setShowUserModal] = createSignal(false);
   const [editingUser, setEditingUser] = createSignal<UserData | null>(null);
@@ -54,6 +55,18 @@ export default function Admin() {
     }
   });
 
+  const [playgroundAccessMap, { refetch: refetchPlaygroundAccess }] = createResource(async () => {
+    try {
+      const response = await adminApi.getPlaygroundAccess();
+      const map = new Map<string, PlaygroundAccessItem>();
+      response.data.forEach((item) => map.set(item.user_id, item));
+      return map;
+    } catch (err) {
+      console.error('Error loading playground access map:', err);
+      return new Map<string, PlaygroundAccessItem>();
+    }
+  });
+
   const [auditLogs, { refetch: refetchAuditLogs }] = createResource<AuditLogItem[], boolean>(
     showAuditPanel,
     async (visible) => {
@@ -69,16 +82,16 @@ export default function Admin() {
   );
 
   // Load Segment Options
-  const [filterOptions] = createResource<boolean, { categorias: string[]; segmentos: string[] }>(
+  const [filterOptions] = createResource(
     showUserModal,
     async (isOpen) => {
-      if (!isOpen) return { categorias: [], segmentos: [] };
+      if (!isOpen) return { categorias: [], segmentos: [], grupos: [] };
       try {
         const response = await analyticsApi.getFilterOptions();
         return response.data;
       } catch (err) {
         console.error('Error loading filter options:', err);
-        return { categorias: [], segmentos: [] };
+        return { categorias: [], segmentos: [], grupos: [] };
       }
     }
   );
@@ -90,6 +103,9 @@ export default function Admin() {
         return false;
       }
       if (showOnlyCanaryEnabled() && !(u.role === 'admin' || canaryAccessMap()?.get(u.id)?.enabled === true)) {
+        return false;
+      }
+      if (showOnlyPlaygroundEnabled() && !(u.role === 'admin' || playgroundAccessMap()?.get(u.id)?.enabled === true)) {
         return false;
       }
       return true;
@@ -167,6 +183,7 @@ export default function Admin() {
       refetchUsers();
       refetchSqlAccess();
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
@@ -200,6 +217,7 @@ export default function Admin() {
       refetchUsers();
       refetchSqlAccess();
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
@@ -220,6 +238,7 @@ export default function Admin() {
       refetchUsers();
       refetchSqlAccess();
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
@@ -258,6 +277,7 @@ export default function Admin() {
       });
       refetchSqlAccess();
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
@@ -278,6 +298,7 @@ export default function Admin() {
       });
       refetchSqlAccess();
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
@@ -299,6 +320,7 @@ export default function Admin() {
         text: `Canário LLM remota ${!enabledNow ? 'habilitado' : 'desabilitado'} para ${user.username}.`
       });
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
@@ -318,10 +340,51 @@ export default function Admin() {
         text: `${response.data.revoked_count} usuário(s) tiveram acesso canário revogado.`
       });
       refetchCanaryAccess();
+      refetchPlaygroundAccess();
       if (showAuditPanel()) refetchAuditLogs();
       setTimeout(() => setMessage(null), 5000);
     } catch (err: any) {
       const errorMsg = err?.response?.data?.detail || 'Erro ao revogar acessos canário em massa';
+      setMessage({ type: 'error', text: errorMsg });
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
+  const handleTogglePlaygroundAccess = async (user: UserData) => {
+    if (user.role === 'admin') return;
+    setMessage(null);
+    try {
+      const current = playgroundAccessMap()?.get(user.id);
+      const enabledNow = current?.enabled === true;
+      await adminApi.setPlaygroundAccess(user.id, !enabledNow);
+      setMessage({
+        type: 'success',
+        text: `Playground ${!enabledNow ? 'habilitado' : 'desabilitado'} para ${user.username}.`
+      });
+      refetchPlaygroundAccess();
+      if (showAuditPanel()) refetchAuditLogs();
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Erro ao alterar acesso ao Playground';
+      setMessage({ type: 'error', text: errorMsg });
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
+  const handleRevokeAllPlaygroundAccess = async () => {
+    if (!confirm('Revogar acesso ao Playground de todos os usuários não-admin?')) return;
+    setMessage(null);
+    try {
+      const response = await adminApi.revokeAllPlaygroundAccess();
+      setMessage({
+        type: 'success',
+        text: `${response.data.revoked_count} usuário(s) tiveram acesso ao Playground revogado.`
+      });
+      refetchPlaygroundAccess();
+      if (showAuditPanel()) refetchAuditLogs();
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Erro ao revogar acessos ao Playground em massa';
       setMessage({ type: 'error', text: errorMsg });
       setTimeout(() => setMessage(null), 5000);
     }
@@ -413,6 +476,20 @@ export default function Admin() {
                   />
                   Somente Canário LLM
                 </label>
+                <label class="text-xs text-muted flex items-center gap-2 px-3 py-2 border rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyPlaygroundEnabled()}
+                    onChange={(e) => setShowOnlyPlaygroundEnabled(e.currentTarget.checked)}
+                  />
+                  Somente Playground
+                </label>
+                <button
+                  onClick={handleRevokeAllPlaygroundAccess}
+                  class="btn btn-outline text-orange-300 border-orange-500/30 hover:bg-orange-500/10"
+                >
+                  Revogar Playground de Todos
+                </button>
                 <button
                   onClick={handleRevokeAllSqlAccess}
                   class="btn btn-outline text-red-400 border-red-500/30 hover:bg-red-500/10"
@@ -444,6 +521,7 @@ export default function Admin() {
                     <th class="text-left p-3 text-sm font-medium">Email</th>
                     <th class="text-left p-3 text-sm font-medium">Role</th>
                     <th class="text-left p-3 text-sm font-medium">Segmentos</th>
+                    <th class="text-center p-3 text-sm font-medium">Playground</th>
                     <th class="text-center p-3 text-sm font-medium">SQL Completo</th>
                     <th class="text-center p-3 text-sm font-medium">Canário LLM</th>
                     <th class="text-center p-3 text-sm font-medium">Status</th>
@@ -453,7 +531,7 @@ export default function Admin() {
                 <tbody>
                   <Show when={users.loading}>
                     <tr>
-                      <td colspan="8" class="text-center p-8 text-muted">
+                      <td colspan="9" class="text-center p-8 text-muted">
                         <RefreshCw size={24} class="animate-spin mx-auto mb-2" />
                         Carregando usuários...
                       </td>
@@ -481,6 +559,22 @@ export default function Admin() {
                                 : <span class="text-yellow-500 text-xs">Nenhum</span>
                             }>
                               <span class="text-muted italic">Todos (Admin)</span>
+                            </Show>
+                          </td>
+                          <td class="p-3 text-center">
+                            <Show
+                              when={user.role !== 'admin'}
+                              fallback={<span class="px-2 py-1 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400">Sempre</span>}
+                            >
+                              <button
+                                onClick={() => handleTogglePlaygroundAccess(user)}
+                                class={`px-2 py-1 rounded text-xs font-medium transition-colors ${playgroundAccessMap()?.get(user.id)?.enabled
+                                  ? 'bg-orange-500/10 text-orange-300 hover:bg-orange-500/20'
+                                  : 'bg-gray-500/10 text-gray-300 hover:bg-gray-500/20'
+                                  }`}
+                              >
+                                {playgroundAccessMap()?.get(user.id)?.enabled ? 'Habilitado' : 'Bloqueado'}
+                              </button>
                             </Show>
                           </td>
                           <td class="p-3 text-center">
@@ -556,7 +650,7 @@ export default function Admin() {
 
                   <Show when={!users.loading && (!filteredUsers() || filteredUsers()?.length === 0)}>
                     <tr>
-                      <td colspan="8" class="text-center p-8 text-muted">
+                      <td colspan="9" class="text-center p-8 text-muted">
                         Nenhum usuário encontrado com o filtro atual
                       </td>
                     </tr>
@@ -592,7 +686,7 @@ export default function Admin() {
                     </tr>
                   </thead>
                   <tbody>
-                    <For each={(auditLogs() || []).filter((l) => l.resource === 'playground_sql_access' || l.resource === 'playground_canary_access').slice(0, 20)}>
+                    <For each={(auditLogs() || []).filter((l) => l.resource === 'playground_sql_access' || l.resource === 'playground_canary_access' || l.resource === 'playground_access').slice(0, 20)}>
                       {(log) => (
                         <tr class="border-b border-border/40">
                           <td class="p-2">{new Date(log.timestamp).toLocaleString('pt-BR')}</td>
@@ -607,7 +701,7 @@ export default function Admin() {
                         </tr>
                       )}
                     </For>
-                    <Show when={(auditLogs() || []).filter((l) => l.resource === 'playground_sql_access' || l.resource === 'playground_canary_access').length === 0}>
+                    <Show when={(auditLogs() || []).filter((l) => l.resource === 'playground_sql_access' || l.resource === 'playground_canary_access' || l.resource === 'playground_access').length === 0}>
                       <tr>
                         <td colspan="5" class="p-3 text-muted">Sem eventos de auditoria para permissões do Playground.</td>
                       </tr>

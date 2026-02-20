@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onCleanup, onMount, For, Show } from 'solid-js';
 import auth from '@/store/auth';
 import { authApi } from '@/lib/api';
-import { ThinkingProcess, AutoResizeTextarea, PlotlyChart, DataTable, FeedbackButtons, DownloadButton, MessageActions, ExportMenu, ShareButton, TypingIndicator } from '@/components';
+import { ThinkingProcess, AutoResizeTextarea, PlotlyChart, DataTable, FeedbackButtons, MessageActions, ExportMenu } from '@/components';
 import { marked } from 'marked';
 import { Trash2, StopCircle, User, Bot, Sparkles, SendHorizontal, Paperclip } from 'lucide-solid';
 import 'github-markdown-css/github-markdown.css';
@@ -44,6 +44,7 @@ interface Message {
 
   // New Fields for Thinking Process
   thinkingSteps?: string[];
+  thinkingStepKeys?: string[];
   isThinking?: boolean;
 }
 
@@ -59,6 +60,7 @@ export default function Chat() {
       type: 'text',
       response_id: 'initial_greeting',
       thinkingSteps: [],
+      thinkingStepKeys: [],
       isThinking: false
     }
   ]);
@@ -194,11 +196,31 @@ export default function Chat() {
       type: 'text',
       isOptimistic: true,
       thinkingSteps: [],
+      thinkingStepKeys: [],
       isThinking: true
     }]);
 
     try {
-      const eventSource = new EventSource(`/api/v1/chat/stream?q=${encodeURIComponent(userText)}&token=${encodeURIComponent(currentToken)}&session_id=${sessionId()}`);
+      let streamToken: string | null = null;
+      const tokenForHeader = sessionStorage.getItem('token') || currentToken;
+      const tokenResp = await fetch('/api/v1/chat/stream-token', {
+        method: 'POST',
+        headers: {
+          ...(tokenForHeader ? { Authorization: `Bearer ${tokenForHeader}` } : {}),
+        },
+      });
+      if (tokenResp.ok) {
+        const tokenData = await tokenResp.json();
+        streamToken = tokenData?.stream_token || null;
+      }
+
+      if (!streamToken) {
+        throw new Error('Não foi possível obter token efêmero para o stream.');
+      }
+
+      const streamUrl = `/api/v1/chat/stream?q=${encodeURIComponent(userText)}&stream_token=${encodeURIComponent(streamToken)}&session_id=${sessionId()}`;
+
+      const eventSource = new EventSource(streamUrl);
       setCurrentEventSource(eventSource);
 
       let currentMessageId = assistantId;
@@ -220,21 +242,52 @@ export default function Chat() {
           if (data.type === 'tool_progress') {
             // Add Thinking Step
             const statusMap: Record<string, string> = {
-              'Pensando': 'Planejando análise...',
+              'system.thinking': 'Entendendo sua solicitação...',
+              'system.finalizing': 'Consolidando resposta executiva...',
+              'tool.data_query': 'Consultando banco de dados...',
+              'tool.metadata_query': 'Acessando metadados...',
+              'tool.chart': 'Gerando gráfico interativo...',
+              'tool.competitive_research': 'Pesquisando fontes de mercado...',
+              'Pensando': 'Entendendo sua solicitação...',
               'consultar_dados_flexivel': 'Consultando banco de dados...',
               'consultar_dados_gerais': 'Acessando metadados...',
               'gerar_grafico_universal': 'Criando visualização...',
               'gerar_grafico_universal_v2': 'Gerando gráfico interativo...',
-              'Processando resposta': 'Sintetizando resposta...'
+              'pesquisar_precos_concorrentes': 'Pesquisando fontes de mercado...',
+              'Processando resposta': 'Consolidando resposta executiva...'
             };
-            const stepText = statusMap[data.tool] || `Processando solicitação...`;
+            const toolText = statusMap[data.tool] || 'Executando etapa da análise...';
+            const phase = String(data.status || '').toLowerCase();
+            const phasePrefix =
+              phase === 'start' ? 'Iniciando' :
+              phase === 'executing' ? 'Executando' :
+              phase === 'processing' ? 'Finalizando' :
+              phase === 'done' ? 'Finalizando' :
+              phase === 'finishing' ? 'Finalizando' :
+              'Processando';
+            const stepText = `${phasePrefix}: ${toolText}`;
+            const stepKey = `${phasePrefix}|${String(data.tool || 'unknown')}`;
 
             setMessages(prev => prev.map(msg =>
-              msg.id === currentMessageId ? {
-                ...msg,
-                thinkingSteps: [...(msg.thinkingSteps || []), stepText],
-                isThinking: true
-              } : msg
+              msg.id === currentMessageId ? (() => {
+                const currentSteps = msg.thinkingSteps || [];
+                const currentKeys = msg.thinkingStepKeys || [];
+                const lastStep = currentSteps.length > 0 ? currentSteps[currentSteps.length - 1] : '';
+                if (lastStep === stepText || currentKeys.includes(stepKey)) {
+                  return {
+                    ...msg,
+                    isThinking: true
+                  };
+                }
+                const nextSteps = [...currentSteps, stepText].slice(-6);
+                const nextKeys = [...currentKeys, stepKey].slice(-12);
+                return {
+                  ...msg,
+                  thinkingSteps: nextSteps,
+                  thinkingStepKeys: nextKeys,
+                  isThinking: true
+                };
+              })() : msg
             ));
           }
           else if (data.type === 'text') {
@@ -245,7 +298,7 @@ export default function Chat() {
           else if (data.type === 'chart' && data.chart_spec) {
             // Switch to chart type or add new message if needed
             setMessages(prev => prev.map(msg =>
-              msg.id === currentMessageId ? { ...msg, type: 'chart', chart_spec: data.chart_spec, text: 'Visualização gerada:', isThinking: false } : msg
+              msg.id === currentMessageId ? { ...msg, type: 'chart', chart_spec: data.chart_spec, text: 'Visualização gerada.\n\n', isThinking: false } : msg
             ));
           }
           else if (data.type === 'table' && data.data) {
@@ -290,6 +343,35 @@ export default function Chat() {
     setInput('');
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: text, timestamp: Date.now() }]);
     processUserMessage(text);
+  };
+
+  const handleFeedback = async (
+    messageId: string,
+    feedbackType: 'positive' | 'negative' | 'partial',
+    comment?: string
+  ) => {
+    try {
+      const token = sessionStorage.getItem('token') || auth.token();
+      const response = await fetch('/api/v1/chat/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          response_id: messageId,
+          feedback_type: feedbackType,
+          comment: comment || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Falha ao enviar feedback:', errText);
+      }
+    } catch (err) {
+      console.error('Erro ao enviar feedback:', err);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -356,9 +438,9 @@ export default function Chat() {
                     <div class="space-y-4">
 
                       {/* Thinking Process */}
-                      <Show when={msg.thinkingSteps && msg.thinkingSteps.length > 0}>
+                      <Show when={(msg.isThinking || false) || (msg.thinkingSteps && msg.thinkingSteps.length > 0)}>
                         <ThinkingProcess
-                          steps={msg.thinkingSteps!}
+                          steps={msg.thinkingSteps || []}
                           isThinking={msg.isThinking || false}
                           isCollapsed={!msg.isThinking} // Auto-collapse when done
                         />
@@ -399,7 +481,7 @@ export default function Chat() {
                       <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pt-1">
                         <MessageActions messageText={msg.text} messageId={msg.id} canRegenerate={false} />
                         <Show when={msg.response_id}>
-                          <FeedbackButtons messageId={msg.response_id!} onFeedback={() => { }} />
+                          <FeedbackButtons messageId={msg.response_id!} onFeedback={handleFeedback} />
                         </Show>
                       </div>
 

@@ -106,7 +106,7 @@ class TestChatBIResponses:
     @pytest.mark.asyncio
     async def test_fallback_response_has_content(self):
         """
-        Valida que o método _generate_fallback_response sempre
+        Valida que o método _generate_error_response sempre
         retorna uma mensagem com conteúdo
         """
         from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
@@ -124,8 +124,8 @@ class TestChatBIResponses:
             field_mapper=mock_field_mapper
         )
         
-        # Gerar fallback response
-        fallback = agent._generate_fallback_response("test query")
+        # Gerar fallback response (caminho de erro atual do agente)
+        fallback = agent._generate_error_response("test query")
         
         # Validações
         assert fallback is not None

@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel
 
 from backend.app.api.dependencies import get_db, require_role, get_current_active_user
@@ -25,6 +26,7 @@ from backend.app.core.playground_sql_access import build_sql_access_context, eva
 router = APIRouter(prefix="/admin", tags=["Admin"])
 PLAYGROUND_SQL_ACCESS_KEY = "playground_sql_full_access"
 PLAYGROUND_CANARY_ACCESS_KEY = "playground_canary_access"
+PLAYGROUND_ACCESS_KEY = "playground_access"
 
 
 # Modelos adicionais para compatibilidade
@@ -56,6 +58,15 @@ class PlaygroundCanaryAccessItem(BaseModel):
     enabled: bool
 
 
+class PlaygroundAccessUpdate(BaseModel):
+    enabled: bool
+
+
+class PlaygroundAccessItem(BaseModel):
+    user_id: str
+    enabled: bool
+
+
 def _invalidate_playground_sql_cache(user_id: str | None = None) -> None:
     try:
         from backend.app.api.v1.endpoints import playground as playground_endpoint
@@ -75,6 +86,17 @@ def _invalidate_playground_canary_cache(user_id: str | None = None) -> None:
             playground_endpoint._canary_access_cache.pop(str(user_id), None)
         else:
             playground_endpoint._canary_access_cache.clear()
+    except Exception:
+        pass
+
+
+def _invalidate_playground_access_cache(user_id: str | None = None) -> None:
+    try:
+        from backend.app.api.v1.endpoints import playground as playground_endpoint
+        if user_id:
+            playground_endpoint._playground_access_cache.pop(str(user_id), None)
+        else:
+            playground_endpoint._playground_access_cache.clear()
     except Exception:
         pass
 
@@ -122,6 +144,30 @@ def _log_canary_access_change(
             user_id=actor_user_id,
             action=action,
             resource="playground_canary_access",
+            details=details,
+            ip_address="admin-panel",
+            status="success",
+        )
+    )
+
+
+def _log_playground_access_change(
+    db: AsyncSession,
+    *,
+    actor_user_id: uuid.UUID,
+    target_user_id: uuid.UUID | None,
+    enabled: bool,
+    action: str,
+) -> None:
+    details = {
+        "target_user_id": str(target_user_id) if target_user_id else None,
+        "enabled": enabled,
+    }
+    db.add(
+        AuditLog(
+            user_id=actor_user_id,
+            action=action,
+            resource="playground_access",
             details=details,
             ip_address="admin-panel",
             status="success",
@@ -432,6 +478,111 @@ async def revoke_all_playground_canary_access(
         "status": "ok",
         "revoked_count": revoked_count,
         "message": "Acesso canário do Playground revogado para usuários configurados.",
+    }
+
+
+@router.get("/playground-access", response_model=list[PlaygroundAccessItem])
+async def list_playground_access(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[PlaygroundAccessItem]:
+    try:
+        result = await db.execute(
+            select(UserPreference).where(UserPreference.key == PLAYGROUND_ACCESS_KEY)
+        )
+        rows = result.scalars().all()
+    except SQLAlchemyError:
+        # Ambiente local sem migração de user_preferences
+        return []
+    return [
+        PlaygroundAccessItem(
+            user_id=str(row.user_id),
+            enabled=str(row.value).strip().lower() == "true",
+        )
+        for row in rows
+    ]
+
+
+@router.put("/playground-access/{user_id}", response_model=PlaygroundAccessItem)
+async def update_playground_access(
+    user_id: str,
+    payload: PlaygroundAccessUpdate,
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PlaygroundAccessItem:
+    try:
+        target_user_id = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="user_id inválido")
+
+    try:
+        pref_result = await db.execute(
+            select(UserPreference).where(
+                (UserPreference.user_id == target_user_id)
+                & (UserPreference.key == PLAYGROUND_ACCESS_KEY)
+            )
+        )
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=503, detail=f"Tabela de permissões indisponível: {e}")
+    preference = pref_result.scalar_one_or_none()
+    if preference is None:
+        preference = UserPreference(
+            user_id=target_user_id,
+            key=PLAYGROUND_ACCESS_KEY,
+            value="true" if payload.enabled else "false",
+            context=None,
+        )
+        db.add(preference)
+    else:
+        preference.value = "true" if payload.enabled else "false"
+
+    _log_playground_access_change(
+        db,
+        actor_user_id=current_user.id,
+        target_user_id=target_user_id,
+        enabled=payload.enabled,
+        action="grant_playground_access" if payload.enabled else "revoke_playground_access",
+    )
+    await db.commit()
+    _invalidate_playground_access_cache(user_id=user_id)
+    return PlaygroundAccessItem(user_id=user_id, enabled=payload.enabled)
+
+
+@router.post("/playground-access/revoke-all")
+async def revoke_all_playground_access(
+    current_user: Annotated[User, Depends(require_role("admin"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    try:
+        result = await db.execute(
+            select(UserPreference).where(UserPreference.key == PLAYGROUND_ACCESS_KEY)
+        )
+        preferences = result.scalars().all()
+    except SQLAlchemyError:
+        return {
+            "status": "ok",
+            "revoked_count": 0,
+            "message": "Tabela de permissões indisponível no ambiente local.",
+        }
+    revoked_count = 0
+    for pref in preferences:
+        if str(pref.value).strip().lower() == "true":
+            pref.value = "false"
+            revoked_count += 1
+
+    _log_playground_access_change(
+        db,
+        actor_user_id=current_user.id,
+        target_user_id=None,
+        enabled=False,
+        action="revoke_playground_access_bulk",
+    )
+    await db.commit()
+    _invalidate_playground_access_cache(user_id=None)
+    return {
+        "status": "ok",
+        "revoked_count": revoked_count,
+        "message": "Acesso ao Playground revogado para usuários configurados.",
     }
 
 

@@ -1,6 +1,6 @@
 import { createSignal, onMount, Show, For } from "solid-js";
 import { PlotlyChart } from "../components/PlotlyChart";
-import { dashboardApi } from "../lib/api";
+import { dashboardApi, rupturasApi, analyticsApi } from "../lib/api";
 import type { Component } from "solid-js";
 import "../styles/micro-interactions.css";
 
@@ -65,18 +65,85 @@ const Forecasting: Component = () => {
   const [chartSpec, setChartSpec] = createSignal<any>({});
   const [analysisLoading, setAnalysisLoading] = createSignal(false);
   const [error, setError] = createSignal("");
+  const [metadataError, setMetadataError] = createSignal("");
 
-  onMount(async () => {
-    // Load metadata segments and stores
+  const loadMetadata = async () => {
+    setMetadataError("");
     try {
-      const segResp = await dashboardApi.getMetadataSegments();
-      if (segResp.status === 200) setSegmentos(segResp.data);
+      const [segResp, storesResp] = await Promise.allSettled([
+        dashboardApi.getMetadataSegments(),
+        dashboardApi.getMetadataStores(),
+      ]);
 
-      const storesResp = await dashboardApi.getMetadataStores();
-      if (storesResp.status === 200) setLojas(storesResp.data);
+      let segs: string[] = [];
+      if (segResp.status === "fulfilled" && segResp.value.status === 200 && Array.isArray(segResp.value.data)) {
+        segs = segResp.value.data.filter((v: unknown): v is string => typeof v === "string" && v.trim().length > 0);
+      }
+
+      let stores: { UNE: number; NOME: string }[] = [];
+      if (storesResp.status === "fulfilled" && storesResp.value.status === 200 && Array.isArray(storesResp.value.data)) {
+        stores = storesResp.value.data
+          .map((item: any) => ({ UNE: Number(item.UNE), NOME: String(item.NOME ?? "").trim() }))
+          .filter((item) => Number.isFinite(item.UNE));
+      }
+
+      // Fallback para segmentos: rupturas -> analytics
+      if (segs.length === 0) {
+        const fallbackSegs = await Promise.allSettled([
+          rupturasApi.getSegmentos(),
+          analyticsApi.getFilterOptions(),
+        ]);
+
+        for (const res of fallbackSegs) {
+          if (res.status !== "fulfilled" || res.value.status !== 200) continue;
+          const data = res.value.data;
+          if (Array.isArray(data)) {
+            segs = data.filter((v: unknown): v is string => typeof v === "string" && v.trim().length > 0);
+            if (segs.length) break;
+          }
+          if (data && typeof data === "object" && Array.isArray((data as any).segmentos)) {
+            segs = (data as any).segmentos.filter((v: unknown): v is string => typeof v === "string" && v.trim().length > 0);
+            if (segs.length) break;
+          }
+        }
+      }
+
+      // Fallback para lojas: rupturas (unes)
+      if (stores.length === 0) {
+        const unesResp = await Promise.allSettled([rupturasApi.getUnes()]);
+        const unesFulfilled = unesResp[0];
+        if (unesFulfilled.status === "fulfilled" && unesFulfilled.value.status === 200 && Array.isArray(unesFulfilled.value.data)) {
+          stores = unesFulfilled.value.data
+            .map((uneRaw: unknown) => {
+              const une = Number(uneRaw);
+              return {
+                UNE: une,
+                NOME: Number.isFinite(une) ? `Loja ${une}` : "",
+              };
+            })
+            .filter((item) => Number.isFinite(item.UNE));
+        }
+      }
+
+      const uniqueSegs = Array.from(new Set(segs)).sort((a, b) => a.localeCompare(b));
+      const uniqueStores = Array.from(new Map(stores.map((s) => [s.UNE, s])).values()).sort((a, b) => a.UNE - b.UNE);
+
+      setSegmentos(uniqueSegs);
+      setLojas(uniqueStores);
+
+      if (uniqueSegs.length === 0 || uniqueStores.length === 0) {
+        setMetadataError("Não foi possível carregar todos os parâmetros. Tente atualizar.");
+      }
     } catch (e) {
       console.error("Failed to load metadata", e);
+      setSegmentos([]);
+      setLojas([]);
+      setMetadataError("Falha ao carregar parâmetros de análise.");
     }
+  };
+
+  onMount(async () => {
+    await loadMetadata();
   });
 
   const loadGrupos = async (segmento: string) => {
@@ -282,14 +349,29 @@ const Forecasting: Component = () => {
   };
 
   return (
-    <div class="h-[calc(100vh-4rem)] flex flex-col md:flex-row bg-white text-neutral-900 font-sans">
+    <div class="h-[calc(100vh-4rem)] flex flex-col md:flex-row bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 text-neutral-900 font-sans p-3 gap-3">
 
       {/* --- SIDEBAR (Left) --- */}
-      <div class="w-full md:w-[380px] flex flex-col border-r border-neutral-100 h-full bg-neutral-50/50">
+      <aside class="w-full md:w-[380px] flex flex-col border border-slate-200 h-full bg-white rounded-2xl shadow-sm overflow-hidden">
 
         {/* Header Filters */}
-        <div class="p-6 border-b border-neutral-100 space-y-5">
-          <h2 class="text-xs font-black uppercase tracking-widest text-neutral-400">Parâmetros de Análise</h2>
+        <div class="p-5 border-b border-slate-100 space-y-5 bg-gradient-to-r from-slate-50 to-white">
+          <div>
+            <h2 class="text-xs font-black uppercase tracking-widest text-slate-500">Parâmetros de Análise</h2>
+            <p class="text-xs text-slate-500 mt-1">Defina escopo, segmento e grupo para montar a previsão comercial.</p>
+          </div>
+
+          <Show when={metadataError()}>
+            <div class="rounded-lg border border-amber-200 bg-amber-50 text-amber-700 px-3 py-2 text-xs flex items-center justify-between gap-2">
+              <span>{metadataError()}</span>
+              <button
+                class="px-2 py-1 rounded border border-amber-300 hover:bg-amber-100 text-[11px] font-semibold"
+                onClick={loadMetadata}
+              >
+                Tentar de novo
+              </button>
+            </div>
+          </Show>
 
           <div class="space-y-4">
             {/* Store (Global vs Local) */}
@@ -298,7 +380,7 @@ const Forecasting: Component = () => {
                 Escopo (Loja)
               </label>
               <select
-                class="w-full bg-white border border-neutral-200 text-sm font-medium py-2 px-3 rounded-none focus:border-orange-500 focus:ring-0 outline-none transition-all"
+                class="w-full bg-white border border-slate-200 text-sm font-medium py-2.5 px-3 rounded-lg focus:border-orange-500 focus:ring-0 outline-none transition-all"
                 value={selectedLoja()}
                 onChange={(e) => setSelectedLoja(e.currentTarget.value)}
               >
@@ -313,7 +395,7 @@ const Forecasting: Component = () => {
                 Segmento Comercial
               </label>
               <select
-                class="w-full bg-white border border-neutral-200 text-sm font-medium py-2 px-3 rounded-none focus:border-orange-500 focus:ring-0 outline-none transition-all"
+                class="w-full bg-white border border-slate-200 text-sm font-medium py-2.5 px-3 rounded-lg focus:border-orange-500 focus:ring-0 outline-none transition-all"
                 value={selectedSegmento()}
                 onChange={(e) => loadGrupos(e.currentTarget.value)}
               >
@@ -328,7 +410,7 @@ const Forecasting: Component = () => {
                 Grupo de Produto
               </label>
               <select
-                class="w-full bg-white border border-neutral-200 text-sm font-medium py-2 px-3 rounded-none focus:border-orange-500 focus:ring-0 outline-none transition-all"
+                class="w-full bg-white border border-slate-200 text-sm font-medium py-2.5 px-3 rounded-lg focus:border-orange-500 focus:ring-0 outline-none transition-all"
                 value={selectedGrupo()}
                 onChange={(e) => {
                   setSelectedGrupo(e.currentTarget.value);
@@ -345,18 +427,18 @@ const Forecasting: Component = () => {
 
         {/* Product List (Minimal) */}
         <div class="flex-1 overflow-y-auto bg-white">
-          <Show when={!listLoading()} fallback={<div class="p-6 text-xs text-neutral-400 uppercase animate-pulse">Carregando dados...</div>}>
+          <Show when={!listLoading()} fallback={<div class="p-6 text-xs text-slate-500 uppercase animate-pulse">Carregando dados...</div>}>
             <Show when={productsList().length > 0} fallback={
               <div class="p-8 text-center">
-                <span class="text-xs text-neutral-400 uppercase tracking-widest">{selectedSegmento() ? "Nenhum resultado" : "Aguardando Filtros"}</span>
+                <span class="text-xs text-slate-500 uppercase tracking-widest">{selectedSegmento() ? "Nenhum resultado" : "Aguardando Filtros"}</span>
               </div>
             }>
-              <div class="divide-y divide-neutral-50">
+              <div class="divide-y divide-slate-50">
                 <For each={productsList()}>
                   {(prod) => (
                     <button
                       onClick={() => handleProductSelect(prod)}
-                      class={`w-full text-left p-4 hover:bg-neutral-50 transition-all group relative ${selectedProduct()?.id === prod.id ? 'bg-neutral-50' : ''}`}
+                      class={`w-full text-left p-4 hover:bg-slate-50 transition-all group relative ${selectedProduct()?.id === prod.id ? 'bg-orange-50/60' : ''}`}
                     >
                       {/* Active Indicator Line */}
                       <Show when={selectedProduct()?.id === prod.id}>
@@ -364,10 +446,10 @@ const Forecasting: Component = () => {
                       </Show>
 
                       <div class="flex justify-between items-start mb-1">
-                        <span class="text-[10px] font-mono text-neutral-400 group-hover:text-orange-500 transition-colors">#{prod.id}</span>
+                        <span class="text-[10px] font-mono text-slate-500 group-hover:text-orange-500 transition-colors">#{prod.id}</span>
                         <span class={`text-[10px] font-bold ${getRiskColor(prod.dias_cobertura)}`}>{prod.dias_cobertura.toFixed(0)}d</span>
                       </div>
-                      <div class="text-sm font-bold text-neutral-800 leading-tight group-hover:text-black line-clamp-2">
+                      <div class="text-sm font-semibold text-slate-800 leading-tight group-hover:text-slate-950 line-clamp-2">
                         {prod.nome}
                       </div>
                     </button>
@@ -377,55 +459,55 @@ const Forecasting: Component = () => {
             </Show>
           </Show>
         </div>
-      </div>
+      </aside>
 
       {/* --- MAIN CONTENT (Right) --- */}
-      <div class="flex-1 flex flex-col h-full overflow-y-auto bg-white">
+      <main class="flex-1 flex flex-col h-full overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-sm">
         <Show when={selectedProduct()} fallback={
-          <div class="flex-1 flex flex-col items-center justify-center opacity-30">
-            <h1 class="text-4xl font-black tracking-tighter text-neutral-300">FORECAST</h1>
-            <p class="text-sm font-mono text-neutral-400 mt-2">SELECIONE UM PRODUTO</p>
+          <div class="flex-1 flex flex-col items-center justify-center opacity-50">
+            <h1 class="text-4xl font-black tracking-tighter text-slate-300">PREVISÃO DE DEMANDA</h1>
+            <p class="text-sm font-mono text-slate-500 mt-2">Selecione um produto no painel lateral</p>
           </div>
         }>
 
           {/* HEADER: CLEANER TYPOGRAPHY */}
-          <div class="p-8 pb-4">
+          <div class="p-8 pb-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
             <div class="flex items-baseline gap-4 mb-2">
-              <span class="text-xs font-mono bg-neutral-100 px-2 py-1 rounded text-neutral-500">ID: {selectedProduct().id}</span>
-              <span class="text-xs font-mono text-neutral-400 uppercase">{selectedSegmento()} / {selectedGrupo() || 'GERAL'}</span>
+              <span class="text-xs font-mono bg-white border border-slate-200 px-2 py-1 rounded text-slate-600">ID: {selectedProduct().id}</span>
+              <span class="text-xs font-mono text-slate-500 uppercase">{selectedSegmento()} / {selectedGrupo() || 'GERAL'}</span>
             </div>
 
-            <h1 class="text-3xl font-bold tracking-tight text-neutral-900 leading-tight mb-8 max-w-4xl">
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900 leading-tight mb-8 max-w-4xl">
               {selectedProduct().nome}
             </h1>
 
             {/* KPI STRIP */}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-8 border-y border-neutral-100 py-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 
               {/* Est. Atual */}
-              <div>
-                <div class="text-[10px] font-bold uppercase text-neutral-400 tracking-wider mb-1">Estoque Atual</div>
-                <div class="text-2xl font-bold text-neutral-900">{selectedProduct().estoque.toLocaleString()}</div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-1">Estoque Atual</div>
+                <div class="text-2xl font-bold text-slate-900">{selectedProduct().estoque.toLocaleString()}</div>
               </div>
 
               {/* Vendas */}
-              <div>
-                <div class="text-[10px] font-bold uppercase text-neutral-400 tracking-wider mb-1">Venda (30d)</div>
-                <div class="text-2xl font-bold text-neutral-900">{selectedProduct().venda_30d.toLocaleString()}</div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-1">Venda (30d)</div>
+                <div class="text-2xl font-bold text-slate-900">{selectedProduct().venda_30d.toLocaleString()}</div>
               </div>
 
               {/* Cobertura */}
-              <div>
-                <div class="text-[10px] font-bold uppercase text-neutral-400 tracking-wider mb-1">Cobertura</div>
+              <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-1">Cobertura</div>
                 <div class={`text-2xl font-bold ${getRiskColor(selectedProduct().dias_cobertura)} flex items-baseline gap-1`}>
-                  {selectedProduct().dias_cobertura.toFixed(1)} <span class="text-sm font-medium text-neutral-400">dias</span>
+                  {selectedProduct().dias_cobertura.toFixed(1)} <span class="text-sm font-medium text-slate-500">dias</span>
                 </div>
               </div>
 
               {/* Status */}
-              <div>
-                <div class="text-[10px] font-bold uppercase text-neutral-400 tracking-wider mb-1">Sazonalidade</div>
-                <div class="text-2xl font-bold text-neutral-900 flex items-baseline gap-1">
+              <div class="rounded-xl border border-slate-200 bg-white p-4">
+                <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-1">Sazonalidade</div>
+                <div class="text-2xl font-bold text-slate-900 flex items-baseline gap-1">
                   {forecastData()?.seasonal_context?.multiplier || 1}x
                   <Show when={forecastData()?.seasonal_context?.urgency !== "Low"}>
                     <span class="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded ml-2 font-bold uppercase tracking-wide">
@@ -438,7 +520,7 @@ const Forecasting: Component = () => {
           </div>
 
           {/* ANALYSIS CONTENT */}
-          <div class="flex-1 p-8 pt-2 space-y-12">
+          <div class="flex-1 p-8 space-y-8">
 
             <Show when={analysisLoading()}>
               <div class="h-64 flex items-center justify-center">
@@ -446,15 +528,24 @@ const Forecasting: Component = () => {
               </div>
             </Show>
 
+            <Show when={!analysisLoading() && !!error()}>
+              <div class="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
+                {error()}
+              </div>
+            </Show>
+
             <Show when={!analysisLoading() && forecastData()}>
               {/* 1. CHART SECTION */}
-              <div class="w-full">
+              <div class="w-full rounded-2xl border border-slate-200 p-6 bg-white shadow-sm">
                 <div class="flex justify-between items-end mb-6">
-                  <h3 class="text-lg font-bold text-neutral-900">Projeção de Demanda</h3>
+                  <div>
+                    <h3 class="text-lg font-bold text-slate-900">Projeção de Demanda</h3>
+                    <p class="text-xs text-slate-500">Curva prevista com faixa de confiança e tendência base.</p>
+                  </div>
                   <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold text-neutral-400 uppercase">Horizonte:</span>
+                    <span class="text-xs font-bold text-slate-500 uppercase">Horizonte:</span>
                     <select
-                      class="bg-transparent border-b border-neutral-300 text-sm font-bold focus:border-orange-500 outline-none pb-0.5"
+                      class="bg-white border border-slate-300 rounded-md px-2 py-1 text-sm font-bold focus:border-orange-500 outline-none"
                       value={periodos()}
                       onChange={(e) => {
                         setPeriodos(parseInt(e.currentTarget.value));
@@ -469,12 +560,12 @@ const Forecasting: Component = () => {
                 </div>
 
                 {/* Chart Container - Fixed Height */}
-                <div class="h-[400px] w-full border-l border-b border-neutral-100 relative bg-white">
+                <div class="h-[400px] w-full border border-slate-100 rounded-xl relative bg-white overflow-hidden">
                   {/* Scope Tooltip Logic */}
                   <div class="absolute top-0 right-0 z-10">
                     <button
                       onClick={() => setShowScopeDetails(!showScopeDetails())}
-                      class="text-xs font-bold uppercase tracking-wider text-neutral-400 hover:text-orange-500 flex items-center gap-1 bg-white p-2 border border-transparent hover:border-neutral-100 rounded"
+                      class="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-orange-500 flex items-center gap-1 bg-white p-2 border border-transparent hover:border-slate-200 rounded"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       Escopo: {forecastData()?.abrangencia?.filtro_aplicado || "Rede"} ({forecastData()?.abrangencia?.total_lojas} Lojas)
@@ -482,14 +573,14 @@ const Forecasting: Component = () => {
 
                     {/* SCOPE DROPDOWN */}
                     <Show when={showScopeDetails()}>
-                      <div class="absolute right-0 top-8 w-64 bg-white border border-neutral-200 shadow-xl p-4 z-50 rounded animate-in fade-in slide-in-from-top-2">
-                        <h4 class="text-xs font-black uppercase text-neutral-400 mb-3 border-b border-neutral-100 pb-2">Lojas Analisadas</h4>
+                      <div class="absolute right-0 top-8 w-64 bg-white border border-slate-200 shadow-xl p-4 z-50 rounded animate-in fade-in slide-in-from-top-2">
+                        <h4 class="text-xs font-black uppercase text-slate-500 mb-3 border-b border-slate-100 pb-2">Lojas Analisadas</h4>
                         <div class="max-h-48 overflow-y-auto space-y-1">
                           <For each={forecastData()?.abrangencia?.detalhes}>
                             {(det) => (
-                              <div class="text-xs flex justify-between text-neutral-600 hover:bg-neutral-50 p-1 rounded">
+                              <div class="text-xs flex justify-between text-slate-600 hover:bg-slate-50 p-1 rounded">
                                 <span>Loja {det.une}</span>
-                                <span class="font-medium text-neutral-900">{det.nome_loja}</span>
+                                <span class="font-medium text-slate-900">{det.nome_loja}</span>
                               </div>
                             )}
                           </For>
@@ -510,19 +601,19 @@ const Forecasting: Component = () => {
               </div>
 
               {/* 2. ACTION SECTION (Grid) */}
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-neutral-100">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* EOQ (Action) */}
                 <Show when={eoqData()}>
-                  <div>
-                    <h3 class="text-lg font-bold text-neutral-900 mb-4">Recomendação de Compra (EOQ)</h3>
+                  <div class="rounded-2xl border border-slate-200 p-6 bg-white shadow-sm">
+                    <h3 class="text-lg font-bold text-slate-900 mb-4">Recomendação de Compra (EOQ)</h3>
                     <div class="flex flex-col gap-4">
                       <div class="flex items-baseline gap-2">
                         <span class="text-4xl font-bold text-orange-600 tracking-tight">{eoqData()?.eoq?.toLocaleString()}</span>
-                        <span class="text-sm font-bold text-neutral-400 uppercase">Unidades</span>
+                        <span class="text-sm font-bold text-slate-500 uppercase">Unidades</span>
                       </div>
 
-                      <p class="text-sm text-neutral-500">
+                      <p class="text-sm text-slate-600">
                         Quantidade ideal baseada em {eoqData()?.pedidos_por_ano} pedidos/ano com custo total de R$ {eoqData()?.custo_total_anual?.toFixed(2)}.
                       </p>
 
@@ -535,14 +626,14 @@ const Forecasting: Component = () => {
 
                 {/* Allocation (Distribution) */}
                 <Show when={(allocationData()?.alocacoes?.length ?? 0) > 0}>
-                  <div>
-                    <h3 class="text-lg font-bold text-neutral-900 mb-4 flex justify-between items-center">
+                  <div class="rounded-2xl border border-slate-200 p-6 bg-white shadow-sm">
+                    <h3 class="text-lg font-bold text-slate-900 mb-4 flex justify-between items-center">
                       <span>Plano de Distribuição (Push)</span>
-                      <span class="text-xs font-mono text-neutral-400">{allocationData()?.total_alocado}un TOTAL</span>
+                      <span class="text-xs font-mono text-slate-500">{allocationData()?.total_alocado}un TOTAL</span>
                     </h3>
 
-                    <div class="border border-neutral-200 bg-neutral-50 rounded-lg overflow-hidden">
-                      <div class="grid grid-cols-3 text-[10px] font-bold uppercase text-neutral-400 p-2 border-b border-neutral-200 bg-neutral-100">
+                    <div class="border border-slate-200 bg-slate-50 rounded-lg overflow-hidden">
+                      <div class="grid grid-cols-3 text-[10px] font-bold uppercase text-slate-500 p-2 border-b border-slate-200 bg-slate-100">
                         <span>Destino</span>
                         <span class="text-right">Qtd</span>
                         <span class="text-right">Justificativa</span>
@@ -550,10 +641,10 @@ const Forecasting: Component = () => {
                       <div class="max-h-40 overflow-y-auto">
                         <For each={allocationData()?.alocacoes}>
                           {(aloc) => (
-                            <div class="grid grid-cols-3 text-xs p-2 border-b border-neutral-100 last:border-0 hover:bg-white transition-colors">
-                              <div class="font-bold text-neutral-700">Loja {aloc.une}</div>
-                              <div class="text-right font-mono text-neutral-900">{aloc.quantidade}</div>
-                              <div class="text-right text-neutral-500 truncate">{aloc.justificativa}</div>
+                            <div class="grid grid-cols-3 text-xs p-2 border-b border-slate-100 last:border-0 hover:bg-white transition-colors">
+                              <div class="font-bold text-slate-700">Loja {aloc.une}</div>
+                              <div class="text-right font-mono text-slate-900">{aloc.quantidade}</div>
+                              <div class="text-right text-slate-500 truncate">{aloc.justificativa}</div>
                             </div>
                           )}
                         </For>
@@ -567,7 +658,7 @@ const Forecasting: Component = () => {
           </div>
 
         </Show>
-      </div>
+      </main>
     </div>
   );
 };

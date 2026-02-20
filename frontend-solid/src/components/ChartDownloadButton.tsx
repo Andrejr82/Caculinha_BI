@@ -34,8 +34,7 @@ export const ChartDownloadButton: Component<ChartDownloadButtonProps> = (props) 
         format: format,
         filename: filename,
         width: width,
-        height: height,
-        scale: scale
+        height: height
       });
     } catch (error) {
       console.error("Erro ao baixar gráfico:", error);
@@ -79,8 +78,7 @@ export const MultiFormatDownload: Component<MultiFormatDownloadProps> = (props) 
         format: format,
         filename: filename,
         width: 1200,
-        height: 800,
-        scale: 2
+        height: 800
       });
     } catch (error) {
       console.error("Erro ao baixar gráfico:", error);

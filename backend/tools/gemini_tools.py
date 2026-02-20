@@ -68,8 +68,11 @@ EXEMPLOS:
                         "description": "Coluna para ORDER BY. Ex: 'valor' ou 'ESTOQUE'"
                     },
                     "ordem_desc": {
-                        "type": "boolean",
-                        "description": "Se True, ordena decrescente (DESC). Padrão: True"
+                        "anyOf": [
+                            {"type": "boolean"},
+                            {"type": "string"}
+                        ],
+                        "description": "Se True, ordena decrescente (DESC). Aceita boolean ou string ('true'/'false'). Padrão: True"
                     },
                     "limite": {
                         "type": "string",

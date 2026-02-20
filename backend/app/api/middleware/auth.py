@@ -62,7 +62,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.user_role = "admin"
             return await call_next(request)
         
-        # Validar token
+        # Validar token (somente erros de autenticação devem ser tratados aqui)
         try:
             token = self._extract_token(request)
             if token:
@@ -75,28 +75,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 request.state.user_id = "anonymous"
                 request.state.tenant_id = "default"
                 request.state.user_role = "guest"
-            
-            return await call_next(request)
-            
         except HTTPException as e:
             return JSONResponse(
                 status_code=e.status_code,
                 content={"detail": e.detail}
             )
         except Exception as e:
-            import traceback
-            try:
-                with open("auth_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"\n[{datetime.now()}] Middleware Auth Error: {str(e)}\n")
-                    f.write(f"Path: {request.url.path}\n")
-                    f.write(f"Traceback: {traceback.format_exc()}\n")
-            except:
-                pass
-            logger.error("auth_middleware_error", error=str(e))
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Erro de autenticação"}
-            )
+            logger.error("auth_middleware_error", error=str(e), path=request.url.path)
+            return JSONResponse(status_code=500, content={"detail": "Erro de autenticação"})
+
+        # Importante: exceções do endpoint NÃO devem virar "erro de autenticação"
+        return await call_next(request)
     
     def _extract_token(self, request: Request) -> Optional[str]:
         """Extrai token do header Authorization."""

@@ -62,8 +62,8 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
     document.body.style.overflow = '';
     getPlotly()
       .then((mod) => {
-        if (chartDiv) mod.default.purge(chartDiv);
-        if (expandedChartDiv) mod.default.purge(expandedChartDiv);
+        if (chartDiv) mod.purge(chartDiv);
+        if (expandedChartDiv) mod.purge(expandedChartDiv);
       })
       .catch(() => undefined);
   });
@@ -76,7 +76,7 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
     if (!targetDiv || !spec || Object.keys(spec).length === 0) return;
 
     try {
-      const plotly = (await getPlotly()).default;
+      const plotly = await getPlotly();
       const caculaLayout = {
         paper_bgcolor: isExpanded() ? '#FAFAFA' : '#FAFAFA',
         plot_bgcolor: '#FFFFFF',

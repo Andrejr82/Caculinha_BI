@@ -36,6 +36,7 @@ class GeminiLLMAdapter(BaseLLMAdapter):
 
     def __init__(self, model_name: Optional[str] = None, gemini_api_key: Optional[str] = None, system_instruction: Optional[str] = None):
         self.logger = logging.getLogger(__name__)
+        self.provider = "google"
 
         if not GEMINI_AVAILABLE:
             raise ImportError(
@@ -67,6 +68,14 @@ class GeminiLLMAdapter(BaseLLMAdapter):
         self.system_instruction = system_instruction
 
         self.logger.info(f"Gemini adapter inicializado com modelo: {self.model_name}")
+
+    def get_capabilities(self) -> BaseLLMAdapter.Capabilities:
+        return BaseLLMAdapter.Capabilities(
+            chat=True,
+            tools=True,
+            streaming=True,
+            json_mode=True,
+        )
 
     async def generate_response(self, prompt: str) -> str:
         """

@@ -36,7 +36,9 @@ class ResponseValidator:
         "NOMESEGMENTO", "NOMECATEGORIA", "NOMEFABRICANTE", "SITUACAO",
         "ESTOQUE_UNE", "ESTOQUE_LV", "ESTOQUE_CD", "VENDA_30DD",
         "PRECO_VENDA", "PRECO_CUSTO", "PICKLIST_SITUACAO",
-        "ULTIMA_VENDA_DATA_UNE", "created_at", "updated_at"
+        "ULTIMA_VENDA_DATA_UNE", "created_at", "updated_at",
+        # Campos derivados de apresentação (não internos sensíveis)
+        "TOTAL_VENDAS", "VALOR", "ITENS", "VENDA_30DD_TOTAL", "ESTOQUE_UNE_TOTAL"
     }
     
     # Palavras que indicam possível alucinação
