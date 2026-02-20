@@ -1,5 +1,6 @@
 import { createSignal, For, Show, onMount, createEffect } from 'solid-js';
-import { Terminal, Send, Trash2, Settings, Clock, Cpu, Code, Play, X, ChevronDown, ChevronRight, Split, LayoutTemplate, ThumbsUp, ThumbsDown, Download } from 'lucide-solid';
+import { useNavigate } from '@solidjs/router';
+import { Terminal, Send, Trash2, Settings, Clock, Cpu, Code, Play, X, ChevronDown, ChevronRight, Split, LayoutTemplate, ThumbsUp, ThumbsDown, Download, FileJson } from 'lucide-solid';
 import { playgroundApi, authApi } from '../lib/api';
 import { MessageActions } from '../components/MessageActions';
 import 'github-markdown-css/github-markdown.css';
@@ -56,6 +57,7 @@ interface PlaygroundMetrics {
 }
 
 export default function Playground() {
+   const navigate = useNavigate();
    // Panel A State
    const [messagesA, setMessagesA] = createSignal<Message[]>([]);
    const [modelA, setModelA] = createSignal('server-default');
@@ -90,14 +92,26 @@ export default function Playground() {
 
    const [modelInfo, setModelInfo] = createSignal<ModelInfo | null>(null);
    const [metrics, setMetrics] = createSignal<PlaygroundMetrics | null>(null);
+   const [accessBlockedMessage, setAccessBlockedMessage] = createSignal<string | null>(null);
 
    onMount(async () => {
       try {
          const response = await playgroundApi.getInfo();
          setModelInfo(response.data);
          if (response.data.model) setModelA(response.data.model);
+         if (response.data?.playground_access_enabled === false) {
+            navigate('/dashboard', { replace: true });
+            return;
+         } else {
+            setAccessBlockedMessage(null);
+         }
       } catch (error) {
          console.error('Erro ao carregar info do modelo:', error);
+         const detail = (error as any)?.response?.data?.detail;
+         if ((error as any)?.response?.status === 403) {
+            navigate('/dashboard', { replace: true });
+            return;
+         }
       }
       try {
          const response = await playgroundApi.getMetrics();
@@ -121,6 +135,8 @@ export default function Playground() {
    ) => {
       setLoading(true);
       const assistantId = Date.now().toString() + Math.random().toString();
+      let accumulatedText = "";
+      let requestId: string | undefined = undefined;
 
       // Placeholder for assistant
       const initialMsgs = [...currentHistory, {
@@ -163,24 +179,26 @@ export default function Playground() {
 
          const reader = response.body?.getReader();
          const decoder = new TextDecoder();
-      let accumulatedText = "";
-      let requestId: string | undefined = undefined;
 
          if (!reader) throw new Error("No reader");
 
-         while (true) {
+         let eventBuffer = "";
+         let streamCompleted = false;
+
+         while (!streamCompleted) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n\n');
+            eventBuffer += decoder.decode(value, { stream: true });
+            const events = eventBuffer.split('\n\n');
+            eventBuffer = events.pop() ?? "";
 
-            for (const line of lines) {
-               if (line.startsWith('data: ')) {
+            for (const eventChunk of events) {
+               if (eventChunk.startsWith('data: ')) {
                   try {
-                     const data = JSON.parse(line.slice(6));
+                     const data = JSON.parse(eventChunk.slice(6).trim());
                      if (data.type === 'token') {
-                        accumulatedText += data.text;
+                        accumulatedText += (data.text || '');
                         setMessages(initialMsgs.map(m =>
                            m.id === assistantId ? { ...m, content: accumulatedText, request_id: requestId } : m
                         ));
@@ -194,17 +212,27 @@ export default function Playground() {
                      } else if (data.type === 'done') {
                         setResponseTime(data.metrics.time);
                         if (data.request_id) requestId = data.request_id;
+                        streamCompleted = true;
+                        break;
                      } else if (data.type === 'error') {
                         accumulatedText += `\n\n⚠️ Não foi possível concluir no Playground: ${data.text}`;
                         setMessages(initialMsgs.map(m =>
                            m.id === assistantId ? { ...m, content: accumulatedText, request_id: requestId } : m
                         ));
+                        streamCompleted = true;
+                        break;
                      }
                   } catch (e) {
                      // ignore json parse error for partial chunks
                   }
                }
             }
+         }
+
+         try {
+            await reader.cancel();
+         } catch {
+            // no-op
          }
 
       } catch (e: any) {
@@ -260,6 +288,7 @@ export default function Playground() {
 
    const sendMessage = async (e?: Event) => {
       e?.preventDefault();
+      if (accessBlockedMessage()) return;
       if (!input().trim() || loadingA() || loadingB()) return;
 
       const userContent = input();
@@ -531,14 +560,14 @@ export default function Playground() {
                            placeholder={compareMode() ? "Enviar para ambos os modelos..." : "Digite sua mensagem..."}
                            value={input()}
                            onInput={(e) => setInput(e.currentTarget.value)}
-                           disabled={loadingA() || loadingB()}
+                        disabled={loadingA() || loadingB()}
                         />
                      </div>
 
                      <button
                         type="submit"
                         class="btn btn-primary shadow-md hover:shadow-lg transition-all"
-                        disabled={(loadingA() || loadingB()) || !input().trim()}
+                        disabled={!!accessBlockedMessage() || (loadingA() || loadingB()) || !input().trim()}
                      >
                         <Show when={!loadingA() && !loadingB()} fallback={<Clock size={20} class="animate-spin" />}>
                            <Send size={20} />

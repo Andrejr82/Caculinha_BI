@@ -25,7 +25,7 @@ export function useReports() {
   }));
 
   // Mutations
-  const createMutation = createMutation(() => ({
+  const createReportMutation = createMutation(() => ({
     mutationFn: reportsService.create,
     onSuccess: (newReport) => {
       queryClient.invalidateQueries({ queryKey: ['reports'] });
@@ -70,11 +70,11 @@ export function useReports() {
     reports: reportsQuery.data,
     templates: templatesQuery.data,
     isLoading: reportsQuery.isLoading,
-    createReport: createMutation.mutate,
+    createReport: createReportMutation.mutate,
     updateReport: updateMutation.mutate,
     deleteReport: deleteMutation.mutate,
     generatePDF: generatePDFMutation.mutate,
-    isCreating: createMutation.isPending,
+    isCreating: createReportMutation.isPending,
     isSaving: updateMutation.isPending,
     isGenerating: generatePDFMutation.isPending,
   };

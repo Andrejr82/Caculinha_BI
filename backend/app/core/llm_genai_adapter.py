@@ -42,6 +42,7 @@ class GenAILLMAdapter(BaseLLMAdapter):
         system_instruction: Optional[str] = None
     ):
         self.logger = logging.getLogger(__name__)
+        self.provider = "google"
 
         if not GENAI_AVAILABLE:
             raise ImportError(
@@ -70,6 +71,14 @@ class GenAILLMAdapter(BaseLLMAdapter):
         self.debug_dumps = os.getenv("GENAI_DEBUG_DUMPS", "false").lower() == "true"
 
         self.logger.info(f"[OK] GenAI adapter inicializado com modelo: {self.model_name}")
+
+    def get_capabilities(self) -> BaseLLMAdapter.Capabilities:
+        return BaseLLMAdapter.Capabilities(
+            chat=True,
+            tools=True,
+            streaming=False,
+            json_mode=True,
+        )
 
     def get_completion(self, messages: List[Dict[str, str]], tools: Optional[List] = None) -> Dict[str, Any]:
         """

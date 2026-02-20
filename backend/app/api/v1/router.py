@@ -31,6 +31,7 @@ from backend.app.api.v1.endpoints import (
     catalog,
     ingest,
     memory,
+    competitive,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -70,4 +71,5 @@ api_router.include_router(dashboard.router)
 api_router.include_router(catalog.router, prefix="/catalog", tags=["Catalog"])
 api_router.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
 api_router.include_router(memory.router, prefix="/memory", tags=["Memory"])
+api_router.include_router(competitive.router)
 api_router.include_router(legacy_feedback.router, tags=["Feedback"])

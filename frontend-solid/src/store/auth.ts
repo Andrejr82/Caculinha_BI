@@ -8,6 +8,20 @@ export interface User {
   allowed_segments: string[];
 }
 
+const ADMIN_EMAIL = 'user@agentbi.com';
+
+function resolveEffectiveRole(payload: any): string {
+  const tokenRole = String(payload?.role || '').toLowerCase();
+  const metadataRole = String(payload?.user_metadata?.role || payload?.app_metadata?.role || '').toLowerCase();
+  const email = String(payload?.email || payload?.user_metadata?.email || '').toLowerCase();
+  const username = String(payload?.username || payload?.sub || '').toLowerCase();
+
+  if (email === ADMIN_EMAIL || username === ADMIN_EMAIL) return 'admin';
+  if (tokenRole && tokenRole !== 'authenticated' && tokenRole !== 'anon') return tokenRole;
+  if (metadataRole) return metadataRole;
+  return 'user';
+}
+
 function createAuthStore() {
   const [user, setUser] = createSignal<User | null>(null);
   const [token, setToken] = createSignal<string | null>(null);
@@ -66,7 +80,7 @@ function createAuthStore() {
         if (payload) {
           // 🚨 CRITICAL FIX: Admin ALWAYS gets full access
           let allowedSegments = payload.allowed_segments || [];
-          const role = payload.role || 'user';
+          const role = resolveEffectiveRole(payload);
 
           if (role === 'admin' && !allowedSegments.includes('*')) {
             console.warn('⚠️ Admin missing full access in token - forcing ["*"]');
@@ -129,7 +143,7 @@ function createAuthStore() {
         setIsAuthenticated(true);
 
         let allowedSegments = payload.allowed_segments || [];
-        const role = payload.role || 'user';
+        const role = resolveEffectiveRole(payload);
 
         if (role === 'admin' && !allowedSegments.includes('*')) {
           console.warn('⚠️ Admin missing full access in login - forcing ["*"]');

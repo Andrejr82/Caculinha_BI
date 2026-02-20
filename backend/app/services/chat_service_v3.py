@@ -32,6 +32,7 @@ from backend.app.core.agents.code_gen_agent import CodeGenAgent
 from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ class ChatServiceV3:
             self.code_gen_agent = None
         
         # [OK] NOVO: Usar CaculinhaBIAgent em vez de componentes separados
-        logger.info("[DEBUG] [DEBUG] Criando CaculinhaBIAgent...")
+        logger.info("[DEBUG] [DEBUG] Criando CaculinhaBIAgent (default=analyst)...")
         self.agent = CaculinhaBIAgent(
             llm=self.llm,
             code_gen_agent=self.code_gen_agent,
@@ -122,15 +123,37 @@ class ChatServiceV3:
             user_role="analyst",
             enable_rag=True
         )
+        # Cache de agentes por role para evitar recriação por request
+        self._agents_by_role: Dict[str, CaculinhaBIAgent] = {"analyst": self.agent}
         logger.info(f"[DEBUG] [DEBUG] CaculinhaBIAgent criado com sucesso: {type(self.agent)}")
         
         logger.info("[OK] ChatServiceV3 inicializado com CaculinhaBIAgent")
+
+    def get_llm_status(self) -> Dict[str, Any]:
+        """
+        Retorna status dos provedores LLM em uso.
+        """
+        if hasattr(self.llm, "get_provider_status"):
+            return self.llm.get_provider_status()
+        return {
+            "primary": getattr(settings, "LLM_PROVIDER", "unknown"),
+            "chain": [getattr(settings, "LLM_PROVIDER", "unknown")],
+            "providers": [
+                {
+                    "provider": getattr(settings, "LLM_PROVIDER", "unknown"),
+                    "available": True,
+                    "model": getattr(settings, "LLM_MODEL_NAME", None),
+                    "capabilities": {"chat": True, "tools": False, "streaming": False, "json_mode": False},
+                }
+            ],
+        }
     
     async def process_message(
         self,
         query: str,
         session_id: str,
         user_id: str,
+        user_role: str = "analyst",
         on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
     ) -> Dict[str, Any]:
         """
@@ -156,14 +179,33 @@ class ChatServiceV3:
                         # Chamada do Agente (já é o evento completo)
                         await on_progress(arg1)
                     else:
+                        tool_map = {
+                            "Analisando pergunta": "system.thinking",
+                            "Pensando": "system.thinking",
+                            "Processando resposta": "system.finalizing",
+                            "consultar_dados_flexivel": "tool.data_query",
+                            "consultar_dados_gerais": "tool.metadata_query",
+                            "gerar_grafico_universal": "tool.chart",
+                            "gerar_grafico_universal_v2": "tool.chart",
+                            "pesquisar_precos_concorrentes": "tool.competitive_research",
+                        }
+                        status_map = {
+                            "start": "start",
+                            "executing": "executing",
+                            "processing": "finishing",
+                            "done": "finishing",
+                            "finishing": "finishing",
+                        }
                         # Chamada interna (tool, status)
                         await on_progress({
                             "type": "tool_progress",
-                            "tool": arg1,
-                            "status": arg2
+                            "tool": tool_map.get(str(arg1), f"tool.{str(arg1 or 'generic')}"),
+                            "status": status_map.get(str(arg2 or "").lower(), "executing")
                         })
             
-            logger.info(f"[DEBUG] [DEBUG] Agente disponível: {self.agent is not None}")
+            role = self._normalize_role(user_role)
+            agent = self._get_agent_for_role(role)
+            logger.info(f"[DEBUG] [DEBUG] Agente disponível para role '{role}': {agent is not None}")
             
             # 1. Obter histórico
             chat_history = self.session_manager.get_history(session_id, user_id)
@@ -188,7 +230,7 @@ class ChatServiceV3:
             logger.info(f"[DEBUG] [DEBUG] Chamando agent.run_async()...")
             
             # FIX: run_async é nativamente async, não usar threads para ele
-            agent_response = await self.agent.run_async(
+            agent_response = await agent.run_async(
                 query,
                 agent_history, # Pass converted history directly
                 on_progress=emit_progress # Pass progress callback if supported
@@ -226,6 +268,45 @@ class ChatServiceV3:
                 "type": "text",
                 "result": {"mensagem": f"Erro ao processar: {str(e)}"}
             }
+
+    def _get_agent_for_role(self, role: str) -> CaculinhaBIAgent:
+        """Retorna (ou cria) um agente com escopo de ferramentas por role."""
+        if role in self._agents_by_role:
+            return self._agents_by_role[role]
+
+        logger.info(f"[DEBUG] Criando agente para role dinâmica: {role}")
+        scoped_agent = CaculinhaBIAgent(
+            llm=self.llm,
+            code_gen_agent=self.code_gen_agent,
+            field_mapper=self.field_mapper,
+            user_role=role,
+            enable_rag=True
+        )
+        self._agents_by_role[role] = scoped_agent
+        return scoped_agent
+
+    def _normalize_role(self, user_role: Optional[str]) -> str:
+        """
+        Normaliza papel do usuário para escopo de ferramentas do agente.
+        Mantém experiência funcional do chat para perfis de negócio.
+        """
+        role = (user_role or "analyst").strip().lower()
+        role_map = {
+            "admin": "admin",
+            "analyst": "analyst",
+            "user": "analyst",
+            "compras": "analyst",
+            "coordenador": "analyst",
+            "coordinator": "analyst",
+            "gerente": "analyst",
+            "manager": "analyst",
+            "viewer": "viewer",
+            "guest": "guest",
+        }
+        normalized = role_map.get(role, "analyst")
+        if normalized != role:
+            logger.info(f"[DEBUG] Role normalizada para escopo do chat: '{role}' -> '{normalized}'")
+        return normalized
     
     def _convert_history_format(self, chat_history: list) -> list:
         """

@@ -264,77 +264,71 @@ export default function Analytics() {
       setVendasCategoriaChart(vendasSpec);
     }
 
-    // 2. LOJAS CAÇULA - LIGHT THEME: Giro de Estoque (Velocity Scatter)
+    // 2. LOJAS CAÇULA - LIGHT THEME: Giro de Estoque (Top 15 em barras horizontais)
     if (analysisData.giro_estoque.length > 0) {
-      // Color Logic for Velocity
-      const colors = analysisData.giro_estoque.map(p => {
-        if (p.giro >= 1.0) return '#166534'; // Green (Fast)
-        if (p.giro >= 0.5) return '#CA8A04'; // Yellow (Medium)
+      const labels = analysisData.giro_estoque.map((p, i) => `${i + 1}. ${p.nome}`);
+      const valores = analysisData.giro_estoque.map(p => p.giro);
+      const colors = valores.map(giro => {
+        if (giro >= 1.0) return '#166534'; // Green (Fast)
+        if (giro >= 0.5) return '#CA8A04'; // Yellow (Medium)
         return '#991B1B'; // Red (Slow/Risk)
       });
+      const categorias = valores.map(giro =>
+        giro >= 1.0 ? 'Alta Rotatividade' :
+          giro >= 0.5 ? 'Giro Moderado' : 'Giro Lento'
+      );
 
-      const maxGiro = Math.max(...analysisData.giro_estoque.map(p => p.giro), 1.2); // Ensure plot shows at least 1.2
+      const maxGiro = Math.max(...valores, 1.2);
 
       const giroSpec = {
         data: [{
-          type: 'scatter',
-          mode: 'markers',
-          x: analysisData.giro_estoque.map((_, i) => i + 1),
-          y: analysisData.giro_estoque.map(p => p.giro),
-          text: analysisData.giro_estoque.map(p => p.nome),
+          type: 'bar',
+          orientation: 'h',
+          y: labels,
+          x: valores,
           marker: {
             color: colors,
-            size: 14,
-            line: { color: '#FFFFFF', width: 2 },
-            opacity: 0.9,
-            symbol: 'circle'
+            line: { color: '#FFFFFF', width: 1 }
           },
-          hovertemplate: '<b>%{text}</b><br>Ranking: #%{x}<br>Giro: %{y:.2f}x/mês<br><i>%{customdata}</i><extra></extra>',
-          customdata: analysisData.giro_estoque.map(p =>
-            p.giro >= 1.0 ? 'Alta Rotatividade 🚀' :
-              p.giro >= 0.5 ? 'Giro Moderado ⚖️' : 'Giro Lento ⚠️'
-          )
+          text: valores.map(v => `${v.toFixed(2)}x`),
+          textposition: 'outside',
+          hovertemplate: '<b>%{y}</b><br>Giro: %{x:.2f}x/mês<br>Status: %{customdata}<extra></extra>',
+          customdata: categorias
         }],
         layout: {
           title: {
-            text: '<b>Velocidade do Estoque</b> (Giro/Mês)',
+            text: '<b>Giro de Estoque (Top 15)</b>',
             font: { size: 16, color: '#2D2D2D', family: 'Inter, sans-serif' }
           },
           xaxis: {
-            title: 'Ranking de Vendas',
+            title: 'Giro Mensal (x)',
             titlefont: { size: 12, color: '#6B6B6B' },
             tickfont: { color: '#6B6B6B' },
             gridcolor: '#F1F5F9',
-            showgrid: false
+            range: [0, maxGiro * 1.15]
           },
           yaxis: {
-            title: 'Giro Mensal',
-            titlefont: { size: 12, color: '#6B6B6B' },
-            tickfont: { color: '#6B6B6B' },
-            gridcolor: '#F1F5F9',
-            zeroline: true,
-            range: [0, maxGiro * 1.1] // Dynamic padding
+            title: '',
+            automargin: true,
+            tickfont: { size: 10, color: '#6B6B6B' }
           },
           plot_bgcolor: '#FFFFFF',
           paper_bgcolor: '#FAFAFA',
-          margin: { l: 60, r: 20, t: 60, b: 60 },
+          margin: { l: 220, r: 20, t: 60, b: 60 },
           shapes: [
-            // Benchmark Line (1.0)
+            // Linha de atenção (0.5)
             {
               type: 'line',
-              x0: 0, x1: 1, xref: 'paper',
-              y0: 1.0, y1: 1.0, yref: 'y',
-              line: { color: '#166534', width: 2, dash: 'dot', opacity: 0.6 },
-              label: { text: 'Meta (1.0)', textposition: 'end', font: { size: 10, color: '#166534' } }
+              x0: 0.5, x1: 0.5, xref: 'x',
+              y0: 0, y1: 1, yref: 'paper',
+              line: { color: '#CA8A04', width: 1, dash: 'dot' }
             },
-            // Danger Zone (< 0.5)
+            // Meta (1.0)
             {
-              type: 'rect',
-              x0: 0, x1: 1, xref: 'paper',
-              y0: 0, y1: 0.5, yref: 'y',
-              fillcolor: 'rgba(220, 38, 38, 0.05)',
-              line: { width: 0 },
-              layer: 'below'
+              type: 'line',
+              x0: 1.0, x1: 1.0, xref: 'x',
+              y0: 0, y1: 1, yref: 'paper',
+              line: { color: '#166534', width: 2, dash: 'dot' }
             }
           ]
         },

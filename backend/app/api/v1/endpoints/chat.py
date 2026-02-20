@@ -12,13 +12,14 @@ import json
 import asyncio
 import logging
 import sys
+import re
 import numpy as np
 import pandas as pd
 from decimal import Decimal
 from datetime import datetime, date
 
 # Import core dependencies
-from backend.app.api.dependencies import get_current_active_user, get_token_from_header_or_query
+from backend.app.api.dependencies import get_current_active_user, get_token_from_header_or_query, issue_stream_token
 from backend.app.infrastructure.database.models import User
 from backend.app.config.settings import settings
 from backend.app.core.utils.response_cache import ResponseCache
@@ -51,6 +52,25 @@ def _is_degraded_or_error_response(payload: Any) -> bool:
         "erro ao processar",
     ]
     return any(marker in text for marker in degraded_markers)
+
+
+def _sanitize_business_output(text: str) -> str:
+    """Remove technical/internal leakage from final user-visible answer."""
+    if not text:
+        return text
+
+    cleaned = str(text)
+    blocked_patterns = [
+        r"(?i)\bbase\s*=\s*[a-z0-9_.-]+",
+        r"(?i)\b(parquet|duckdb|schema|coluna[s]?\s+internas?|tabela[s]?\s+internas?)\b",
+        r"(?i)\b(c:\\|/)[^\s]+",
+        r"(?i)\b(venda_30dd|estoque_une|liquido_38|nomesegmento)\b",
+    ]
+    for pattern in blocked_patterns:
+        cleaned = re.sub(pattern, "", cleaned)
+
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def safe_json_dumps(obj: Any, **kwargs) -> str:
@@ -119,6 +139,7 @@ chat_service_v3 = None  # Metrics-First Architecture
 session_manager = None
 query_history = None  # [OK] FIX: Added missing variable for feedback endpoint
 _init_lock = asyncio.Lock()
+_CHAT_CACHE_VERSION = "chatbi_v3_20260218_r3"
 
 # [OK] FIX: Import os for feedback endpoint
 import os
@@ -186,6 +207,42 @@ class FeedbackRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+
+@router.post("/stream-token")
+async def create_stream_token(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    """
+    Emite token efêmero para SSE, evitando expor JWT completo na URL.
+    TTL curto e uso único.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization Bearer ausente")
+
+    bearer = auth_header[7:].strip()
+    if not bearer:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    ephemeral = issue_stream_token(bearer)
+    return {"stream_token": ephemeral, "expires_in": 120}
+
+
+@router.get("/llm/status")
+async def llm_status(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    """
+    Status operacional dos provedores LLM configurados para o ChatBI.
+    """
+    global chat_service_v3
+    if chat_service_v3 is None:
+        await initialize_agents_async()
+    if chat_service_v3 is None:
+        raise HTTPException(status_code=503, detail="Chat service ainda não inicializado")
+    return chat_service_v3.get_llm_status()
 
 
 @router.get("/stream")
@@ -279,13 +336,13 @@ async def stream_chat(
                 # Simular steps de progresso para UX consistente
                 event_counter += 1
                 yield f"id: {event_counter}\n"
-                yield f"data: {safe_json_dumps({'type': 'tool_progress', 'tool': 'Pensando', 'status': 'start'})}\n\n"
+                yield f"data: {safe_json_dumps({'type': 'tool_progress', 'tool': 'system.thinking', 'status': 'start'})}\n\n"
                 
                 await asyncio.sleep(0.1) 
                 
                 event_counter += 1
                 yield f"id: {event_counter}\n"
-                yield f"data: {safe_json_dumps({'type': 'tool_progress', 'tool': 'Processando resposta', 'status': 'processing'})}\n\n"
+                yield f"data: {safe_json_dumps({'type': 'tool_progress', 'tool': 'system.finalizing', 'status': 'finishing'})}\n\n"
 
                 # Stream response text
                 words = response_text.split(" ")
@@ -350,9 +407,26 @@ async def stream_chat(
             user_cache_id = str(current_user.id) if current_user else None
 
             # NOVO: Verificar Semantic Cache primeiro (com user_id)
-            cached_response = cache_get(q, user_id=user_cache_id)
+            cache_key_query = f"{_CHAT_CACHE_VERSION}:{q}"
+            cached_response = cache_get(cache_key_query, user_id=user_cache_id)
             if cached_response and not _is_degraded_or_error_response(cached_response):
                 logger.info(f"CACHE HIT: Resposta encontrada em cache para: {q[:50]}... (user={user_cache_id})")
+                # Mesmo em cache-hit, manter histórico consistente para follow-ups.
+                try:
+                    if chat_service_v3 is not None:
+                        chat_service_v3.session_manager.add_message(session_id, "user", q, current_user.id)
+                        cached_text = ""
+                        if isinstance(cached_response, dict):
+                            res = cached_response.get("result", {})
+                            if isinstance(res, dict):
+                                cached_text = str(res.get("mensagem", ""))
+                            else:
+                                cached_text = str(res)
+                        if not cached_text:
+                            cached_text = str(cached_response)
+                        chat_service_v3.session_manager.add_message(session_id, "assistant", cached_text, current_user.id)
+                except Exception as e:
+                    logger.warning(f"Falha ao registrar histórico em cache-hit: {e}")
                 event_counter += 1
                 yield f"id: {event_counter}\n"
                 yield f"data: {safe_json_dumps({'type': 'cache_hit', 'done': False})}\n\n"
@@ -375,6 +449,7 @@ async def stream_chat(
                             query=q, 
                             session_id=session_id, 
                             user_id=current_user.id,
+                            user_role=current_user.role,
                             on_progress=progress_callback
                         ),
                         timeout=90.0  # [OK] FIX: Aumentado para 90s para queries complexas com gráficos
@@ -427,7 +502,7 @@ async def stream_chat(
 
                 # [OK] FIX 2026-01-14: Salvar resposta válida em cache COM user_id
                 if agent_response and "error" not in str(agent_response).lower() and not _is_degraded_or_error_response(agent_response):
-                    cache_set(q, agent_response, user_id=user_cache_id)
+                    cache_set(cache_key_query, agent_response, user_id=user_cache_id)
             
             if not agent_response:
                 logger.warning(f"Agent retornou resposta vazia para query: {q}")
@@ -438,15 +513,15 @@ async def stream_chat(
                     }
                 }
             
-            # [DEBUG] DEBUG: Logging detalhado da resposta do agente
-            logger.error(f"[DEBUG] DEBUG - AGENT RESPONSE TYPE: {type(agent_response)}")
-            logger.error(f"[DEBUG] DEBUG - AGENT RESPONSE KEYS: {agent_response.keys() if isinstance(agent_response, dict) else 'NOT A DICT'}")
-            logger.error(f"[DEBUG] DEBUG - AGENT RESPONSE RAW: {str(agent_response)[:1000]}")
+            # Logging detalhado da resposta do agente (nível informativo)
+            logger.info(f"[DEBUG] DEBUG - AGENT RESPONSE TYPE: {type(agent_response)}")
+            logger.info(f"[DEBUG] DEBUG - AGENT RESPONSE KEYS: {agent_response.keys() if isinstance(agent_response, dict) else 'NOT A DICT'}")
+            logger.info(f"[DEBUG] DEBUG - AGENT RESPONSE RAW: {str(agent_response)[:1000]}")
             
             logger.info(f"Agent response received: {agent_response}")
 
-            # NOVO: Validar resposta com Response Validator (Simplificado para V2)
-            # validation = validate_response(agent_response, q)
+            # Validação de qualidade da resposta (guardrail enterprise)
+            validation = validate_response(agent_response, q)
             
             response_type = agent_response.get("type", "text")
             response_content = agent_response.get("result")
@@ -515,6 +590,19 @@ async def stream_chat(
                     yield f"id: {event_counter}\n"
                     yield f"data: {safe_json_dumps({'type': 'chart', 'chart_spec': chart_spec, 'done': False})}\n\n"
             
+            # Reforço de qualidade interno: não expor detalhes técnicos ao usuário final.
+            if response_text and response_text.strip() and not validation.is_valid:
+                logger.warning(
+                    f"[QUALITY] Resposta com baixa confiança para query='{q[:120]}': "
+                    f"issues={validation.issues[:3]} suggestions={validation.suggestions[:2]}"
+                )
+
+            if response_text and response_text.strip():
+                sanitized = _sanitize_business_output(response_text)
+                if sanitized != response_text:
+                    logger.info("[QUALITY] Sanitizacao de saida aplicada para remover termos tecnicos.")
+                response_text = sanitized
+
             # Só fazer streaming de texto se houver texto para enviar
             if response_text and response_text.strip():
                 words = response_text.split(" ")
@@ -576,14 +664,8 @@ async def submit_feedback(
     feedback_data: FeedbackRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
 ):
-    if query_history is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Sistema de historico indisponivel temporariamente."
-        )
-    
     feedback_entry = {
-        "timestamp": "now", # Placeholder, would import datetime
+        "timestamp": datetime.now().isoformat(),
         "user_id": current_user.username,
         "response_id": feedback_data.response_id,
         "feedback_type": feedback_data.feedback_type,
@@ -637,7 +719,8 @@ async def send_chat_message(
     result = await chat_service_v3.process_message(
         query=request.query,
         session_id="legacy",
-        user_id=current_user.id
+        user_id=current_user.id,
+        user_role=current_user.role
     )
     return {"response": str(result), "full_agent_response": result}
 

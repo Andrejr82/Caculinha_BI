@@ -42,6 +42,15 @@ interface ValidationResult {
   nivel_urgencia?: string;
 }
 
+interface TrackingItem {
+  id: string;
+  origem: string;
+  destino: string;
+  itensResumo: string;
+  dataLabel: string;
+  status: string;
+}
+
 export default function Transfers() {
   // --- STATE MANAGEMENT ---
   const [mode, setMode] = createSignal<TransferMode>('UNE - UNE');
@@ -71,6 +80,26 @@ export default function Transfers() {
   const [creating, setCreating] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [success, setSuccess] = createSignal<string | null>(null);
+  const [selectedTracking, setSelectedTracking] = createSignal<TrackingItem | null>(null);
+
+  const trackingItems: TrackingItem[] = [
+    {
+      id: 'REQ-885',
+      origem: 'UNE 10',
+      destino: 'UNE 99',
+      itensResumo: '12 produtos (450 un.)',
+      dataLabel: 'Hoje, 10:30',
+      status: 'Aguardando Aprovação',
+    },
+    {
+      id: 'REQ-882',
+      origem: 'UNE 20',
+      destino: 'Múltiplos',
+      itensResumo: '5 produtos (120 un.)',
+      dataLabel: 'Ontem',
+      status: 'Em Separação',
+    },
+  ];
 
   // --- DATA LOADING ---
   const loadUnes = async () => {
@@ -169,14 +198,41 @@ export default function Transfers() {
     if (cart.items.length === 0) return;
     setCreating(true);
     try {
-      // Mock API Call structure
-      // const payload = cart.items.flatMap(...)
-      await new Promise(r => setTimeout(r, 1000)); // Simulando delay
-      setSuccess('Solicitações de Transferência criadas com sucesso! (ID: REQ-2024-885)');
+      // Converte manifesto (com múltiplos destinos) para payload 1 registro por destino.
+      const items = cart.items.flatMap((item) =>
+        item.une_destino.map((destino) => ({
+          produto_id: item.produto_id,
+          une_origem: item.une_origem,
+          une_destino: destino,
+          quantidade: item.quantidade,
+          // Campo exigido pelo schema backend atual; o backend substitui pelo usuário autenticado.
+          solicitante_id: 'frontend',
+        }))
+      );
+
+      if (items.length === 0) {
+        setError('Manifesto sem destinos válidos para envio.');
+        return;
+      }
+
+      const modoMap: Record<TransferMode, string> = {
+        'UNE - UNE': '1→1',
+        'UNE - UNES': '1→N',
+        'UNES - UNES': 'N→N',
+      };
+
+      const response = await api.post('/transfers/bulk', {
+        modo: modoMap[mode()],
+        items,
+      });
+
+      const batchId = response.data?.batch_id;
+      setSuccess(`Solicitações de Transferência criadas com sucesso!${batchId ? ` (ID: ${batchId})` : ''}`);
       setCart('items', []);
       setActiveTab('tracking'); // Auto-switch to tracking
-    } catch (err) {
-      setError('Falha ao criar solicitações.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setError(detail || 'Falha ao criar solicitações.');
     } finally {
       setCreating(false);
     }
@@ -537,51 +593,67 @@ export default function Transfers() {
                 </tr>
               </thead>
               <tbody class="divide-y">
-                {/* Mock Data */}
-                <tr class="hover:bg-slate-50 transition-colors">
-                  <td class="p-4 font-mono font-medium">REQ-885</td>
-                  <td class="p-4">
-                    <div class="flex items-center gap-2">
-                      <span class="bg-slate-100 px-2 rounded text-xs font-bold">UNE 10</span>
-                      <ArrowRight size={12} class="text-muted-foreground" />
-                      <span class="bg-slate-100 px-2 rounded text-xs font-bold">UNE 99</span>
-                    </div>
-                  </td>
-                  <td class="p-4">12 produtos (450 un.)</td>
-                  <td class="p-4 text-muted-foreground">Hoje, 10:30</td>
-                  <td class="p-4">
-                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold">
-                      <Clock size={12} /> Aguardando Aprovação
-                    </span>
-                  </td>
-                  <td class="p-4 text-right">
-                    <button class="text-blue-600 hover:underline">Detalhes</button>
-                  </td>
-                </tr>
-                <tr class="hover:bg-slate-50 transition-colors">
-                  <td class="p-4 font-mono font-medium">REQ-882</td>
-                  <td class="p-4">
-                    <div class="flex items-center gap-2">
-                      <span class="bg-slate-100 px-2 rounded text-xs font-bold">UNE 20</span>
-                      <ArrowRight size={12} class="text-muted-foreground" />
-                      <span class="bg-slate-100 px-2 rounded text-xs font-bold">Múltiplos</span>
-                    </div>
-                  </td>
-                  <td class="p-4">5 produtos (120 un.)</td>
-                  <td class="p-4 text-muted-foreground">Ontem</td>
-                  <td class="p-4">
-                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-bold">
-                      <Truck size={12} /> Em Separação
-                    </span>
-                  </td>
-                  <td class="p-4 text-right">
-                    <button class="text-blue-600 hover:underline">Detalhes</button>
-                  </td>
-                </tr>
+                <For each={trackingItems}>
+                  {(row) => (
+                    <tr class="hover:bg-slate-50 transition-colors">
+                      <td class="p-4 font-mono font-medium">{row.id}</td>
+                      <td class="p-4">
+                        <div class="flex items-center gap-2">
+                          <span class="bg-slate-100 px-2 rounded text-xs font-bold">{row.origem}</span>
+                          <ArrowRight size={12} class="text-muted-foreground" />
+                          <span class="bg-slate-100 px-2 rounded text-xs font-bold">{row.destino}</span>
+                        </div>
+                      </td>
+                      <td class="p-4">{row.itensResumo}</td>
+                      <td class="p-4 text-muted-foreground">{row.dataLabel}</td>
+                      <td class="p-4">
+                        <Show
+                          when={row.status === 'Aguardando Aprovação'}
+                          fallback={
+                            <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-bold">
+                              <Truck size={12} /> {row.status}
+                            </span>
+                          }
+                        >
+                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-100 text-yellow-700 text-xs font-bold">
+                            <Clock size={12} /> {row.status}
+                          </span>
+                        </Show>
+                      </td>
+                      <td class="p-4 text-right">
+                        <button
+                          class="text-blue-600 hover:underline font-medium"
+                          onClick={() => setSelectedTracking(row)}
+                        >
+                          Detalhes
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </For>
               </tbody>
             </table>
           </div>
         </div>
+
+        <Show when={selectedTracking()}>
+          <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setSelectedTracking(null)}>
+            <div class="w-full max-w-lg bg-white rounded-xl border shadow-xl p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-lg font-bold text-slate-800">Detalhes da Solicitação</h4>
+                <button class="text-slate-500 hover:text-slate-700" onClick={() => setSelectedTracking(null)}>Fechar</button>
+              </div>
+              <div class="space-y-2 text-sm text-slate-700">
+                <div><span class="font-semibold">ID:</span> {selectedTracking()?.id}</div>
+                <div><span class="font-semibold">Origem:</span> {selectedTracking()?.origem}</div>
+                <div><span class="font-semibold">Destino:</span> {selectedTracking()?.destino}</div>
+                <div><span class="font-semibold">Itens:</span> {selectedTracking()?.itensResumo}</div>
+                <div><span class="font-semibold">Data:</span> {selectedTracking()?.dataLabel}</div>
+                <div><span class="font-semibold">Status:</span> {selectedTracking()?.status}</div>
+              </div>
+            </div>
+          </div>
+        </Show>
       </Show>
 
     </div>

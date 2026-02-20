@@ -254,7 +254,10 @@ export default function AdminEvaluations() {
                                 <div>
                                     <p class="text-gray-400">Score Geral</p>
                                     <p class="text-sm text-gray-500">
-                                        {selectedEval()!.latency_ms ? `${selectedEval()!.latency_ms.toFixed(0)}ms` : '-'}
+                                        {(() => {
+                                            const latency = selectedEval()?.latency_ms;
+                                            return typeof latency === 'number' ? `${latency.toFixed(0)}ms` : '-';
+                                        })()}
                                     </p>
                                 </div>
                             </div>

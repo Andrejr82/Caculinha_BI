@@ -45,6 +45,8 @@ class ToolPermissionManager:
                 "gerar_dashboard_executivo",
                 "listar_graficos_disponiveis",
                 "gerar_visualizacao_customizada",
+                # Competitive intelligence
+                "pesquisar_precos_concorrentes",
             ],
             "denied_tools": [
                 # Não pode calcular preços nem sugerir transferências
@@ -63,6 +65,8 @@ class ToolPermissionManager:
                 "gerar_grafico_universal_v2",
                 "gerar_dashboard_executivo",
                 "listar_graficos_disponiveis",
+                # Pesquisa externa (somente leitura)
+                "pesquisar_precos_concorrentes",
             ],
             "denied_tools": [
                 # Não pode acessar business logic

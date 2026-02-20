@@ -215,6 +215,11 @@ export interface PlaygroundCanaryAccessItem {
   enabled: boolean;
 }
 
+export interface PlaygroundAccessItem {
+  user_id: string;
+  enabled: boolean;
+}
+
 export interface AuditLogItem {
   id: string;
   user_id: string;
@@ -244,6 +249,10 @@ export const adminApi = {
   setPlaygroundCanaryAccess: (userId: string, enabled: boolean) =>
     api.put<PlaygroundCanaryAccessItem>(`/admin/playground-canary-access/${userId}`, { enabled }),
   revokeAllPlaygroundCanaryAccess: () => api.post<{ status: string; revoked_count: number; message: string }>('/admin/playground-canary-access/revoke-all'),
+  getPlaygroundAccess: () => api.get<PlaygroundAccessItem[]>('/admin/playground-access'),
+  setPlaygroundAccess: (userId: string, enabled: boolean) =>
+    api.put<PlaygroundAccessItem>(`/admin/playground-access/${userId}`, { enabled }),
+  revokeAllPlaygroundAccess: () => api.post<{ status: string; revoked_count: number; message: string }>('/admin/playground-access/revoke-all'),
   getAuditLogs: (limit: number = 100) => api.get<AuditLogItem[]>(`/admin/audit-logs?limit=${limit}`),
 };
 
@@ -327,6 +336,24 @@ export const codeChatApi = {
 export const playgroundApi = {
   getInfo: () => api.get('/playground/info'),
   getMetrics: () => api.get('/playground/metrics'),
+  chat: (payload: {
+    message: string;
+    system_instruction?: string;
+    history?: { role: string; content: string; timestamp?: string }[];
+    temperature?: number;
+    max_tokens?: number;
+    json_mode?: boolean;
+    stream?: boolean;
+    model?: string;
+  }) => api.post('/playground/chat', payload),
+  submitOpsApproval: (payload: {
+    operation_mode: string;
+    output_type: string;
+    request_text: string;
+    generated_output?: string;
+    parameters?: Record<string, any>;
+  }) => api.post('/playground/ops/approval', payload),
+  getOpsAudit: (limit: number = 20) => api.get(`/playground/ops/audit?limit=${limit}`),
   submitFeedback: (payload: { request_id: string; useful: boolean; comment?: string }) =>
     api.post('/playground/feedback', payload),
 };

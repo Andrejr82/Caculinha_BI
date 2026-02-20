@@ -243,13 +243,13 @@ def calculate_demand_forecast_logic(
         }
         
         if une:
-             query = f"SELECT VENDA_30DD FROM data WHERE PRODUTO = '{produto_id}' AND UNE = '{une}'"
+             query = f"SELECT SUM(TRY_CAST(VENDA_30DD AS DOUBLE)) as VENDA_30DD FROM data WHERE PRODUTO = '{produto_id}' AND UNE = '{une}'"
         else:
              query = f"SELECT SUM(TRY_CAST(VENDA_30DD AS DOUBLE)) as VENDA_30DD FROM data WHERE PRODUTO = '{produto_id}'"
 
         historico = _execute_duckdb_query(query)
         
-        if historico.empty or (len(historico) == 1 and (historico.iloc[0]['VENDA_30DD'] is None or historico.iloc[0]['VENDA_30DD'] == 0)):
+        if historico.empty or (len(historico) == 1 and (historico.iloc[0]['VENDA_30DD'] is None or float(historico.iloc[0]['VENDA_30DD'] or 0) <= 0)):
              return {
                 "error": "Sem dados de vendas para o escopo selecionado",
                 "produto": produto_id,

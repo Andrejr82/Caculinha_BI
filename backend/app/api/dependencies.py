@@ -6,6 +6,7 @@ import json
 import uuid
 import logging
 from datetime import datetime, timezone
+import time
 from pathlib import Path
 
 from fastapi import Depends, HTTPException, status, Request, Query
@@ -20,6 +21,12 @@ from backend.app.infrastructure.database.models import User
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
+ADMIN_EMAIL = "user@agentbi.com"
+
+# Ephemeral stream token store (in-memory, short-lived, limited reuse)
+_STREAM_TOKENS: dict[str, tuple[str, float, int]] = {}
+_STREAM_TOKEN_TTL_SECONDS = 120
+_STREAM_TOKEN_MAX_USES = 3
 
 
 def _fallback_segments_for_role(role: str) -> list[str]:
@@ -62,6 +69,7 @@ def _extract_bearer_token(request: Request) -> str | None:
 async def get_token_from_header_or_query(
     request: Request,
     token: str | None = Query(default=None),
+    stream_token: str | None = Query(default=None),
 ) -> str:
     """
     Hybrid token extraction for SSE:
@@ -73,17 +81,62 @@ async def get_token_from_header_or_query(
         return header_token
 
     sse_query_allowlist = {
-        "/api/v1/chat/stream",
         "/api/v1/code-chat/stream",
         "/api/v1/playground/stream",
-        "/api/v2/chat/stream",
         "/api/v2/code-chat/stream",
         "/api/v2/playground/stream",
     }
+    chat_stream_paths = {"/api/v1/chat/stream", "/api/v2/chat/stream"}
+
+    if request.url.path in chat_stream_paths:
+        if stream_token:
+            resolved = consume_stream_token(stream_token)
+            if resolved:
+                return resolved
+        raise HTTPException(status_code=401, detail="Missing or invalid stream token")
+
     if request.url.path in sse_query_allowlist and token:
         return token
 
     raise HTTPException(status_code=401, detail="Missing authentication token")
+
+
+def issue_stream_token(
+    access_token: str,
+    ttl_seconds: int = _STREAM_TOKEN_TTL_SECONDS,
+    max_uses: int = _STREAM_TOKEN_MAX_USES
+) -> str:
+    """Create a short-lived opaque token that maps to the JWT for SSE URLs."""
+    now = time.time()
+    # Cleanup expired tokens opportunistically
+    expired = [k for k, (_, exp, _) in _STREAM_TOKENS.items() if exp <= now]
+    for k in expired:
+        _STREAM_TOKENS.pop(k, None)
+
+    opaque = str(uuid.uuid4())
+    _STREAM_TOKENS[opaque] = (access_token, now + ttl_seconds, max_uses)
+    return opaque
+
+
+def consume_stream_token(opaque_token: str) -> str | None:
+    """Resolve and consume one use of a stream token (short-lived, limited reuse)."""
+    entry = _STREAM_TOKENS.get(opaque_token)
+    if not entry:
+        return None
+    access_token, expires_at, remaining_uses = entry
+    if time.time() > expires_at:
+        _STREAM_TOKENS.pop(opaque_token, None)
+        return None
+    if remaining_uses <= 0:
+        _STREAM_TOKENS.pop(opaque_token, None)
+        return None
+
+    remaining_uses -= 1
+    if remaining_uses <= 0:
+        _STREAM_TOKENS.pop(opaque_token, None)
+    else:
+        _STREAM_TOKENS[opaque_token] = (access_token, expires_at, remaining_uses)
+    return access_token
 
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
@@ -101,11 +154,20 @@ async def get_current_user(
 
         # Supabase Auth: usar dados do token JWT diretamente
         user_metadata = payload.get("user_metadata", {}) or {}
-        role = payload.get("role", user_metadata.get("role", "user"))
+        token_role = str(payload.get("role", "")).strip().lower()
+        metadata_role = str(user_metadata.get("role", "")).strip().lower()
+        email = payload.get("email") or user_metadata.get("email")
+        username = payload.get("username") or payload.get("email", "user").split('@')[0]
+        if (email or "").lower() == ADMIN_EMAIL or (username or "").lower() == ADMIN_EMAIL:
+            role = "admin"
+        elif token_role and token_role not in {"authenticated", "anon"}:
+            role = token_role
+        elif metadata_role:
+            role = metadata_role
+        else:
+            role = "user"
         raw_allowed_segments = payload.get("allowed_segments", user_metadata.get("allowed_segments"))
         allowed_segments = _normalize_allowed_segments(raw_allowed_segments, role)
-        username = payload.get("username") or payload.get("email", "user").split('@')[0]
-        email = payload.get("email") or user_metadata.get("email")
 
         return User(
             id=uuid.UUID(str(user_id)),
@@ -183,14 +245,22 @@ async def get_current_user_from_token(token: str) -> User:
         # Always return User if we have valid payload, regardless of Parquet result
         # This ensures Supabase users work even without local sync
         user_metadata = payload.get("user_metadata", {})
-        role = payload.get("role") or user_metadata.get("role", "user")
+        token_role = str(payload.get("role", "")).strip().lower()
+        metadata_role = str(user_metadata.get("role", "")).strip().lower()
+        email = payload.get("email") or user_metadata.get("email")
+        username = payload.get("username") or payload.get("email", "user").split('@')[0]
+        if (email or "").lower() == ADMIN_EMAIL or (username or "").lower() == ADMIN_EMAIL:
+            role = "admin"
+        elif token_role and token_role not in {"authenticated", "anon"}:
+            role = token_role
+        elif metadata_role:
+            role = metadata_role
+        else:
+            role = "user"
         allowed_segments = _normalize_allowed_segments(
             payload.get("allowed_segments") or user_metadata.get("allowed_segments"),
             role,
         )
-
-        username = payload.get("username") or payload.get("email", "user").split('@')[0]
-        email = payload.get("email") or user_metadata.get("email")
         
         return User(
             id=uuid.UUID(str(user_id)),
@@ -222,9 +292,6 @@ def require_permission(permission: str):
         if user.role == "admin": return user
         return user
     return perm_checker
-
-# Admin-only check: role=admin OR username=user@agentbi.com
-ADMIN_EMAIL = "user@agentbi.com"
 
 async def require_admin(
     current_user: Annotated[User, Depends(get_current_active_user)]

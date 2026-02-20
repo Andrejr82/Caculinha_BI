@@ -292,13 +292,13 @@ async def get_executive_kpis(current_user: User = Depends(get_current_active_use
         
         return {
             "vendas_total": vendas_total,
-            "vendas_variacao": 5.2,  # Mock
+            "vendas_variacao": 0.0,
             "margem_media": margem_media,
-            "margem_variacao": 2.1,
+            "margem_variacao": 0.0,
             "taxa_ruptura": taxa_ruptura,
-            "ruptura_variacao": -1.5,
+            "ruptura_variacao": 0.0,
             "produtos_ativos": produtos_ativos,
-            "produtos_variacao": 3.0
+            "produtos_variacao": 0.0
         }
         
     except Exception as e:
