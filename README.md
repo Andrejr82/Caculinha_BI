@@ -19,7 +19,7 @@ Plataforma de Business Intelligence conversacional para varejo, com backend Fast
 ### Pre-requisitos
 
 - Python 3.11+
-- Node.js 18+
+- Bun 1.2+
 - Arquivo `backend/.env` configurado
 
 ### Subida recomendada
@@ -46,8 +46,8 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-
 
 ```powershell
 cd frontend-solid
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 ## Configuracao (.env)

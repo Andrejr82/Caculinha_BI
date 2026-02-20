@@ -58,22 +58,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
       with:
-        node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: frontend-solid/package-lock.json
-    
+        bun-version: latest
+
     - name: Install dependencies
       run: |
         cd frontend-solid
-        npm ci
-    
+        bun install
+
     - name: Build frontend
       run: |
         cd frontend-solid
-        npm run build
+        bun run build
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

@@ -18,27 +18,27 @@ tests/integration/
 ### Pré-requisitos
 ```bash
 # Instalar Playwright
-npm install -D @playwright/test
-npx playwright install
+bun add -d @playwright/test
+bunx playwright install
 ```
 
 ### Comandos
 
 ```bash
 # Executar todos os testes
-npx playwright test
+bunx playwright test
 
 # Executar com UI interativa
-npx playwright test --ui
+bunx playwright test --ui
 
 # Executar testes específicos
-npx playwright test auth.spec.ts
+bunx playwright test auth.spec.ts
 
 # Executar em modo debug
-npx playwright test --debug
+bunx playwright test --debug
 
 # Ver relatório
-npx playwright show-report
+bunx playwright show-report
 ```
 
 ## 📊 Cobertura de Testes
@@ -93,9 +93,9 @@ A configuração está em `playwright.config.ts` na raiz do projeto frontend.
 ## 🐛 Troubleshooting
 
 ### Testes falhando
-1. Verificar se o servidor está rodando (`npm run dev`)
+1. Verificar se o servidor está rodando (`bun run dev`)
 2. Verificar credenciais de teste
-3. Limpar cache: `npx playwright clean`
+3. Reinstalar navegadores do Playwright: `bunx playwright install --force`
 
 ### Timeout
 - Aumentar timeout em `playwright.config.ts`
