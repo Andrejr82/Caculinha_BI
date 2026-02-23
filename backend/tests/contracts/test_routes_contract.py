@@ -109,6 +109,7 @@ def test_protected_routes_require_auth(client, method, path):
 ADMIN_ROUTES = [
     ("GET", "/api/v1/admin/dashboard/health"),
     ("GET", "/api/v1/admin/dashboard/traffic"),
+    ("GET", "/api/v1/admin/dashboard/chat-slo"),
     ("GET", "/api/v1/admin/dashboard/usage"),
     ("GET", "/api/v1/admin/dashboard/quality"),
     ("GET", "/api/v1/admin/evals"),

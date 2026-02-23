@@ -114,17 +114,24 @@ class Settings(BaseSettings):
 
     # AI / LLM - Multi-provider Support
     # FIX 2026-01-09: Groq é o LLM principal (mais rápido, sem rate limit frequente)
-    LLM_PROVIDER: Literal["google", "groq", "mock"] = "google"
+    # Nota: aceitamos "grq" como alias legível em env legada.
+    LLM_PROVIDER: Literal["google", "groq", "grq", "mock"] = "groq"
     # Ordem opcional de fallback (csv), ex: "groq,google"
-    LLM_FALLBACK_PROVIDERS: str = "groq,google"
+    LLM_FALLBACK_PROVIDERS: str = "groq"
     PLAYGROUND_MODE: Literal["local_only", "hybrid_optional", "remote_required"] = "local_only"
     PLAYGROUND_CANARY_ENABLED: bool = False
     PLAYGROUND_CANARY_ALLOWED_ROLES: str = "admin"
     PLAYGROUND_CANARY_ALLOWED_USERS: str = ""
     
-    # Google Gemini
+    # Google Gemini (fallback opcional)
     GEMINI_API_KEY: str | None = None
     LLM_MODEL_NAME: str = "gemini-2.5-pro"
+
+    # Context7 (framework externo / integração opcional)
+    CONTEXT7_ENABLED: bool = False
+    CONTEXT7_REQUIRED: bool = False
+    CONTEXT7_BASE_URL: str | None = None
+    CONTEXT7_TIMEOUT_SEC: float = 1.5
     
     # Groq
     GROQ_API_KEY: str | None = None
@@ -132,10 +139,12 @@ class Settings(BaseSettings):
     DEV_FAST_MODE: bool = False
     LLM_MAX_OUTPUT_TOKENS: int = 2048
     LLM_HISTORY_MAX_MESSAGES: int = 15
+    OBS_COST_USD_PER_1K_INPUT_TOKENS: float = 0.0
+    OBS_COST_USD_PER_1K_OUTPUT_TOKENS: float = 0.0
 
     # Modelos de Tarefa
-    INTENT_CLASSIFICATION_MODEL: str = "gemini-2.5-pro"
-    CODE_GENERATION_MODEL: str = "gemini-2.5-pro"
+    INTENT_CLASSIFICATION_MODEL: str = "llama-3.3-70b-versatile"
+    CODE_GENERATION_MODEL: str = "llama-3.3-70b-versatile"
 
     # Data Sources
     PARQUET_DATA_PATH: str = Field(default="data/parquet/admmat.parquet")
@@ -157,7 +166,8 @@ class Settings(BaseSettings):
 
     # Competitive Intelligence (Pesquisa Concorrencial)
     COMPETITIVE_INTEL_ENABLED: bool = True
-    COMPETITIVE_PROVIDER_PRIORITY: str = "playwright,crawler,websearch,social,mercadolivre,serpapi,bellart,manual"
+    COMPETITIVE_PROVIDER_PRIORITY: str = "playwright,crawler,websearch,social,mercadolivre,google_shopping,serpapi,bellart"
+    COMPETITIVE_ALLOW_MANUAL: bool = False
     COMPETITIVE_ALLOWED_STATES: str = "RJ,MG,ES"
     COMPETITIVE_HTTP_TIMEOUT_SEC: int = 10
     COMPETITIVE_TOTAL_TIMEOUT_SEC: int = 25
@@ -165,7 +175,7 @@ class Settings(BaseSettings):
     COMPETITIVE_MANUAL_FILE: str = "data/reference/competitive_prices.json"
     COMPETITIVE_DOMAIN_WHITELIST: str = (
         "bellartdecor.com.br,kalunga.com.br,americanas.com.br,casaevideo.com.br,"
-        "lebiscuit.com.br,mercadolivre.com.br,amazon.com.br,shopee.com.br,oamigao.com.br,tubaraoatacadao.com.br,"
+        "lebiscuit.com.br,mercadolivre.com.br,amazon.com.br,shopee.com.br,google.com,shopping.google.com,google.com.br,oamigao.com.br,tubaraoatacadao.com.br,"
         "instagram.com,facebook.com"
     )
     SERPAPI_API_KEY: str | None = None

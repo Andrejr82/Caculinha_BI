@@ -23,11 +23,11 @@ class LLMFactory:
         Retorna um adaptador LLM com fallback automático.
         
         Args:
-            provider: Provider específico ('google' ou 'groq'). Se None, usa settings.LLM_PROVIDER.
+            provider: Provider específico ('google'/'gemini', 'groq'/'grq'). Se None, usa settings.LLM_PROVIDER.
             use_smart: Se True, retorna SmartLLM com fallback automático.
         """
         # Respeitar configuração do .env (FIX 2026-01-16)
-        provider = provider or settings.LLM_PROVIDER or "google"
+        provider = provider or settings.LLM_PROVIDER or "groq"
         
         if use_smart:
             try:
@@ -54,6 +54,7 @@ class SmartLLM:
         "google": "google",
         "gemini": "google",
         "groq": "groq",
+        "grq": "groq",
         "mock": "mock",
     }
 
@@ -74,7 +75,7 @@ class SmartLLM:
             return f"[MOCK] Resposta simulada para: {prompt}"
 
     def __init__(self, primary: Optional[str] = None):
-        self.primary = self._normalize_provider(primary or settings.LLM_PROVIDER or "google")
+        self.primary = self._normalize_provider(primary or settings.LLM_PROVIDER or "groq")
         self._groq = None  # Lazy init
         self._gemini = None  # Lazy init
         self._mock = None
@@ -102,7 +103,7 @@ class SmartLLM:
     def _build_provider_chain(self, primary: str) -> List[str]:
         configured = [
             self._normalize_provider(item)
-            for item in str(getattr(settings, "LLM_FALLBACK_PROVIDERS", "groq,google")).split(",")
+            for item in str(getattr(settings, "LLM_FALLBACK_PROVIDERS", "groq")).split(",")
             if item and str(item).strip()
         ]
         chain = [primary] + configured

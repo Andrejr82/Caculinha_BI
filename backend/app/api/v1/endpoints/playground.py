@@ -247,12 +247,21 @@ def _build_local_fallback_response(message: str, json_mode: bool = False) -> str
 
 
 def _has_remote_llm_key() -> bool:
-    provider = (settings.LLM_PROVIDER or "").strip().lower()
+    provider = _normalized_provider()
     if provider == "groq":
         return bool(settings.GROQ_API_KEY)
     if provider == "google":
         return bool(settings.GEMINI_API_KEY)
     return bool(settings.GROQ_API_KEY or settings.GEMINI_API_KEY)
+
+
+def _normalized_provider() -> str:
+    raw = (settings.LLM_PROVIDER or "").strip().lower()
+    provider_aliases = {
+        "grq": "groq",
+        "gemini": "google",
+    }
+    return provider_aliases.get(raw, raw or "groq")
 
 
 def _is_explicit_sql_request(message: str) -> bool:
@@ -490,7 +499,7 @@ async def playground_stream(
             yield f"data: {json.dumps({'type': 'done', 'request_id': request_id, 'metrics': {'time': duration, 'tokens': max(1, len(safe_text)//4)}, 'safety': {'is_safe': is_safe, 'reason': safety_reason}})}\n\n"
         return StreamingResponse(local_mode_generator(), media_type="text/event-stream")
 
-    provider = (settings.LLM_PROVIDER or "").strip().lower()
+    provider = _normalized_provider()
     model_name = settings.GROQ_MODEL_NAME if provider == "groq" else settings.LLM_MODEL_NAME
 
     # Prepare messages
@@ -815,7 +824,7 @@ async def playground_chat(
                 }
             }
 
-        provider = (settings.LLM_PROVIDER or "").strip().lower()
+        provider = _normalized_provider()
         model_source = settings.GROQ_MODEL_NAME if provider == "groq" else settings.LLM_MODEL_NAME
 
         # Invocar LLM
@@ -945,7 +954,7 @@ async def get_model_info(
         user_override=canary_override,
     )
     return {
-        "model": settings.GROQ_MODEL_NAME if (settings.LLM_PROVIDER or "").strip().lower() == "groq" else settings.LLM_MODEL_NAME,
+        "model": settings.GROQ_MODEL_NAME if _normalized_provider() == "groq" else settings.LLM_MODEL_NAME,
         "api_key_configured": _has_remote_llm_key(),
         "playground_mode": settings.PLAYGROUND_MODE,
         "playground_mode_label": mode_label(settings.PLAYGROUND_MODE),
