@@ -80,14 +80,27 @@ async def detailed_health_check():
         components["duckdb"] = {"status": "unhealthy", "error": str(e)}
         overall_healthy = False
     
-    # Verificar LLM (Gemini)
+    # Verificar LLM configurado (Groq primário / Gemini fallback)
     try:
-        import os
-        api_key = os.getenv("GOOGLE_API_KEY")
+        raw_provider = (settings.LLM_PROVIDER or "").strip().lower()
+        provider_aliases = {"grq": "groq", "gemini": "google"}
+        provider = provider_aliases.get(raw_provider, raw_provider or "groq")
+        if provider == "groq":
+            api_key = settings.GROQ_API_KEY
+            model_name = settings.GROQ_MODEL_NAME
+        elif provider == "google":
+            api_key = settings.GEMINI_API_KEY
+            model_name = settings.LLM_MODEL_NAME
+        elif provider == "mock":
+            api_key = "mock"
+            model_name = "mock-llm"
+        else:
+            api_key = settings.GROQ_API_KEY or settings.GEMINI_API_KEY
+            model_name = settings.GROQ_MODEL_NAME if settings.GROQ_API_KEY else settings.LLM_MODEL_NAME
         components["llm"] = {
             "status": "healthy" if api_key else "not_configured",
-            "provider": "google",
-            "model": settings.LLM_MODEL_NAME,
+            "provider": provider,
+            "model": model_name,
         }
     except Exception as e:
         components["llm"] = {"status": "unhealthy", "error": str(e)}

@@ -197,9 +197,20 @@ def check_environment() -> Dict[str, Any]:
         if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
             issues.append("SECRET_KEY too short")
 
-        # Check GEMINI_API_KEY (if needed for AI features)
-        if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY == "sua_chave_api_gemini_aqui":
-            issues.append("GEMINI_API_KEY not configured")
+        # Check LLM key according to configured provider
+        raw_provider = (settings.LLM_PROVIDER or "").strip().lower()
+        provider_aliases = {"grq": "groq", "gemini": "google"}
+        provider = provider_aliases.get(raw_provider, raw_provider or "groq")
+
+        if provider == "groq":
+            if not settings.GROQ_API_KEY:
+                issues.append("GROQ_API_KEY not configured")
+        elif provider == "google":
+            if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY == "sua_chave_api_gemini_aqui":
+                issues.append("GEMINI_API_KEY not configured")
+        elif provider not in {"mock"}:
+            if not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY:
+                issues.append("No LLM API key configured (GROQ_API_KEY/GEMINI_API_KEY)")
 
         if issues:
             return {

@@ -13,6 +13,7 @@ import asyncio
 import logging
 import sys
 import re
+from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 from decimal import Decimal
@@ -36,6 +37,13 @@ from backend.app.core.utils.semantic_cache import cache_get, cache_set, cache_st
 from backend.app.core.utils.response_validator import validate_response, validator_stats
 # NEW SERVICE V3 - Metrics-First Architecture
 from backend.app.services.chat_service_v3 import ChatServiceV3
+from backend.services.metrics import MetricsService
+try:
+    from backend.app.core.tools.competitive_intelligence_tool import pesquisar_precos_concorrentes
+    from backend.app.core.tools.competitive_intelligence_tool import pesquisar_mercado_web
+except (ImportError, OSError):
+    pesquisar_precos_concorrentes = None
+    pesquisar_mercado_web = None
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +58,8 @@ def _is_degraded_or_error_response(payload: Any) -> bool:
         "payload too large",
         "request too large",
         "erro ao processar",
+        "busca externa não foi concluída nesta rodada",
+        "nenhuma evidência pública validada",
     ]
     return any(marker in text for marker in degraded_markers)
 
@@ -63,7 +73,9 @@ def _sanitize_business_output(text: str) -> str:
     blocked_patterns = [
         r"(?i)\bbase\s*=\s*[a-z0-9_.-]+",
         r"(?i)\b(parquet|duckdb|schema|coluna[s]?\s+internas?|tabela[s]?\s+internas?)\b",
-        r"(?i)\b(c:\\|/)[^\s]+",
+        # Bloqueia caminhos de filesystem, mas preserva rotas web (ex.: /api/v1/...).
+        r"(?i)\b[a-z]:\\[^\s]+",
+        r"(?i)/(?:home|users?|usr|var|opt|etc|tmp|mnt|srv|root|proc|sys|dev|workspace|projects?|repos?)/[^\s]+",
         r"(?i)\b(venda_30dd|estoque_une|liquido_38|nomesegmento)\b",
     ]
     for pattern in blocked_patterns:
@@ -71,6 +83,403 @@ def _sanitize_business_output(text: str) -> str:
 
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def _is_competitive_market_query(query: str) -> bool:
+    q = (query or "").lower()
+    markers = [
+        "concorrente", "concorrência", "cotação", "cotacao",
+        "pesquisa de preço", "pesquisa de preco",
+        "pesquisa de mercado", "preço de mercado", "preco de mercado",
+        "benchmark de mercado", "pesquisa concorrencial",
+        "comparar preço", "comparar preco",
+        "americanas", "kalunga", "bellart", "shopee", "amazon", "mercado livre",
+        "google shopping",
+    ]
+    return any(m in q for m in markers)
+
+
+def _has_specific_competitor(query: str) -> bool:
+    """Retorna True se a query menciona um concorrente específico pelo nome."""
+    q = (query or "").lower()
+    competitors = [
+        "americanas", "kalunga", "bellart", "shopee", "amazon",
+        "casa&video", "casa e video", "le biscuit", "lebiscuit",
+        "tubarão", "tubarao", "tid", "amigão", "amigao",
+    ]
+    return any(c in q for c in competitors)
+
+
+def _extract_market_product_hint(query: str) -> str:
+    q = (query or "").strip()
+    if not q:
+        return "item solicitado"
+
+    lowered = q.lower()
+    lowered = re.sub(r"^(faca|faça|faz|fazer)\s+(uma\s+)?", "", lowered)
+    lowered = re.sub(r"^(realize|realizar|realiza)\s+(uma\s+)?", "", lowered)
+    lowered = re.sub(r"^(pesquisa|pesquise|compare|comparar|benchmark)\s+", "", lowered)
+    lowered = re.sub(r"^(de\s+mercado|de\s+pre[çc]o)\s+", "", lowered)
+    lowered = re.sub(r"^(do|da|de|o|a)?\s*produto\s+", "", lowered)
+    lowered = re.sub(r"\s+", " ", lowered).strip(" .,-")
+    return lowered or "item solicitado"
+
+
+def _competitive_timeout_business_message(query: str) -> str:
+    produto = _extract_market_product_hint(query)
+    return (
+        "## Resumo executivo\n"
+        f"- A busca de mercado para {produto} foi concluída parcialmente nesta rodada.\n"
+        "- Não houve evidência pública suficiente para consolidar preço confiável agora.\n\n"
+        "## Ação recomendada\n"
+        "- Use cotação direta com 2-3 fornecedores para decisão imediata.\n"
+        "- Refaça a pesquisa com SKU/marca e especificação completa para ampliar cobertura.\n\n"
+        "## Próxima consulta sugerida\n"
+        f"- \"pesquisa de mercado de {produto} marca X, medida Y, em RJ\""
+        "\n\n## Status\n"
+        "- Busca externa não foi concluída nesta rodada."
+    )
+
+
+def _extract_market_state(query: str) -> str:
+    q = (query or "").lower()
+    if re.search(r"\b(rj|rio de janeiro)\b", q):
+        return "RJ"
+    if re.search(r"\b(mg|minas gerais)\b", q):
+        return "MG"
+    if re.search(r"\b(es|esp[ií]rito santo|espirito santo)\b", q):
+        return "ES"
+    return "RJ"
+
+
+def _extract_market_competitors_csv(query: str) -> str:
+    q = (query or "").lower()
+    mapping = [
+        ("americanas", ["americanas", "lojas americanas"]),
+        ("kalunga", ["kalunga"]),
+        ("bellart", ["bellart"]),
+        ("amazon", ["amazon"]),
+        ("shopee", ["shopee"]),
+        ("mercado livre", ["mercado livre", "mercadolivre", "meli"]),
+        ("casa&video", ["casa&video", "casa e video", "casaevideo"]),
+        ("le biscuit", ["le biscuit", "lebiscuit"]),
+    ]
+    found = []
+    for canonical, aliases in mapping:
+        if any(alias in q for alias in aliases):
+            found.append(canonical)
+    return ",".join(found)
+
+
+def _price_to_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    txt = str(value).strip()
+    if not txt:
+        return None
+    txt = txt.replace("R$", "").replace(" ", "")
+    if "," in txt:
+        txt = txt.replace(".", "").replace(",", ".")
+    try:
+        return float(txt)
+    except Exception:
+        return None
+
+
+def _format_brl(value: Optional[float]) -> str:
+    if value is None:
+        return "-"
+    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _business_source_label(item: Dict[str, Any]) -> str:
+    url = str(item.get("url") or "").strip()
+    if url:
+        domain = urlparse(url).netloc.lower().replace("www.", "")
+        if domain:
+            return domain
+    fonte = str(item.get("fonte") or "").strip().lower()
+    if fonte in {"manual", "benchmark_seed_local", "base_manual_concorrencial", "csv_compras"}:
+        return ""
+    return fonte or "fonte_publica"
+
+
+def _is_public_price_evidence(item: Dict[str, Any]) -> bool:
+    if not isinstance(item, dict):
+        return False
+    price = _price_to_float(item.get("preco"))
+    if price is None:
+        return False
+    url = str(item.get("url") or "").strip()
+    if not url:
+        return False
+    source = str(item.get("fonte") or "").strip().lower()
+    if source in {"manual", "benchmark_seed_local", "base_manual_concorrencial", "csv_compras"}:
+        return False
+    domain = urlparse(url).netloc.lower().replace("www.", "")
+    if not domain or domain == "manual":
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Preço interno do parquet + cache de resultados para download
+# ---------------------------------------------------------------------------
+import io
+import tempfile
+from uuid import uuid4 as _uuid4
+
+# Cache simples em memória: {search_id: {"rows": [...], "produto": str, "internal_price": {...}, "created_at": str}}
+_market_search_cache: Dict[str, Dict[str, Any]] = {}
+
+
+def _lookup_internal_price(product_hint: str) -> Dict[str, Any]:
+    """Busca preço de venda (LIQUIDO_38) e custo (ULTIMA_ENTRADA_CUSTO_CD) no parquet."""
+    try:
+        import duckdb
+        parquet_path = str(Path(settings.PARQUET_DATA_PATH).resolve())
+        if not Path(parquet_path).exists():
+            # Tentar caminho relativo ao backend
+            parquet_path = str(Path(__file__).resolve().parent.parent.parent.parent / settings.PARQUET_DATA_PATH)
+        if not Path(parquet_path).exists():
+            return {}
+
+        terms = product_hint.lower().split()
+        where_parts = []
+        for term in terms[:4]:  # Máximo 4 termos
+            safe_term = term.replace("'", "''")
+            where_parts.append(f"LOWER(NOME) LIKE '%{safe_term}%'")
+
+        if not where_parts:
+            return {}
+
+        where_clause = " AND ".join(where_parts)
+        sql = (
+            f"SELECT NOME, LIQUIDO_38, ULTIMA_ENTRADA_CUSTO_CD "
+            f"FROM read_parquet('{parquet_path}') "
+            f"WHERE {where_clause} "
+            f"AND LIQUIDO_38 > 0 "
+            f"LIMIT 5"
+        )
+        conn = duckdb.connect()
+        result = conn.execute(sql).fetchall()
+        conn.close()
+
+        if not result:
+            return {}
+
+        # Pegar a média dos preços encontrados
+        precos_venda = [float(r[1]) for r in result if r[1] and float(r[1]) > 0]
+        custos = [float(r[2]) for r in result if r[2] and float(r[2]) > 0]
+        nomes = [str(r[0]) for r in result]
+
+        return {
+            "preco_venda": round(sum(precos_venda) / len(precos_venda), 2) if precos_venda else None,
+            "custo": round(sum(custos) / len(custos), 2) if custos else None,
+            "produtos_encontrados": len(result),
+            "nome_exemplo": nomes[0] if nomes else None,
+        }
+    except Exception as e:
+        logger.warning(f"Erro ao buscar preço interno: {e}")
+        return {}
+
+
+def _competitive_no_evidence_business_message(query: str) -> str:
+    produto = _extract_market_product_hint(query)
+    return (
+        "## Resumo executivo\n"
+        f"- Nao encontrei nenhuma evidência pública validada para {produto} nesta consulta.\n\n"
+        "## Como obter resultado mais preciso\n"
+        "- Informe marca, gramatura/medida e embalagem (ex.: \"TNT branco 40g rolo 1,40m x 50m\").\n"
+        "- Se quiser, inclua concorrente e estado (ex.: Kalunga em RJ).\n\n"
+        "## Proxima consulta sugerida\n"
+        f"- \"pesquisa de mercado de {produto} marca X medida Y em RJ\""
+    )
+
+
+def _build_competitive_structured_business_message(query: str, payload: Dict[str, Any]) -> str:
+    if not isinstance(payload, dict) or payload.get("status") != "success":
+        return _competitive_no_evidence_business_message(query)
+
+    raw_items = payload.get("itens") or []
+    if not isinstance(raw_items, list):
+        raw_items = []
+
+    valid_items = [item for item in raw_items if _is_public_price_evidence(item)]
+    if not valid_items:
+        return _competitive_no_evidence_business_message(query)
+
+    rows = []
+    for item in valid_items:
+        price = _price_to_float(item.get("preco"))
+        if price is None:
+            continue
+        rows.append(
+            {
+                "concorrente": str(item.get("concorrente") or "concorrente").strip(),
+                "produto": str(item.get("produto") or "produto").strip(),
+                "preco": price,
+                "fonte": _business_source_label(item),
+            }
+        )
+
+    if not rows:
+        return _competitive_no_evidence_business_message(query)
+
+    rows = sorted(rows, key=lambda r: r["preco"])
+    avg_price = sum(r["preco"] for r in rows) / len(rows)
+    min_row = rows[0]
+    max_row = rows[-1]
+
+    # Buscar preço interno
+    produto = _extract_market_product_hint(query)
+    internal = _lookup_internal_price(produto)
+
+    # Salvar no cache para download posterior
+    search_id = str(_uuid4())[:8]
+    _market_search_cache[search_id] = {
+        "rows": rows,
+        "produto": produto,
+        "internal_price": internal,
+        "avg_price": avg_price,
+        "created_at": datetime.now().isoformat(),
+    }
+    # Limpar cache antigo (manter apenas últimos 20)
+    if len(_market_search_cache) > 20:
+        oldest_key = next(iter(_market_search_cache))
+        _market_search_cache.pop(oldest_key, None)
+
+    table_lines = [
+        "| Concorrente | Produto | Preco (R$) | Fonte |",
+        "|---|---|---:|---|",
+    ]
+    for row in rows[:15]:
+        table_lines.append(
+            f"| {row['concorrente']} | {row['produto'][:60]} | {_format_brl(row['preco'])} | {row['fonte'] or 'site'} |"
+        )
+
+    # Montar seção de preço interno
+    internal_section = ""
+    acao_interna = ""
+    if internal.get("preco_venda"):
+        pv = internal["preco_venda"]
+        custo = internal.get("custo")
+        diff_pct = ((pv - avg_price) / avg_price) * 100 if avg_price > 0 else 0
+        position = "ACIMA" if diff_pct > 0 else "ABAIXO"
+
+        internal_section = f"- Nosso preco de venda: R$ {_format_brl(pv)}"
+        if custo:
+            internal_section += f" | Nosso custo: R$ {_format_brl(custo)}"
+        internal_section += "\n"
+        
+        acao_interna = f"- Nosso preco esta {abs(diff_pct):.0f}% {position} da media de mercado (R$ {_format_brl(pv)} vs R$ {_format_brl(avg_price)}).\n"
+        if custo:
+            margem = ((pv - custo) / pv) * 100 if pv > 0 else 0
+            acao_interna += f"- Margem estimada: {margem:.0f}% sobre custo.\n"
+
+    # Links relativos para funcionar em qualquer ambiente (dev/prod) via mesmo host do frontend.
+    download_section = (
+        f"\n## Download dos resultados\n"
+        f"- [Baixar Excel (.xlsx)](/api/v1/chat/market-research/download/{search_id}?format=xlsx)\n"
+        f"- [Baixar CSV (.csv)](/api/v1/chat/market-research/download/{search_id}?format=csv)\n"
+    )
+
+    return (
+        "## Resumo executivo\n"
+        + f"- Pesquisa de mercado concluida para **{produto}** com {len(rows)} referencias.\n"
+        + (f"{internal_section}" if internal_section else "")
+        + f"- Preco medio de mercado: R$ {_format_brl(avg_price)}\n"
+        + f"- Faixa: R$ {_format_brl(min_row['preco'])} ate R$ {_format_brl(max_row['preco'])}\n"
+        + "## Tabela operacional\n"
+        + "\n".join(table_lines)
+        + "\n\n## Acao recomendada\n"
+        + (
+            f"- Use a faixa entre R$ {_format_brl(min_row['preco'])} e R$ {_format_brl(avg_price)} como referencia de negociacao.\n"
+            if not internal.get("preco_venda")
+            else acao_interna
+        )
+        + download_section
+    )
+
+async def _run_competitive_market_fast_path(query: str) -> str:
+    if pesquisar_precos_concorrentes is None:
+        return _competitive_no_evidence_business_message(query)
+
+    estado = _extract_market_state(query)
+    concorrentes_csv = _extract_market_competitors_csv(query)
+
+    def _invoke_tool() -> Any:
+        tool_input = {
+            "descricao_produto": query,
+            "segmento": "",
+            "estado": estado,
+            "cidade": "",
+            "limite": "12",
+            "concorrentes": concorrentes_csv,
+        }
+        if hasattr(pesquisar_precos_concorrentes, "invoke"):
+            return pesquisar_precos_concorrentes.invoke(tool_input)
+        return pesquisar_precos_concorrentes(**tool_input)
+
+    try:
+        raw = await asyncio.wait_for(asyncio.to_thread(_invoke_tool), timeout=55.0)
+    except asyncio.TimeoutError:
+        logger.warning("Competitive fast-path timeout para query: %s", query)
+        return _competitive_no_evidence_business_message(query)
+    except Exception as exc:
+        logger.error("Competitive fast-path error: %s", exc, exc_info=True)
+        return _competitive_no_evidence_business_message(query)
+
+    payload: Dict[str, Any]
+    if isinstance(raw, dict):
+        payload = raw
+    elif isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            payload = parsed if isinstance(parsed, dict) else {"status": "error"}
+        except Exception:
+            payload = {"status": "error"}
+    else:
+        payload = {"status": "error"}
+
+    return _build_competitive_structured_business_message(query, payload)
+
+
+async def _run_market_research_fast_path(query: str) -> str:
+    """Fast path para pesquisa de mercado genérica usando pesquisar_mercado_web."""
+    if pesquisar_mercado_web is None:
+        return _competitive_no_evidence_business_message(query)
+
+    produto = _extract_market_product_hint(query)
+
+    def _invoke_tool() -> Any:
+        fn = getattr(pesquisar_mercado_web, "func", pesquisar_mercado_web)
+        return fn(termo_pesquisa=produto, limite="15")
+
+    try:
+        raw = await asyncio.wait_for(asyncio.to_thread(_invoke_tool), timeout=55.0)
+    except asyncio.TimeoutError:
+        logger.warning("Market research fast-path timeout para query: %s", query)
+        return _competitive_no_evidence_business_message(query)
+    except Exception as exc:
+        logger.error("Market research fast-path error: %s", exc, exc_info=True)
+        return _competitive_no_evidence_business_message(query)
+
+    payload: Dict[str, Any]
+    if isinstance(raw, dict):
+        payload = raw
+    elif isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            payload = parsed if isinstance(parsed, dict) else {"status": "error"}
+        except Exception:
+            payload = {"status": "error"}
+    else:
+        payload = {"status": "error"}
+
+    return _build_competitive_structured_business_message(query, payload)
 
 
 def safe_json_dumps(obj: Any, **kwargs) -> str:
@@ -209,6 +618,95 @@ class ChatResponse(BaseModel):
     response: str
 
 
+@router.get("/market-research/download/{search_id}")
+async def download_market_results(
+    search_id: str,
+    format: str = "xlsx"
+):
+    """
+    Exporta os resultados da pesquisa de mercado para Excel ou CSV.
+    """
+    if search_id not in _market_search_cache:
+        raise HTTPException(status_code=404, detail="Resultados da pesquisa não encontrados ou expirados.")
+
+    data = _market_search_cache[search_id]
+    rows = data["rows"]
+    produto = data["produto"]
+    internal = data.get("internal_price", {})
+
+    output = io.BytesIO()
+    
+    if format.lower() == "xlsx":
+        import openpyxl
+        from openpyxl.styles import Font, Alignment
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Pesquisa de Mercado"
+        
+        # Cabeçalho
+        headers = ["Concorrente", "Produto", "Preço (R$)", "Fonte"]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+            
+        # Dados
+        for row in rows:
+            ws.append([
+                row["concorrente"],
+                row["produto"],
+                row["preco"],
+                row["fonte"]
+            ])
+            
+        # Adicionar Preço Interno se disponível
+        if internal.get("preco_venda"):
+            ws.append([])
+            ws.append(["--- INFORMAÇÕES INTERNAS ---"])
+            ws.append(["Nosso Preço de Venda", internal["preco_venda"]])
+            ws.append(["Nosso Custo", internal.get("custo")])
+            ws.append(["Mídia de Mercado", data.get("avg_price")])
+            
+        wb.save(output)
+        output.seek(0)
+        
+        filename = f"pesquisa_mercado_{search_id}.xlsx"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        
+    else: # Default to CSV
+        import csv
+        content = io.StringIO()
+        writer = csv.writer(content, delimiter=";", lineterminator="\n")
+        
+        writer.writerow(["Concorrente", "Produto", "Preco", "Fonte"])
+        for row in rows:
+            writer.writerow([
+                row["concorrente"],
+                row["produto"],
+                f"{row['preco']:.2f}".replace(".", ","),
+                row["fonte"]
+            ])
+            
+        if internal.get("preco_venda"):
+            writer.writerow([])
+            writer.writerow(["--- INFORMACOES INTERNAS ---"])
+            writer.writerow(["Nosso Preco de Venda", f"{internal['preco_venda']:.2f}".replace(".", ",")])
+            writer.writerow(["Nosso Custo", f"{internal.get('custo', 0):.2f}".replace(".", ",")])
+            
+        output.write(content.getvalue().encode("utf-8-sig"))
+        output.seek(0)
+        
+        filename = f"pesquisa_mercado_{search_id}.csv"
+        media_type = "text/csv"
+
+    return StreamingResponse(
+        output,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @router.post("/stream-token")
 async def create_stream_token(
     request: Request,
@@ -243,6 +741,18 @@ async def llm_status(
     if chat_service_v3 is None:
         raise HTTPException(status_code=503, detail="Chat service ainda não inicializado")
     return chat_service_v3.get_llm_status()
+
+
+@router.get("/context7/status")
+async def context7_status(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    """
+    Status operacional da integração Context7 externa (quando configurada).
+    """
+    from backend.app.core.integrations.context7_status import get_context7_status
+
+    return get_context7_status()
 
 
 @router.get("/stream")
@@ -361,7 +871,42 @@ async def stream_chat(
                 yield f"data: {safe_json_dumps({'type': 'final', 'text': '', 'done': True})}\n\n"
                 final_sent = True
                 return # SAÍDA ANTECIPADA - Evita carregar o agente pesado
-            
+
+            # --- FAST PATH: pesquisa concorrencial/mercado direta (sem pipeline completo do agente) ---
+            if _is_competitive_market_query(query_clean):
+                # Decide qual tool usar: concorrente específico ou mercado genérico
+                use_market_web = not _has_specific_competitor(query_clean)
+                tool_label = 'tool.market_research' if use_market_web else 'tool.competitive_research'
+
+                event_counter += 1
+                yield f"id: {event_counter}\n"
+                yield f"data: {safe_json_dumps({'type': 'tool_progress', 'tool': tool_label, 'status': 'start'})}\n\n"
+
+                if use_market_web:
+                    response_text = await _run_market_research_fast_path(q)
+                else:
+                    response_text = await _run_competitive_market_fast_path(q)
+                response_text = _sanitize_business_output(response_text)
+
+                event_counter += 1
+                yield f"id: {event_counter}\n"
+                yield f"data: {safe_json_dumps({'type': 'tool_progress', 'tool': 'system.finalizing', 'status': 'finishing'})}\n\n"
+
+                words = response_text.split(" ")
+                for i in range(0, len(words), 10):
+                    chunk_words = words[i:i + 10]
+                    prefix = " " if i > 0 else ""
+                    chunk_text = prefix + " ".join(chunk_words)
+                    event_counter += 1
+                    yield f"id: {event_counter}\n"
+                    yield f"data: {safe_json_dumps({'type': 'text', 'text': chunk_text, 'done': False})}\n\n"
+
+                event_counter += 1
+                yield f"id: {event_counter}\n"
+                yield f"data: {safe_json_dumps({'type': 'final', 'text': '', 'done': True})}\n\n"
+                final_sent = True
+                return
+
             # --- FAST PATH: perguntas determinísticas de KPI (sem LLM) ---
             kpi_intents = [
                 "kpi",
@@ -405,11 +950,14 @@ async def stream_chat(
             # [OK] FIX 2026-01-14: Cache agora usa user_id para isolamento
             # Isso evita que dados de UNE 1685 sejam retornados para query de UNE 1700
             user_cache_id = str(current_user.id) if current_user else None
+            metrics = MetricsService()
 
             # NOVO: Verificar Semantic Cache primeiro (com user_id)
             cache_key_query = f"{_CHAT_CACHE_VERSION}:{q}"
+            metrics.increment("chat_cache_lookups_total")
             cached_response = cache_get(cache_key_query, user_id=user_cache_id)
             if cached_response and not _is_degraded_or_error_response(cached_response):
+                metrics.increment("chat_cache_hits_total")
                 logger.info(f"CACHE HIT: Resposta encontrada em cache para: {q[:50]}... (user={user_cache_id})")
                 # Mesmo em cache-hit, manter histórico consistente para follow-ups.
                 try:
@@ -432,9 +980,11 @@ async def stream_chat(
                 yield f"data: {safe_json_dumps({'type': 'cache_hit', 'done': False})}\n\n"
                 agent_response = cached_response
             elif cached_response:
+                metrics.increment("chat_cache_misses_total")
                 logger.info("CACHE SKIP: resposta degradada/erro não será reutilizada")
                 agent_response = None
             else:
+                metrics.increment("chat_cache_misses_total")
                 # OPTIMIZATION 2025: Stream progress events during agent execution
                 import asyncio
                 event_queue = asyncio.Queue()
@@ -484,12 +1034,19 @@ async def stream_chat(
                                 agent_response = agent_task.result()
                             except asyncio.TimeoutError:
                                 logger.error(f"Agent timeout após 90s para query: {q}")
-                                agent_response = {
-                                    "type": "text",
-                                    "result": {
-                                        "mensagem": "O tempo limite de processamento foi excedido (90 segundos). Tente uma pergunta mais objetiva para receber a resposta mais rápido."
+                                if _is_competitive_market_query(q):
+                                    recovered_text = await _run_competitive_market_fast_path(q)
+                                    agent_response = {
+                                        "type": "text",
+                                        "result": {"mensagem": recovered_text}
                                     }
-                                }
+                                else:
+                                    agent_response = {
+                                        "type": "text",
+                                        "result": {
+                                            "mensagem": "O tempo limite de processamento foi excedido (90 segundos). Tente uma pergunta mais objetiva para receber a resposta mais rápido."
+                                        }
+                                    }
                             except Exception as e:
                                 logger.error(f"Agent error: {e}", exc_info=True)
                                 agent_response = {

@@ -65,3 +65,13 @@
 - Taxa de erro factual (%).
 - Taxa de feedback útil (%).
 - Erro 5xx (%).
+
+## Execução Atual (2026-02-23)
+- Fase 1:
+- Role dinâmica no chat: em produção (mapeada por usuário autenticado).
+- Stream do chat com token efêmero obrigatório: validado.
+- Feedback funcional (`positive|negative|partial`) com coleta e estatísticas: operacional.
+- Fase 2:
+- Observabilidade operacional do ChatBI: implementada.
+- Métricas de latência/erro/cache/tokens/uso de tools instrumentadas no fluxo de chat.
+- Dashboard SLO de ChatBI disponível em `GET /api/v1/admin/dashboard/chat-slo`.

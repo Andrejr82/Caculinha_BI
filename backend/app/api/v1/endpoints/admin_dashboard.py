@@ -10,12 +10,15 @@ from typing import Annotated, Dict, Any, List
 import os
 import time
 import logging
+import json
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.app.api.dependencies import require_admin
 from backend.app.infrastructure.database.models import User
+from backend.app.config.settings import settings
 
 router = APIRouter(prefix="/admin/dashboard", tags=["Admin Dashboard"])
 logger = logging.getLogger(__name__)
@@ -60,6 +63,36 @@ class QualityMetrics(BaseModel):
     low_score_count: int
     low_score_rate: float
     score_distribution: Dict[str, int]
+
+
+class ChatSLOMetrics(BaseModel):
+    """SLO operacional específico do ChatBI."""
+    total_requests: int
+    error_rate_pct: float
+    p95_latency_ms: float
+    p95_simple_ms: float
+    p95_complex_ms: float
+    cache_hit_rate_pct: float
+    tool_calls_total: int
+    avg_tools_per_request: float
+    tokens_in_total: int
+    tokens_out_total: int
+    estimated_cost_usd: float
+    feedback_useful_rate_pct: float
+    slo_status: str
+
+
+def _pctl_or_fallback(stats: Dict[str, Any]) -> float:
+    p95 = stats.get("p95")
+    if isinstance(p95, (int, float)):
+        return float(p95)
+    p50 = stats.get("p50")
+    if isinstance(p50, (int, float)):
+        return float(p50)
+    avg = stats.get("avg")
+    if isinstance(avg, (int, float)):
+        return float(avg)
+    return 0.0
 
 
 # ==================== Endpoints ====================
@@ -187,6 +220,87 @@ async def get_usage_metrics(
             top_endpoints=[],
             top_users=[]
         )
+
+
+@router.get("/chat-slo", response_model=ChatSLOMetrics)
+async def get_chat_slo_metrics(
+    current_user: Annotated[User, Depends(require_admin)]
+):
+    """
+    Dashboard operacional consolidado do ChatBI para SLO/SLA.
+    """
+    from backend.services.metrics import MetricsService
+
+    metrics = MetricsService()
+    total_requests = metrics.get_counter("chat_requests_total")
+    total_errors = metrics.get_counter("chat_errors_total")
+    total_tool_calls = metrics.get_counter("chat_tool_calls_total")
+    tokens_in = metrics.get_counter("chat_tokens_in_total")
+    tokens_out = metrics.get_counter("chat_tokens_out_total")
+    cache_lookups = metrics.get_counter("chat_cache_lookups_total")
+    cache_hits = metrics.get_counter("chat_cache_hits_total")
+
+    latency = metrics.get_histogram_stats("chat_latency_seconds")
+    latency_simple = metrics.get_histogram_stats("chat_latency_seconds", labels={"complexity": "simple"})
+    latency_complex = metrics.get_histogram_stats("chat_latency_seconds", labels={"complexity": "complex"})
+
+    p95_latency_ms = _pctl_or_fallback(latency) * 1000
+    p95_simple_ms = _pctl_or_fallback(latency_simple) * 1000
+    p95_complex_ms = _pctl_or_fallback(latency_complex) * 1000
+    error_rate_pct = (total_errors / total_requests * 100.0) if total_requests > 0 else 0.0
+    cache_hit_rate_pct = (cache_hits / cache_lookups * 100.0) if cache_lookups > 0 else 0.0
+    avg_tools_per_request = (total_tool_calls / total_requests) if total_requests > 0 else 0.0
+
+    # Estimativa de custo via parâmetros configuráveis (default 0.0 no ambiente).
+    input_cost_per_1k = float(getattr(settings, "OBS_COST_USD_PER_1K_INPUT_TOKENS", 0.0) or 0.0)
+    output_cost_per_1k = float(getattr(settings, "OBS_COST_USD_PER_1K_OUTPUT_TOKENS", 0.0) or 0.0)
+    estimated_cost_usd = ((tokens_in / 1000.0) * input_cost_per_1k) + ((tokens_out / 1000.0) * output_cost_per_1k)
+
+    # Feedback útil (positivo) para visão de qualidade percebida.
+    feedback_useful_rate_pct = 0.0
+    try:
+        feedback_path = Path(settings.LEARNING_FEEDBACK_PATH) / "feedback.jsonl"
+        if feedback_path.exists():
+            total_feedback = 0
+            useful_feedback = 0
+            with open(feedback_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    raw = (line or "").strip()
+                    if not raw:
+                        continue
+                    try:
+                        item = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    total_feedback += 1
+                    if str(item.get("feedback_type", "")).lower() == "positive":
+                        useful_feedback += 1
+            if total_feedback > 0:
+                feedback_useful_rate_pct = (useful_feedback / total_feedback) * 100.0
+    except Exception as e:
+        logger.warning("chat_slo_feedback_read_failed: %s", e)
+
+    # SLO padrão da Fase 2 (documento de produção enterprise)
+    slo_simple_ok = p95_simple_ms <= 3000.0 if p95_simple_ms > 0 else True
+    slo_complex_ok = p95_complex_ms <= 8000.0 if p95_complex_ms > 0 else True
+    slo_error_ok = error_rate_pct <= 1.0
+    slo_status = "healthy" if (slo_simple_ok and slo_complex_ok and slo_error_ok) else "degraded"
+
+    return ChatSLOMetrics(
+        total_requests=total_requests,
+        error_rate_pct=round(error_rate_pct, 2),
+        p95_latency_ms=round(p95_latency_ms, 2),
+        p95_simple_ms=round(p95_simple_ms, 2),
+        p95_complex_ms=round(p95_complex_ms, 2),
+        cache_hit_rate_pct=round(cache_hit_rate_pct, 2),
+        tool_calls_total=total_tool_calls,
+        avg_tools_per_request=round(avg_tools_per_request, 3),
+        tokens_in_total=tokens_in,
+        tokens_out_total=tokens_out,
+        estimated_cost_usd=round(estimated_cost_usd, 6),
+        feedback_useful_rate_pct=round(feedback_useful_rate_pct, 2),
+        slo_status=slo_status,
+    )
 
 
 @router.get("/quality", response_model=QualityMetrics)

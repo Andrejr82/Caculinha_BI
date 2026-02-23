@@ -5,7 +5,7 @@ import asyncio # Adicionado para corrigir NameError
 
 
 # Implementações
-from backend.app.core.llm_factory import LLMFactory
+from backend.app.core.llm_factory import LLMFactory, SmartLLM
 from backend.app.core.llm_groq_adapter import GroqLLMAdapter
 
 @pytest.fixture
@@ -57,3 +57,9 @@ async def test_generate_response_contract():
     response = await mock_adapter.generate_response("query")
     assert isinstance(response, str)
     assert response == "Async Response"
+
+
+def test_smart_llm_normalizes_grq_alias_to_groq():
+    """Contrato: alias 'grq' deve normalizar para provider 'groq'."""
+    llm = SmartLLM(primary="grq")
+    assert llm.primary == "groq"

@@ -21,6 +21,7 @@ Princípios:
 import logging
 import asyncio
 import sys
+import time
 from typing import Dict, Any, Optional, Callable, Awaitable, Union
 from dataclasses import dataclass
 
@@ -33,6 +34,7 @@ from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
 from backend.app.config.settings import settings
+from backend.services.metrics import MetricsService
 
 logger = logging.getLogger(__name__)
 
@@ -135,18 +137,63 @@ class ChatServiceV3:
         """
         if hasattr(self.llm, "get_provider_status"):
             return self.llm.get_provider_status()
+        raw_provider = (getattr(settings, "LLM_PROVIDER", "") or "").strip().lower()
+        provider_aliases = {"grq": "groq", "gemini": "google"}
+        provider = provider_aliases.get(raw_provider, raw_provider or "unknown")
+        model_name = getattr(settings, "GROQ_MODEL_NAME", None) if provider == "groq" else getattr(settings, "LLM_MODEL_NAME", None)
         return {
-            "primary": getattr(settings, "LLM_PROVIDER", "unknown"),
-            "chain": [getattr(settings, "LLM_PROVIDER", "unknown")],
+            "primary": provider,
+            "chain": [provider],
             "providers": [
                 {
-                    "provider": getattr(settings, "LLM_PROVIDER", "unknown"),
+                    "provider": provider,
                     "available": True,
-                    "model": getattr(settings, "LLM_MODEL_NAME", None),
+                    "model": model_name,
                     "capabilities": {"chat": True, "tools": False, "streaming": False, "json_mode": False},
                 }
             ],
         }
+
+    @staticmethod
+    def _estimate_tokens(text: Optional[str]) -> int:
+        """
+        Estimativa simples de tokens para observabilidade operacional.
+        Aproximação: ~4 chars por token.
+        """
+        if not text:
+            return 0
+        return max(1, int(len(str(text)) / 4))
+
+    @staticmethod
+    def _extract_tool_call_names(tool_calls: Any) -> list[str]:
+        names: list[str] = []
+        if not tool_calls:
+            return names
+        if isinstance(tool_calls, list):
+            for tc in tool_calls:
+                if isinstance(tc, str):
+                    names.append(tc)
+                    continue
+                if isinstance(tc, dict):
+                    function_obj = tc.get("function")
+                    if isinstance(function_obj, dict) and function_obj.get("name"):
+                        names.append(str(function_obj["name"]))
+                        continue
+                    if tc.get("name"):
+                        names.append(str(tc["name"]))
+        return names
+
+    @staticmethod
+    def _classify_query_complexity(query: str) -> str:
+        q = (query or "").lower()
+        complex_markers = (
+            "grafico", "gráfico", "dashboard", "forecast", "previs",
+            "anomalia", "outlier", "alocar", "transfer", "otimiz",
+            "segmento", "categoria", "correlação", "correlacao",
+        )
+        if len(q) > 120 or any(marker in q for marker in complex_markers):
+            return "complex"
+        return "simple"
     
     async def process_message(
         self,
@@ -169,7 +216,15 @@ class ChatServiceV3:
             Dicionário com resposta (compatível com API existente)
         """
         logger.info(f"[DEBUG] [DEBUG] process_message INICIANDO: query='{query[:100]}...'")
-        
+
+        request_started_at = time.perf_counter()
+        metrics = MetricsService()
+        normalized_role_for_metrics = self._normalize_role(user_role)
+        complexity = self._classify_query_complexity(query)
+
+        metrics.increment("chat_requests_total")
+        metrics.increment("chat_requests_total", labels={"role": normalized_role_for_metrics})
+
         try:
             # Callback helper
             # Callback helper
@@ -188,6 +243,7 @@ class ChatServiceV3:
                             "gerar_grafico_universal": "tool.chart",
                             "gerar_grafico_universal_v2": "tool.chart",
                             "pesquisar_precos_concorrentes": "tool.competitive_research",
+                            "pesquisar_mercado_web": "tool.market_research",
                         }
                         status_map = {
                             "start": "start",
@@ -203,7 +259,7 @@ class ChatServiceV3:
                             "status": status_map.get(str(arg2 or "").lower(), "executing")
                         })
             
-            role = self._normalize_role(user_role)
+            role = normalized_role_for_metrics
             agent = self._get_agent_for_role(role)
             logger.info(f"[DEBUG] [DEBUG] Agente disponível para role '{role}': {agent is not None}")
             
@@ -248,7 +304,14 @@ class ChatServiceV3:
             
             # 4. Processar resposta do agente
             response = self._process_agent_response(agent_response)
-            
+
+            # Métricas de tool usage/tokens/custo aproximado
+            tool_names = self._extract_tool_call_names(agent_response.get("tool_calls") if isinstance(agent_response, dict) else None)
+            if tool_names:
+                metrics.increment("chat_tool_calls_total", value=len(tool_names))
+                for tool_name in tool_names:
+                    metrics.increment("chat_tool_calls_total", labels={"tool": tool_name})
+
             # 5. Salvar no histórico
             self.session_manager.add_message(session_id, "user", query, user_id)
             response_text = response.get("result", {}).get("mensagem", "")
@@ -258,11 +321,27 @@ class ChatServiceV3:
                 response_text, 
                 user_id
             )
+
+            tokens_in = self._estimate_tokens(query)
+            tokens_out = self._estimate_tokens(response_text)
+            metrics.increment("chat_tokens_in_total", value=tokens_in)
+            metrics.increment("chat_tokens_out_total", value=tokens_out)
+            metrics.increment("chat_tokens_total", value=tokens_in + tokens_out)
+
+            latency_seconds = max(0.0, time.perf_counter() - request_started_at)
+            metrics.observe("chat_latency_seconds", latency_seconds)
+            metrics.observe("chat_latency_seconds", latency_seconds, labels={"complexity": complexity})
+            metrics.observe("agent_execution_seconds", latency_seconds)
             
             logger.info(f"[AGENT] Resposta gerada com sucesso")
             return response
             
         except Exception as e:
+            metrics.increment("chat_errors_total")
+            metrics.increment("chat_errors_total", labels={"role": normalized_role_for_metrics})
+            latency_seconds = max(0.0, time.perf_counter() - request_started_at)
+            metrics.observe("chat_latency_seconds", latency_seconds)
+            metrics.observe("chat_latency_seconds", latency_seconds, labels={"complexity": complexity})
             logger.error(f"Erro em process_message: {e}", exc_info=True)
             return {
                 "type": "text",
