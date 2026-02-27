@@ -110,6 +110,7 @@ export default function Layout(props: any) {
     {
       group: 'Sistema',
       items: [
+        { href: '/admin/dashboard', icon: BarChart3, label: 'KPIs ChatBI', roles: ['admin'] },
         { href: '/diagnostics', icon: Database, label: 'Diagnóstico DB', roles: ['admin'] },
         { href: '/help', icon: HelpCircle, label: 'Ajuda', roles: ['admin', 'user'] },
         { href: '/about', icon: Info, label: 'Sobre', roles: ['admin', 'user'] },

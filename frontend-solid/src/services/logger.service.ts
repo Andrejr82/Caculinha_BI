@@ -48,6 +48,7 @@ export interface LoggerConfig {
   enableRemote: boolean;
   remoteEndpoint?: string;
   maxBufferSize: number;
+  maxOfflineBufferSize: number;
   flushInterval: number;
   includeStackTrace: boolean;
   sanitizeData: boolean;
@@ -63,6 +64,7 @@ class Logger {
     enableRemote: true,
     remoteEndpoint: '/api/v1/logs',
     maxBufferSize: 50,
+    maxOfflineBufferSize: 500,
     flushInterval: 10000, // 10 segundos
     includeStackTrace: true,
     sanitizeData: true,
@@ -72,6 +74,7 @@ class Logger {
   private flushTimer: number | null = null;
   private sessionId: string;
   private sessionStart: number;
+  private readonly storageKey = 'caculinha_frontend_log_buffer_v1';
 
   constructor(config?: Partial<LoggerConfig>) {
     if (config) {
@@ -80,6 +83,7 @@ class Logger {
 
     this.sessionId = this.generateSessionId();
     this.sessionStart = Date.now();
+    this.restoreBufferFromStorage();
 
     // Inicia o timer de flush
     this.startFlushTimer();
@@ -90,6 +94,7 @@ class Logger {
     // Flush antes de sair da página
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => {
+        this.persistBufferToStorage();
         this.flush();
       });
     }
@@ -100,6 +105,8 @@ class Logger {
    */
   public configure(config: Partial<LoggerConfig>): void {
     this.config = { ...this.config, ...config };
+    this.trimBuffer();
+    this.persistBufferToStorage();
   }
 
   /**
@@ -250,6 +257,8 @@ class Logger {
     // Adiciona ao buffer para envio remoto
     if (this.config.enableRemote) {
       this.buffer.push(entry);
+      this.trimBuffer();
+      this.persistBufferToStorage();
 
       // Se buffer está cheio, faz flush imediatamente
       if (this.buffer.length >= this.config.maxBufferSize) {
@@ -319,6 +328,7 @@ class Logger {
 
     const logsToSend = [...this.buffer];
     this.buffer = [];
+    this.persistBufferToStorage();
 
     try {
       const response = await fetch(this.config.remoteEndpoint!, {
@@ -335,11 +345,51 @@ class Logger {
         // Se falhar, recoloca no buffer
         console.warn('Failed to send logs to backend:', response.statusText);
         this.buffer.unshift(...logsToSend);
+        this.trimBuffer();
+        this.persistBufferToStorage();
       }
     } catch (error) {
       // Se falhar, recoloca no buffer
       console.warn('Error sending logs to backend:', error);
       this.buffer.unshift(...logsToSend);
+      this.trimBuffer();
+      this.persistBufferToStorage();
+    }
+  }
+
+  private trimBuffer(): void {
+    const max = Math.max(this.config.maxOfflineBufferSize, this.config.maxBufferSize);
+    if (this.buffer.length > max) {
+      this.buffer.splice(0, this.buffer.length - max);
+    }
+  }
+
+  private persistBufferToStorage(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      if (this.buffer.length === 0) {
+        localStorage.removeItem(this.storageKey);
+        return;
+      }
+      localStorage.setItem(this.storageKey, JSON.stringify(this.buffer));
+    } catch {
+      // Ignora erros de persistência local
+    }
+  }
+
+  private restoreBufferFromStorage(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const serialized = localStorage.getItem(this.storageKey);
+      if (!serialized) return;
+
+      const parsed = JSON.parse(serialized);
+      if (Array.isArray(parsed)) {
+        this.buffer = parsed as LogEntry[];
+        this.trimBuffer();
+      }
+    } catch {
+      // Ignora erros de parsing
     }
   }
 

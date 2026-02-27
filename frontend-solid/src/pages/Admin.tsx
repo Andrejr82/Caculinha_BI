@@ -398,6 +398,13 @@ export default function Admin() {
           <h2 class="text-2xl font-bold tracking-tight">Área Administrativa</h2>
           <p class="text-muted">Gerenciamento do sistema e usuários</p>
         </div>
+        <a
+          href="/admin/dashboard"
+          class="btn btn-outline"
+          title="Abrir painel de KPIs do ChatBI"
+        >
+          KPIs ChatBI
+        </a>
       </div>
 
       {/* Message Alert */}
