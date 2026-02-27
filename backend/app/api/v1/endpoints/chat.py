@@ -3,7 +3,7 @@ Chat Endpoints
 BI Chat with AI assistant
 """
 
-from typing import Annotated, Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import ORJSONResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -35,6 +35,8 @@ from backend.app.core.utils.error_handler import APIError
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.semantic_cache import cache_get, cache_set, cache_stats
 from backend.app.core.utils.response_validator import validate_response, validator_stats
+from backend.app.core.playground_mode import is_user_in_canary
+from backend.app.core.utils.report_templates import get_official_report_templates
 # NEW SERVICE V3 - Metrics-First Architecture
 from backend.app.services.chat_service_v3 import ChatServiceV3
 from backend.services.metrics import MetricsService
@@ -85,6 +87,48 @@ def _sanitize_business_output(text: str) -> str:
     return cleaned.strip()
 
 
+def _sanitize_response_for_role(text: str, role: str) -> str:
+    """
+    Sanitização adicional por perfil para evitar exposição de dados internos
+    em respostas destinadas a usuários não privilegiados.
+    """
+    cleaned = _sanitize_business_output(text)
+    role_norm = str(role or "").strip().lower()
+
+    # Admin/analyst mantém detalhamento completo.
+    if role_norm in {"admin", "analyst"}:
+        return cleaned
+
+    # Perfis restritos: remover SQL/Python e detalhamento por loja/UNE.
+    cleaned = re.sub(
+        r"(?ims)^\s*##\s*SQL/Python\s*\n.*?(?=^\s*##\s+|\Z)",
+        "## SQL/Python\n- Conteudo tecnico restrito para este perfil.\n\n",
+        cleaned,
+    )
+    cleaned = re.sub(r"(?im)^\s*-\s*Template oficial:.*$", "", cleaned)
+
+    table_pattern = r"(?ims)^(\s*##\s*Tabela operacional\s*\n)(.*?)(?=^\s*##\s+|\Z)"
+    table_match = re.search(table_pattern, cleaned)
+    if table_match:
+        table_body = table_match.group(2)
+        if re.search(r"(?i)\bUNE\b|Loja\s*\(UNE\)", table_body):
+            cleaned = re.sub(
+                table_pattern,
+                "## Tabela operacional\n- Detalhamento por loja/UNE restrito para este perfil.\n\n",
+                cleaned,
+            )
+
+    cleaned = re.sub(r"(?i)UNE\s+l[ií]der:\s*\d+", "UNE lider: [restrito]", cleaned)
+    cleaned = re.sub(
+        r"(?ims)^\s*##\s*Recorte e evid[êe]ncia\s*\n.*?(?=^\s*##\s+|\Z)",
+        "## Recorte e evidência\n- Recorte aplicado conforme permissões deste perfil.\n\n",
+        cleaned,
+    )
+
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def _is_competitive_market_query(query: str) -> bool:
     q = (query or "").lower()
     markers = [
@@ -99,6 +143,17 @@ def _is_competitive_market_query(query: str) -> bool:
     return any(m in q for m in markers)
 
 
+def _is_chat_allowed_for_user(user: User) -> bool:
+    return is_user_in_canary(
+        user_id=str(getattr(user, "id", "") or ""),
+        username=str(getattr(user, "username", "") or ""),
+        role=str(getattr(user, "role", "") or ""),
+        canary_enabled=settings.CHAT_CANARY_ENABLED,
+        allowed_roles_csv=settings.CHAT_CANARY_ALLOWED_ROLES,
+        allowed_users_csv=settings.CHAT_CANARY_ALLOWED_USERS,
+    )
+
+
 def _has_specific_competitor(query: str) -> bool:
     """Retorna True se a query menciona um concorrente específico pelo nome."""
     q = (query or "").lower()
@@ -106,8 +161,49 @@ def _has_specific_competitor(query: str) -> bool:
         "americanas", "kalunga", "bellart", "shopee", "amazon",
         "casa&video", "casa e video", "le biscuit", "lebiscuit",
         "tubarão", "tubarao", "tid", "amigão", "amigao",
+        "mercado livre", "mercadolivre", "meli",
     ]
     return any(c in q for c in competitors)
+
+
+def _should_use_market_web_fast_path(query: str) -> bool:
+    """
+    Regras de roteamento para pesquisa de mercado:
+    - market_web: apenas pedido explícito de Mercado Livre.
+    - competitive_research: pesquisa genérica de mercado, concorrente específico
+      (fora ML) ou pedido explícito para "concorrentes".
+    """
+    q = (query or "").lower()
+    ml_aliases = ["mercado livre", "mercadolivre", "meli"]
+    other_competitors = [
+        "americanas", "kalunga", "bellart", "shopee", "amazon",
+        "casa&video", "casa e video", "le biscuit", "lebiscuit",
+        "tubarão", "tubarao", "tid", "amigão", "amigao",
+    ]
+    competitor_terms = [
+        "concorrente",
+        "concorrentes",
+        "concorrência",
+        "concorrencia",
+    ]
+    mentions_ml = any(k in q for k in ml_aliases)
+    mentions_other_competitor = any(k in q for k in other_competitors)
+    mentions_competitor_terms = any(k in q for k in competitor_terms)
+
+    # Mercado Livre explícito sem outro concorrente -> mercado aberto.
+    if mentions_ml and not mentions_other_competitor:
+        return True
+
+    # Concorrente específico (fora ML) -> pesquisa concorrencial.
+    if mentions_other_competitor:
+        return False
+
+    # Pedido explícito de concorrentes sem nomes -> pesquisa concorrencial.
+    if mentions_competitor_terms:
+        return False
+
+    # Pesquisa de mercado genérica -> multi-concorrente.
+    return False
 
 
 def _extract_market_product_hint(query: str) -> str:
@@ -195,12 +291,17 @@ def _format_brl(value: Optional[float]) -> str:
 
 
 def _business_source_label(item: Dict[str, Any]) -> str:
+    fonte = str(item.get("fonte") or "").strip().lower()
+    if fonte in {"serpapi_shopping", "serpapi_google_shopping"}:
+        competitor = str(item.get("concorrente") or "").strip()
+        if competitor:
+            return competitor
+
     url = str(item.get("url") or "").strip()
     if url:
         domain = urlparse(url).netloc.lower().replace("www.", "")
         if domain:
             return domain
-    fonte = str(item.get("fonte") or "").strip().lower()
     if fonte in {"manual", "benchmark_seed_local", "base_manual_concorrencial", "csv_compras"}:
         return ""
     return fonte or "fonte_publica"
@@ -359,6 +460,14 @@ def _build_competitive_structured_business_message(query: str, payload: Dict[str
         table_lines.append(
             f"| {row['concorrente']} | {row['produto'][:60]} | {_format_brl(row['preco'])} | {row['fonte'] or 'site'} |"
         )
+    competitors_found: List[str] = []
+    for row in rows:
+        comp = str(row.get("concorrente") or "").strip()
+        if comp and comp not in competitors_found:
+            competitors_found.append(comp)
+    competitors_line = ", ".join(competitors_found[:6]) if competitors_found else "N/D"
+    if len(competitors_found) > 6:
+        competitors_line += ", ..."
 
     # Montar seção de preço interno
     internal_section = ""
@@ -386,22 +495,40 @@ def _build_competitive_structured_business_message(query: str, payload: Dict[str
         f"- [Baixar CSV (.csv)](/api/v1/chat/market-research/download/{search_id}?format=csv)\n"
     )
 
+    action_block = (
+        f"- Use a faixa entre R$ {_format_brl(min_row['preco'])} e R$ {_format_brl(avg_price)} como referencia de negociacao.\n"
+        if not internal.get("preco_venda")
+        else acao_interna
+    )
+    if len(competitors_found) == 1:
+        action_block += (
+            f"- Cobertura concentrada em {competitors_found[0]}; "
+            "para ampliar a comparação, informe concorrentes-alvo (ex.: Kalunga, Americanas, Shopee).\n"
+        )
+
     return (
         "## Resumo executivo\n"
         + f"- Pesquisa de mercado concluida para **{produto}** com {len(rows)} referencias.\n"
+        + f"- Concorrentes com preço identificado: {competitors_line}\n"
         + (f"{internal_section}" if internal_section else "")
         + f"- Preco medio de mercado: R$ {_format_brl(avg_price)}\n"
         + f"- Faixa: R$ {_format_brl(min_row['preco'])} ate R$ {_format_brl(max_row['preco'])}\n"
         + "## Tabela operacional\n"
         + "\n".join(table_lines)
         + "\n\n## Acao recomendada\n"
-        + (
-            f"- Use a faixa entre R$ {_format_brl(min_row['preco'])} e R$ {_format_brl(avg_price)} como referencia de negociacao.\n"
-            if not internal.get("preco_venda")
-            else acao_interna
-        )
+        + action_block
         + download_section
     )
+
+
+def _payload_has_public_price_evidence(payload: Dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    items = payload.get("itens") or []
+    if not isinstance(items, list):
+        return False
+    return any(_is_public_price_evidence(item) for item in items if isinstance(item, dict))
+
 
 async def _run_competitive_market_fast_path(query: str) -> str:
     if pesquisar_precos_concorrentes is None:
@@ -443,6 +570,21 @@ async def _run_competitive_market_fast_path(query: str) -> str:
             payload = {"status": "error"}
     else:
         payload = {"status": "error"}
+
+    # Fallback de robustez: quando pesquisa concorrencial não traz evidência pública
+    # validada, tenta pesquisa de mercado aberta para não perder cobertura.
+    if (
+        not _payload_has_public_price_evidence(payload)
+        and pesquisar_mercado_web is not None
+        and not _has_specific_competitor(query)
+    ):
+        logger.info("Competitive fast-path sem evidência; aplicando fallback market_web.")
+        try:
+            fallback_text = await _run_market_research_fast_path(query)
+            if fallback_text and fallback_text.strip():
+                return fallback_text
+        except Exception as exc:
+            logger.warning("Fallback market_web falhou: %s", exc)
 
     return _build_competitive_structured_business_message(query, payload)
 
@@ -548,7 +690,15 @@ chat_service_v3 = None  # Metrics-First Architecture
 session_manager = None
 query_history = None  # [OK] FIX: Added missing variable for feedback endpoint
 _init_lock = asyncio.Lock()
-_CHAT_CACHE_VERSION = "chatbi_v3_20260218_r3"
+_CHAT_CACHE_VERSION = "chatbi_v3_20260227_r4"
+
+
+def _should_bypass_cache_for_query(query: str) -> bool:
+    """
+    Perguntas de mercado/concorrência usam dados externos voláteis e não devem
+    reutilizar cache antigo por usuário.
+    """
+    return _is_competitive_market_query(query)
 
 # [OK] FIX: Import os for feedback endpoint
 import os
@@ -716,6 +866,12 @@ async def create_stream_token(
     Emite token efêmero para SSE, evitando expor JWT completo na URL.
     TTL curto e uso único.
     """
+    if not _is_chat_allowed_for_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ChatBI em canary fechado para este perfil. Solicite liberacao do acesso.",
+        )
+
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authorization Bearer ausente")
@@ -755,6 +911,19 @@ async def context7_status(
     return get_context7_status()
 
 
+@router.get("/report-templates")
+async def list_official_chat_report_templates(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    """
+    Catalogo oficial de templates de relatorio do ChatBI (Fase 3).
+    """
+    return {
+        "templates": get_official_report_templates(),
+        "chat_canary_enabled": settings.CHAT_CANARY_ENABLED,
+    }
+
+
 @router.get("/stream")
 async def stream_chat(
     q: str,
@@ -774,6 +943,11 @@ async def stream_chat(
         # [OK] CRITICAL FIX: Set context for tools running in background
         set_current_user_context(current_user)
         logger.info(f"SSE authenticated user: {current_user.username}")
+        if not _is_chat_allowed_for_user(current_user):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={"detail": "ChatBI em canary fechado para este perfil. Solicite liberacao do acesso."},
+            )
     except Exception as e:
         logger.error(f"SSE authentication failed: {e}")
         return JSONResponse(
@@ -874,8 +1048,9 @@ async def stream_chat(
 
             # --- FAST PATH: pesquisa concorrencial/mercado direta (sem pipeline completo do agente) ---
             if _is_competitive_market_query(query_clean):
-                # Decide qual tool usar: concorrente específico ou mercado genérico
-                use_market_web = not _has_specific_competitor(query_clean)
+                # Por padrão, usa pesquisa concorrencial multi-fonte para evitar viés em um único marketplace.
+                # Pesquisa de mercado genérica só usa market_web quando Mercado Livre é pedido explicitamente.
+                use_market_web = _should_use_market_web_fast_path(query_clean)
                 tool_label = 'tool.market_research' if use_market_web else 'tool.competitive_research'
 
                 event_counter += 1
@@ -886,7 +1061,7 @@ async def stream_chat(
                     response_text = await _run_market_research_fast_path(q)
                 else:
                     response_text = await _run_competitive_market_fast_path(q)
-                response_text = _sanitize_business_output(response_text)
+                response_text = _sanitize_response_for_role(response_text, getattr(current_user, "role", "user"))
 
                 event_counter += 1
                 yield f"id: {event_counter}\n"
@@ -952,10 +1127,13 @@ async def stream_chat(
             user_cache_id = str(current_user.id) if current_user else None
             metrics = MetricsService()
 
+            # Cache policy: consultas de mercado/concorrência não reutilizam cache.
+            bypass_cache = _should_bypass_cache_for_query(q)
+
             # NOVO: Verificar Semantic Cache primeiro (com user_id)
             cache_key_query = f"{_CHAT_CACHE_VERSION}:{q}"
             metrics.increment("chat_cache_lookups_total")
-            cached_response = cache_get(cache_key_query, user_id=user_cache_id)
+            cached_response = None if bypass_cache else cache_get(cache_key_query, user_id=user_cache_id)
             if cached_response and not _is_degraded_or_error_response(cached_response):
                 metrics.increment("chat_cache_hits_total")
                 logger.info(f"CACHE HIT: Resposta encontrada em cache para: {q[:50]}... (user={user_cache_id})")
@@ -1058,7 +1236,12 @@ async def stream_chat(
                             break
 
                 # [OK] FIX 2026-01-14: Salvar resposta válida em cache COM user_id
-                if agent_response and "error" not in str(agent_response).lower() and not _is_degraded_or_error_response(agent_response):
+                if (
+                    (not bypass_cache)
+                    and agent_response
+                    and "error" not in str(agent_response).lower()
+                    and not _is_degraded_or_error_response(agent_response)
+                ):
                     cache_set(cache_key_query, agent_response, user_id=user_cache_id)
             
             if not agent_response:
@@ -1155,7 +1338,7 @@ async def stream_chat(
                 )
 
             if response_text and response_text.strip():
-                sanitized = _sanitize_business_output(response_text)
+                sanitized = _sanitize_response_for_role(response_text, getattr(current_user, "role", "user"))
                 if sanitized != response_text:
                     logger.info("[QUALITY] Sanitizacao de saida aplicada para remover termos tecnicos.")
                 response_text = sanitized
@@ -1249,8 +1432,15 @@ async def send_chat_message(
     request: ChatRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> dict:
+    from backend.app.core.context import set_current_user_context
+
     # Legacy - calling agent without history for now, or could pass session_id if we updated request model
     logger.warning("Legacy chat endpoint used.")
+    if not _is_chat_allowed_for_user(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ChatBI em canary fechado para este perfil. Solicite liberacao do acesso.",
+        )
 
     # [DEBUG] FIX: Ensure initialization
     if chat_service_v3 is None:
@@ -1270,6 +1460,9 @@ async def send_chat_message(
     
     if chat_service_v3 is None:
          raise HTTPException(status_code=500, detail="Servico de chat ainda nao inicializado.")
+
+    # Garantir contexto de segurança também no endpoint POST.
+    set_current_user_context(current_user)
 
     # Assuming no history for legacy non-session calls
     # We will use the NEW service instead of the old agent directly to ensure consistency

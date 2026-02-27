@@ -82,20 +82,56 @@ def extract_product_code(query: str) -> Optional[int]:
 
 def extract_segment_filter(query: str) -> Optional[str]:
     """Extrai nome de segmento da query."""
-    # Padrão: "segmento X", "do segmento Y"
+    if not query:
+        return None
+
+    # Captura segmento multi-palavra e remove sufixos de escopo (ex.: "de todas as unes").
     patterns = [
-        r"segmento\s+(\w+)",
-        r"d[oa]\s+segmento\s+(\w+)",
+        r"(?:d[oa]|de)?\s*segmento\s+([a-zA-ZÀ-ÿ0-9 _-]+?)(?:\s+em\s+|\s+na\s+|\s+no\s+|$)",
+        r"\bsegmento\s+([a-zA-ZÀ-ÿ0-9 _-]+)$",
     ]
-    
+    trailing_scope_patterns = [
+        r"\s+(?:de|em|na|no)\s+t[oó]d?as?\s+as?\s+(?:unes?|lojas?)\b.*$",
+        r"\s+t[oó]d?as?\s+as?\s+(?:unes?|lojas?)\b.*$",
+        r"\s+toda\s+a\s+rede\b.*$",
+        r"\s+(?:na|no|une|loja)\s+\d{3,4}\b.*$",
+    ]
+
     for pattern in patterns:
         match = re.search(pattern, query, re.IGNORECASE)
-        if match:
-            segment = match.group(1).upper()
-            logger.debug(f"[ROUTER] Extracted segment: {segment}")
-            return segment
-    
+        if not match:
+            continue
+
+        segment = re.sub(r"\s+", " ", match.group(1).strip(" .,:;!?-"))
+        for trailing in trailing_scope_patterns:
+            segment = re.sub(trailing, "", segment, flags=re.IGNORECASE).strip(" .,:;!?-")
+
+        if not segment:
+            continue
+
+        # Evita capturar apenas termos de escopo (une/loja/rede).
+        segment_lower = segment.lower()
+        if re.fullmatch(r"(?:une|unes|loja|lojas|rede)(?:\s+\w+)?", segment_lower):
+            continue
+
+        segment = segment.upper()
+        logger.debug(f"[ROUTER] Extracted segment: {segment}")
+        return segment
+
     return None
+
+
+def is_all_stores_scope(query: str) -> bool:
+    """Detecta menções a toda a rede, com tolerância a pequenos typos."""
+    if not query:
+        return False
+    q = query.lower()
+    return bool(
+        re.search(r"\bt[oó]d?as?\s+as?\s+(?:unes?|lojas?)\b", q)
+        or re.search(r"\bem\s+t[oó]d?as?\s+as?\s+(?:unes?|lojas?)\b", q)
+        or re.search(r"\btoda\s+a\s+rede\b", q)
+        or re.search(r"\bem\s+toda\s+a\s+rede\b", q)
+    )
 
 
 def extract_top_limit(query: str) -> Optional[int]:
@@ -209,23 +245,22 @@ def route_forecasting(query: str, confidence: float) -> ToolSelection:
     has_seasonal = any(kw in query_lower for kw in seasonal_keywords)
     
     if has_seasonal or "sazonal" in query_lower:
-        tool_name = "prever_demanda_sazonal"
+        tool_name = "prever_demanda"
         reasoning = "Previsão com sazonalidade detectada"
     elif "tendência" in query_lower or "regressão" in query_lower:
         tool_name = "analise_regressao_vendas"
         reasoning = "Análise de tendência via regressão"
     else:
-        tool_name = "prever_demanda_sazonal"  # Default
+        tool_name = "prever_demanda"  # Default
         reasoning = "Previsão de demanda padrão"
     
     params = {}
     if product:
-        params["produto_codigo"] = product
-    if tool_name == "prever_demanda_sazonal":
-        params["dias_previsao"] = days
+        params["produto_id"] = str(product)
+    if tool_name == "prever_demanda":
+        params["periodo_dias"] = days
     elif tool_name == "analise_regressao_vendas":
-        params["dias_analise"] = days
-        params["dias_forecast"] = 30
+        params["periodo_dias"] = days
     
     return ToolSelection(
         tool_name=tool_name,
@@ -246,35 +281,43 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
     # Sub-classificação de cálculo
     if "eoq" in query_lower or "lote econômico" in query_lower or "quanto comprar" in query_lower:
         tool_name = "calcular_eoq"
-        params = {}
+        params = {"produto_id": str(product)} if product else {}
         if product:
-            params["produto_codigo"] = product
+            params["produto_id"] = str(product)
         reasoning = "Cálculo de EOQ (lote econômico)"
         
     elif "margem" in query_lower or "mc" in query_lower:
-        tool_name = "calcular_mc_produto"
-        params = {}
-        if product:
-            params["produto_codigo"] = product
-        if une:
-            params["une"] = int(une)
-        reasoning = "Cálculo de margem de contribuição"
+        if product and une:
+            tool_name = "calcular_mc_produto"
+            params = {"produto_id": int(product), "une_id": int(une)}
+            reasoning = "Cálculo de margem de contribuição"
+        else:
+            # Tool exige produto e UNE; fallback para consulta guiada.
+            tool_name = "consultar_dados_flexivel"
+            params = {"colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"], "limite": "50"}
+            filtros = {}
+            if product:
+                filtros["PRODUTO"] = product
+            if une:
+                filtros["UNE"] = int(une)
+            if filtros:
+                params["filtros"] = filtros
+            reasoning = "Margem solicitada sem parâmetros mínimos para cálculo direto; fallback para dados base"
         
     elif "preço final" in query_lower or "preco final" in query_lower:
-        tool_name = "calcular_preco_final_une"
-        params = {}
+        # Tool calcular_preco_final_une exige parâmetros comerciais não inferíveis da query livre.
+        tool_name = "consultar_dados_flexivel"
+        params = {"colunas": ["PRODUTO", "NOME", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD"], "limite": "50"}
         if product:
-            params["produto_codigo"] = product
-        if une:
-            params["une"] = int(une)
-        reasoning = "Cálculo de preço final"
+            params["filtros"] = {"PRODUTO": product}
+        reasoning = "Preço final solicitado sem parâmetros completos; fallback para dados de preço e custo"
         
     else:
         # Fallback genérico
-        tool_name = "calcular_eoq"
-        params = {}
+        tool_name = "calcular_eoq" if product else "consultar_dados_flexivel"
+        params = {"produto_id": str(product)} if product else {"colunas": ["PRODUTO", "NOME", "VENDA_30DD"], "limite": "20"}
         if product:
-            params["produto_codigo"] = product
+            params["produto_id"] = str(product)
         reasoning = "Cálculo genérico (fallback para EOQ)"
     
     return ToolSelection(
@@ -292,12 +335,12 @@ def route_anomaly_detection(query: str, confidence: float) -> ToolSelection:
     days = extract_days_param(query) or 90  # Default 90 dias para anomalias
     
     params = {
-        "dias_analise": days,
+        "periodo_dias": days,
         "sensibilidade": 2.5  # Default moderado
     }
     
     if product:
-        params["produto_codigo"] = product
+        params["produto_id"] = str(product)
     
     # Detectar sensibilidade
     if "extremo" in query.lower() or "muito anormal" in query.lower():
@@ -320,28 +363,37 @@ def route_optimization(query: str, confidence: float) -> ToolSelection:
     
     product = extract_product_code(query)
     
+    qty_match = re.search(r"(\d+)\s*(?:unidades|itens|pe[cç]as|unid)\b", query_lower)
+    quantidade_total = int(qty_match.group(1)) if qty_match else None
+
     if "distribuir" in query_lower or "alocar" in query_lower:
-        tool_name = "alocar_estoque_lojas"
-        params = {}
-        if product:
-            params["produto_codigo"] = product
-        reasoning = "Alocação inteligente de estoque"
+        if product and quantidade_total:
+            tool_name = "alocar_estoque_lojas"
+            params = {"produto_id": str(product), "quantidade_total": quantidade_total}
+            reasoning = "Alocação inteligente de estoque"
+        else:
+            # Sem quantidade explícita, usar ferramenta mais robusta para diagnóstico operacional.
+            tool_name = "consultar_dados_flexivel"
+            params = {"colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"], "limite": "100"}
+            if product:
+                params["filtros"] = {"PRODUTO": product}
+            reasoning = "Solicitação de alocação sem quantidade total; fallback para diagnóstico de estoque por loja"
         
     elif "transferência" in query_lower or "transferencia" in query_lower:
         tool_name = "sugerir_transferencias_automaticas"
         params = {}
         une = extract_une_filter(query)
         if une:
-            params["une_origem"] = int(une)
+            params["une_origem_filtro"] = int(une)
         reasoning = "Sugestão de transferências automáticas"
         
     else:
-        # Fallback
-        tool_name = "alocar_estoque_lojas"
-        params = {}
+        # Fallback seguro: evita chamar alocação sem parâmetros obrigatórios.
+        tool_name = "consultar_dados_flexivel"
+        params = {"colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"], "limite": "100"}
         if product:
-            params["produto_codigo"] = product
-        reasoning = "Otimização genérica (fallback para alocação)"
+            params["filtros"] = {"PRODUTO": product}
+        reasoning = "Otimização genérica com diagnóstico de estoque (fallback seguro)"
     
     return ToolSelection(
         tool_name=tool_name,
@@ -429,7 +481,7 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
         )
     
     # Sub-classificação
-    if product and ("todas as lojas" in query_lower or "toda a rede" in query_lower):
+    if product and is_all_stores_scope(query):
         tool_name = "analisar_produto_todas_lojas"
         params = {"produto_codigo": product}
         reasoning = "Análise de produto em toda a rede"
@@ -438,17 +490,16 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
         tool_name = "analise_correlacao_produtos"
         params = {}
         if product:
-            params["produto_codigo"] = product
+            params["produtos_ids"] = [str(product)]
         reasoning = "Análise de correlação entre produtos"
         
     elif "histórico" in query_lower or "historico" in query_lower:
         tool_name = "analisar_historico_vendas"
         params = {}
         if product:
-            params["produto_codigo"] = product
-        days = extract_days_param(query)
-        if days:
-            params["dias_analise"] = days
+            params["codigo_produto"] = int(product)
+        if une:
+            params["codigo_une"] = int(une)
         reasoning = "Análise de histórico de vendas"
         
     else:

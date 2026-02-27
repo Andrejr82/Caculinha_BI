@@ -5,11 +5,17 @@ Verifica se o LLM está recebendo ferramentas corretamente
 import requests
 import json
 import uuid
+from pathlib import Path
+import pytest
 
 BASE_URL = "http://localhost:8000"
 
-# Ler token válido
-with open("tests/test_token.txt", "r") as f:
+# Ler token válido (teste de integração manual)
+token_path = Path("tests/test_token.txt")
+if not token_path.exists():
+    pytest.skip("teste manual: tests/test_token.txt não encontrado", allow_module_level=True)
+
+with open(token_path, "r", encoding="utf-8") as f:
     token = f.read().strip()
 
 print("=" * 60)

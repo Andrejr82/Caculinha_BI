@@ -17,6 +17,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 
+from backend.app.core.observability.context import get_context, set_context
 
 logger = structlog.get_logger(__name__)
 
@@ -63,6 +64,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
         request.state.tenant_id = tenant_id
         request.state.tenant_config = tenant_config
         request.state.tenant_plan = tenant_config.get("plan", "free")
+        self._sync_observability_context(tenant_id)
         
         # Log de contexto
         logger.bind(
@@ -119,6 +121,15 @@ class TenantMiddleware(BaseHTTPMiddleware):
         _TENANT_CACHE[tenant_id] = config
         
         return config
+
+    @staticmethod
+    def _sync_observability_context(tenant_id: str) -> None:
+        """Sincroniza tenant no contexto de observabilidade."""
+        if not tenant_id:
+            return
+        ctx = get_context()
+        ctx.tenant_id = tenant_id
+        set_context(ctx)
 
 
 def get_tenant_limits(tenant_id: str) -> Dict[str, Any]:

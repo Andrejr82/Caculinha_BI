@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     PLAYGROUND_CANARY_ENABLED: bool = False
     PLAYGROUND_CANARY_ALLOWED_ROLES: str = "admin"
     PLAYGROUND_CANARY_ALLOWED_USERS: str = ""
+    CHAT_CANARY_ENABLED: bool = False
+    CHAT_CANARY_ALLOWED_ROLES: str = "admin,analyst,user"
+    CHAT_CANARY_ALLOWED_USERS: str = ""
     
     # Google Gemini (fallback opcional)
     GEMINI_API_KEY: str | None = None
@@ -172,6 +175,8 @@ class Settings(BaseSettings):
     COMPETITIVE_HTTP_TIMEOUT_SEC: int = 10
     COMPETITIVE_TOTAL_TIMEOUT_SEC: int = 25
     COMPETITIVE_MAX_RESULTS: int = 20
+    COMPETITIVE_MAX_ITEMS_PER_COMPETITOR: int = 3
+    COMPETITIVE_MARKET_MIN_COMPETITORS: int = 3
     COMPETITIVE_MANUAL_FILE: str = "data/reference/competitive_prices.json"
     COMPETITIVE_DOMAIN_WHITELIST: str = (
         "bellartdecor.com.br,kalunga.com.br,americanas.com.br,casaevideo.com.br,"

@@ -21,6 +21,7 @@ import jwt
 import structlog
 
 from backend.app.config.settings import settings
+from backend.app.core.observability.context import get_context, set_context
 
 logger = structlog.get_logger(__name__)
 
@@ -53,6 +54,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Verificar se é rota pública
         path = request.url.path
         if any(path.startswith(route) for route in PUBLIC_ROUTES):
+            # Mantém contexto mínimo para correlação de logs públicos.
+            if not hasattr(request.state, "user_id"):
+                request.state.user_id = "public"
+            self._sync_observability_context(request)
             return await call_next(request)
         
         # Modo de teste ou desenvolvimento
@@ -60,6 +65,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.user_id = "dev-user"
             request.state.tenant_id = "dev-tenant"
             request.state.user_role = "admin"
+            self._sync_observability_context(request)
             return await call_next(request)
         
         # Validar token (somente erros de autenticação devem ser tratados aqui)
@@ -83,6 +89,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             logger.error("auth_middleware_error", error=str(e), path=request.url.path)
             return JSONResponse(status_code=500, content={"detail": "Erro de autenticação"})
+
+        self._sync_observability_context(request)
 
         # Importante: exceções do endpoint NÃO devem virar "erro de autenticação"
         return await call_next(request)
@@ -109,6 +117,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 except jwt.InvalidTokenError:
                     pass
             raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
+
+    @staticmethod
+    def _sync_observability_context(request: Request) -> None:
+        """Sincroniza user/tenant no contexto de observabilidade."""
+        ctx = get_context()
+        user_id = getattr(request.state, "user_id", None)
+        tenant_id = getattr(request.state, "tenant_id", None)
+
+        if user_id:
+            ctx.user_id = user_id
+        if tenant_id:
+            ctx.tenant_id = tenant_id
+
+        set_context(ctx)
 
 
 def create_access_token(

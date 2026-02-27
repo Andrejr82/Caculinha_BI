@@ -7,7 +7,7 @@ from backend.app.core.tools.flexible_query_tool import consultar_dados_flexivel
 # Mock do cache e adapter
 @pytest.fixture
 def mock_cache():
-    with patch("app.core.parquet_cache.cache") as mock:
+    with patch("backend.app.core.parquet_cache.cache") as mock:
         mock._adapter.get_memory_table.return_value = "admmat.parquet"
         mock._adapter.query.return_value = pd.DataFrame([
             {"CODIGO": 123, "NOME": "PRODUTO TESTE", "NOMESEGMENTO": "TESTE"}

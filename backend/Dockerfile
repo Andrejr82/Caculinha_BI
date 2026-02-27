@@ -87,4 +87,4 @@ RUN pip install --no-cache-dir \
 USER appuser
 
 # Comando para desenvolvimento com hot-reload
-CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "backend", "--reload-include", "*.py", "--reload-include", ".env"]
