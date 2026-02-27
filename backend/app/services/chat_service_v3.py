@@ -22,6 +22,7 @@ import logging
 import asyncio
 import sys
 import time
+import re
 from typing import Dict, Any, Optional, Callable, Awaitable, Union
 from dataclasses import dataclass
 
@@ -33,6 +34,7 @@ from backend.app.core.agents.code_gen_agent import CodeGenAgent
 from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.utils.executive_output import ensure_executive_output
 from backend.app.config.settings import settings
 from backend.services.metrics import MetricsService
 
@@ -303,7 +305,7 @@ class ChatServiceV3:
             await emit_progress("Analisando pergunta", "done")
             
             # 4. Processar resposta do agente
-            response = self._process_agent_response(agent_response)
+            response = self._process_agent_response(agent_response, query=query, user_role=user_role)
 
             # Métricas de tool usage/tokens/custo aproximado
             tool_names = self._extract_tool_call_names(agent_response.get("tool_calls") if isinstance(agent_response, dict) else None)
@@ -373,7 +375,8 @@ class ChatServiceV3:
         role_map = {
             "admin": "admin",
             "analyst": "analyst",
-            "user": "analyst",
+            # Hardening: perfil "user" opera com escopo restrito de ferramentas (viewer).
+            "user": "viewer",
             "compras": "analyst",
             "coordenador": "analyst",
             "coordinator": "analyst",
@@ -402,7 +405,61 @@ class ChatServiceV3:
             })
         return converted
     
-    def _process_agent_response(self, agent_response: Dict[str, Any]) -> Dict[str, Any]:
+    def _is_internal_data_restricted_role(self, user_role: Optional[str]) -> bool:
+        """
+        Perfis com menor privilégio não devem receber detalhamento técnico/operacional interno.
+        """
+        role = (user_role or "analyst").strip().lower()
+        return role in {"user", "viewer", "guest"}
+
+    def _sanitize_executive_output_for_role(self, text: str, user_role: Optional[str]) -> str:
+        """
+        Remove blocos técnicos e detalhamento interno para perfis restritos.
+        """
+        if not isinstance(text, str) or not text.strip():
+            return text
+
+        if not self._is_internal_data_restricted_role(user_role):
+            return text
+
+        cleaned = text
+
+        # Remove linha de template interno quando existir
+        cleaned = re.sub(r"(?im)^\s*-\s*Template oficial:.*$", "", cleaned)
+
+        # Oculta SQL/Python para perfis não privilegiados
+        cleaned = re.sub(
+            r"(?ims)^\s*##\s*SQL/Python\s*\n.*?(?=^\s*##\s+|\Z)",
+            "## SQL/Python\n- Conteudo tecnico restrito para este perfil.\n\n",
+            cleaned,
+        )
+
+        # Oculta detalhamento por loja/UNE em tabela operacional
+        table_pattern = r"(?ims)^(\s*##\s*Tabela operacional\s*\n)(.*?)(?=^\s*##\s+|\Z)"
+        table_match = re.search(table_pattern, cleaned)
+        if table_match:
+            table_body = table_match.group(2)
+            if re.search(r"(?i)\bUNE\b|Loja\s*\(UNE\)", table_body):
+                cleaned = re.sub(
+                    table_pattern,
+                    "## Tabela operacional\n- Detalhamento por loja/UNE restrito para este perfil.\n\n",
+                    cleaned,
+                )
+
+        # Evita exposição de identificador específico de UNE no resumo
+        cleaned = re.sub(r"(?i)UNE\s+l[ií]der:\s*\d+", "UNE lider: [restrito]", cleaned)
+
+        # Padroniza seção de evidência para texto não sensível
+        cleaned = re.sub(
+            r"(?ims)^\s*##\s*Recorte e evid[êe]ncia\s*\n.*?(?=^\s*##\s+|\Z)",
+            "## Recorte e evidência\n- Recorte aplicado conforme permissões deste perfil.\n\n",
+            cleaned,
+        )
+
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return cleaned
+
+    def _process_agent_response(self, agent_response: Dict[str, Any], query: str = "", user_role: str = "analyst") -> Dict[str, Any]:
         """
         Converte resposta do agente para formato esperado pela API.
         
@@ -455,6 +512,11 @@ class ChatServiceV3:
             logger.warning(f"[WARNING] [DEBUG] response_text VAZIO! agent_response keys: {agent_response.keys()}")
             response_text = "Desculpe, não consegui gerar uma resposta adequada. Por favor, reformule sua pergunta."
             
+        # Padrao executivo (Fase 3): aplica template oficial para consultas de negocio.
+        if isinstance(response_text, str) and response_text.strip():
+            response_text = ensure_executive_output(query=query, message=response_text)
+            response_text = self._sanitize_executive_output_for_role(response_text, user_role=user_role)
+
         # Handle chart data keys
         chart_data = agent_response.get("chart_data")
         if not chart_data:
@@ -479,10 +541,53 @@ class ChatServiceV3:
     
     def _get_user_filters(self, user_id: str) -> Dict[str, Any]:
         """
-        Obtém filtros do usuário para RLS (Row-Level Security).
-        
-        TODO: Implementar lógica real de RLS baseada em permissões do usuário.
-        Por enquanto, retorna filtros vazios (sem restrição).
+        Obtém filtros efetivos do usuário para RLS com base no contexto autenticado.
         """
-        # Placeholder - implementar lógica real de RLS
-        return {}
+        try:
+            from backend.app.core.context import get_current_user_context
+
+            current_user = get_current_user_context()
+            if current_user is None:
+                return {}
+
+            current_user_id = str(getattr(current_user, "id", "") or "")
+            requested_user_id = str(user_id or "")
+            if current_user_id and requested_user_id and current_user_id != requested_user_id:
+                logger.warning(
+                    "[RLS] Context user_id diverge do request user_id. context=%s request=%s",
+                    current_user_id,
+                    requested_user_id,
+                )
+
+            role = str(getattr(current_user, "role", "") or "").strip().lower()
+            segments: list[str] = []
+
+            if hasattr(current_user, "segments_list"):
+                raw_segments = getattr(current_user, "segments_list") or []
+                if isinstance(raw_segments, list):
+                    segments = [str(s) for s in raw_segments if str(s).strip()]
+
+            if not segments:
+                raw_allowed = getattr(current_user, "allowed_segments", None)
+                if isinstance(raw_allowed, str):
+                    import json
+                    try:
+                        parsed = json.loads(raw_allowed)
+                        if isinstance(parsed, list):
+                            segments = [str(s) for s in parsed if str(s).strip()]
+                    except (json.JSONDecodeError, TypeError):
+                        segments = []
+                elif isinstance(raw_allowed, list):
+                    segments = [str(s) for s in raw_allowed if str(s).strip()]
+
+            if role == "admin" or "*" in segments:
+                return {"segments": ["*"], "rls_applied": False}
+
+            if segments:
+                return {"segments": segments, "rls_applied": True}
+
+            return {}
+
+        except Exception as exc:
+            logger.warning(f"[RLS] Falha ao obter filtros do usuário: {exc}")
+            return {}
