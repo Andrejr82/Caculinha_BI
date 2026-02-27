@@ -2,6 +2,11 @@ import { createSignal, createEffect, onCleanup, onMount, For, Show } from 'solid
 import auth from '@/store/auth';
 import { authApi } from '@/lib/api';
 import { ThinkingProcess, AutoResizeTextarea, PlotlyChart, DataTable, FeedbackButtons, MessageActions, ExportMenu } from '@/components';
+import {
+  fallbackFilenameFromUrl,
+  getFilenameFromContentDisposition,
+  isMarketResearchDownloadLink,
+} from '@/lib/marketResearchDownload';
 import { marked } from 'marked';
 import { Trash2, StopCircle, User, Bot, Sparkles, SendHorizontal, Paperclip } from 'lucide-solid';
 import 'github-markdown-css/github-markdown.css';
@@ -381,6 +386,49 @@ export default function Chat() {
     }
   };
 
+  const handleMarkdownClick = async (e: MouseEvent & { target: EventTarget | null }) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+
+    const anchor = target.closest('a');
+    if (!(anchor instanceof HTMLAnchorElement)) return;
+    if (!isMarketResearchDownloadLink(anchor.getAttribute('href'))) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      const downloadUrl = new URL(anchor.href, window.location.origin);
+      const token = sessionStorage.getItem('token') || auth.token();
+      const response = await fetch(downloadUrl.toString(), {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Falha no download (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const fallbackName = fallbackFilenameFromUrl(downloadUrl);
+      const fileName = getFilenameFromContentDisposition(
+        response.headers.get('content-disposition'),
+        fallbackName,
+      );
+
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Erro ao baixar resultado da pesquisa de mercado:', error);
+      alert('Não foi possível baixar o arquivo agora. Tente novamente.');
+    }
+  };
+
   return (
     <div class="flex flex-col h-[calc(100vh-3.5rem)] bg-white dark:bg-zinc-950 relative">
 
@@ -473,6 +521,7 @@ export default function Chat() {
                           class="markdown-body prose dark:prose-invert prose-indigo max-w-none 
                                             bg-transparent text-slate-700 dark:text-slate-300 leading-7 text-[15px]
                                             prose-p:leading-7 prose-li:my-0.5 prose-strong:font-bold prose-headings:font-bold prose-headings:text-slate-900 dark:prose-headings:text-slate-100"
+                          onClick={handleMarkdownClick}
                           innerHTML={renderMarkdown(msg.text)}
                         />
                       </Show>

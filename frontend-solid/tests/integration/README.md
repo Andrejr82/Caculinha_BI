@@ -18,7 +18,7 @@ tests/integration/
 ### Pré-requisitos
 ```bash
 # Instalar Playwright
-bun add -d @playwright/test
+bun install
 bunx playwright install
 ```
 
