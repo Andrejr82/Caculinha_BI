@@ -200,10 +200,23 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     
+    # [AJUSTE] Define modo de execucao:
+    # - development: ativa auto-reload
+    # - production: sem reload
+    is_dev = os.getenv("ENVIRONMENT", "development") == "development"
+    if is_dev:
+        # [AJUSTE] Polling melhora confiabilidade do file-watch no Windows.
+        # Se quiser reduzir uso de CPU, defina WATCHFILES_FORCE_POLLING=false no ambiente.
+        os.environ.setdefault("WATCHFILES_FORCE_POLLING", "true")
+
+    # [AJUSTE] HOST/PORT podem ser alterados por variaveis de ambiente.
+    # [AJUSTE] reload_dirs/reload_includes controlam o que dispara reinicio automatico.
     uvicorn.run(
         "backend.main:app",
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", 8000)),
-        reload=os.getenv("ENVIRONMENT", "development") == "development",
+        reload=is_dev,
+        reload_dirs=["backend"] if is_dev else None,
+        reload_includes=["*.py", ".env"] if is_dev else None,
         log_level=os.getenv("LOG_LEVEL", "info").lower(),
     )

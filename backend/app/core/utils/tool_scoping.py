@@ -35,9 +35,19 @@ class ToolPermissionManager:
                 "consultar_dados_flexivel",
                 "buscar_produtos_inteligente",
                 "consultar_dados_gerais",
+                "consultar_dicionario_dados",
+                "analisar_historico_vendas",
+                "analisar_produto_todas_lojas",
                 # Business Logic (read-only)
                 "calcular_abastecimento_une",
                 "calcular_mc_produto",
+                "calcular_eoq",
+                "prever_demanda",
+                "analise_regressao_vendas",
+                "detectar_anomalias_vendas",
+                "analise_correlacao_produtos",
+                "alocar_estoque_lojas",
+                "sugerir_transferencias_automaticas",
                 "encontrar_rupturas_criticas",
                 # Visualizations
                 "gerar_grafico_universal_v2",
@@ -47,12 +57,12 @@ class ToolPermissionManager:
                 "gerar_visualizacao_customizada",
                 # Competitive intelligence
                 "pesquisar_precos_concorrentes",
+                "pesquisar_mercado_web",
             ],
             "denied_tools": [
-                # Não pode calcular preços nem sugerir transferências
+                # Não pode calcular preços nem validar transferência manual
                 "calcular_preco_final_une",
                 "validar_transferencia_produto",
-                "sugerir_transferencias_automaticas"
             ]
         },
         "viewer": {
@@ -67,6 +77,7 @@ class ToolPermissionManager:
                 "listar_graficos_disponiveis",
                 # Pesquisa externa (somente leitura)
                 "pesquisar_precos_concorrentes",
+                "pesquisar_mercado_web",
             ],
             "denied_tools": [
                 # Não pode acessar business logic

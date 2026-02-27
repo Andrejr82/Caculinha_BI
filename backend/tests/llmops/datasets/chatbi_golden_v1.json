@@ -1,0 +1,38 @@
+{
+  "dataset_version": "v1.0.0",
+  "created_at": "2026-02-26",
+  "owner": "chatbi-team",
+  "description": "Golden dataset para regressao de formato executivo (Fase 3).",
+  "cases": [
+    {
+      "id": "sales_by_store",
+      "query": "me mostre vendas por une do segmento papelaria",
+      "raw_response": "Consolidei vendas por loja e identifiquei diferencas relevantes entre as UNEs.",
+      "expected_process": "comercial"
+    },
+    {
+      "id": "critical_stockout",
+      "query": "quais produtos estao em ruptura critica no segmento artes",
+      "raw_response": "Foram encontrados itens sem cobertura adequada de estoque.",
+      "expected_process": "compras"
+    },
+    {
+      "id": "market_pricing",
+      "query": "faca uma cotacao de mercado da cola bastao 40g",
+      "raw_response": "A pesquisa coletou referencias de preco em concorrentes publicos.",
+      "expected_process": "compras"
+    },
+    {
+      "id": "margin_adjustment",
+      "query": "avaliar margem e preco da caneta bic para promocao",
+      "raw_response": "Existe espaco para ajuste comercial com risco controlado de margem.",
+      "expected_process": "comercial"
+    },
+    {
+      "id": "transfer_action",
+      "query": "sugerir transferencia entre lojas com excesso e falta de estoque",
+      "raw_response": "Detectei oportunidade de balanceamento de estoque entre unidades.",
+      "expected_process": "comercial"
+    }
+  ]
+}

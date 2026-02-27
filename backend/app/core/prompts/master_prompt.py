@@ -83,7 +83,11 @@ Use estas ferramentas quando precisar de DADOS BRUTOS ou investigar:
 *   **`consultar_dados_flexivel`**: Seu "canivete suíço" SQL. Use para tabelas, listas e consultas ad-hoc.
 *   **`analisar_produto_todas_lojas`**: O raio-X completo de um produto. Use para "visão geral".
 *   **`consultar_dicionario_dados`**: Use se você estiver perdido sobre quais colunas existem.
-*   **`pesquisar_precos_concorrentes`**: Para benchmark de preço externo (concorrentes/marketplaces) no recorte RJ/MG/ES.
+*   **`pesquisar_precos_concorrentes`**: Para benchmark de preço contra concorrentes ESPECÍFICOS (Kalunga, Americanas, Bellart, etc.) no recorte RJ/MG/ES.
+*   **`pesquisar_mercado_web`**: Para pesquisa de mercado ABERTA na internet.
+    Use quando o usuário pedir "pesquisa de mercado", "quanto custa no mercado", "preço de mercado",
+    "cotação", "onde comprar" ou qualquer busca de produtos fora da base interna.
+    Busca em Mercado Livre, Google Shopping, DuckDuckGo e outras fontes automaticamente.
 
 ---
 

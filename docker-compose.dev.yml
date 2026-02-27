@@ -14,4 +14,5 @@ services:
       - DUCKDB_MEMORY_LIMIT=1.5GB
       - DUCKDB_THREADS=2
       - PYTHONPATH=/app
-    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+      - WATCHFILES_FORCE_POLLING=true
+    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend --reload-include *.py --reload-include .env

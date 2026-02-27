@@ -1,12 +1,15 @@
 import logging
 import pandas as pd
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Configuração de logging
+_log_path = Path("logs") / "agent.log"
+_log_path.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filename="logs/agent.log",
+    filename=str(_log_path),
     filemode="a",
 )
 logger = logging.getLogger("base_agent")

@@ -18,6 +18,56 @@ def _export_chart_to_json(fig: go.Figure) -> str:
     return fig.to_json()
 
 
+def _build_no_data_payload(
+    descricao: str,
+    filtro_segmento: Optional[str],
+    lista_unes: List[int],
+    filtro_categoria: Optional[str],
+    lista_produtos: List[int],
+    reason: str = "NO_DATA",
+) -> Dict[str, Any]:
+    """Monta payload padronizado para ausência de dados com diagnóstico de recorte/RLS."""
+    active_segments: List[str] = []
+    try:
+        from backend.app.core.context import get_current_user_segments
+
+        active_segments = get_current_user_segments() or []
+    except Exception:
+        active_segments = []
+
+    requested_segment = (filtro_segmento or "").strip().upper()
+    allowed_norm = {str(s).strip().upper() for s in active_segments if str(s).strip()}
+    rls_active = bool(active_segments and "*" not in active_segments)
+    likely_rls_block = bool(rls_active and requested_segment and requested_segment not in allowed_norm)
+
+    if likely_rls_block:
+        message = (
+            f"Nenhum dado encontrado para '{requested_segment}' no seu escopo atual de acesso. "
+            "Revise os segmentos permitidos para este usuário."
+        )
+    else:
+        message = "Nenhum dado encontrado para os filtros aplicados."
+
+    diagnostics = {
+        "reason": reason,
+        "requested_segment": requested_segment or None,
+        "requested_unes": lista_unes or [],
+        "requested_category": filtro_categoria or None,
+        "requested_products": lista_produtos or [],
+        "rls_active": rls_active,
+        "allowed_segments": active_segments if rls_active else ["*"],
+        "likely_rls_block": likely_rls_block,
+        "query_preview": (descricao or "")[:180],
+    }
+
+    return {
+        "status": "error",
+        "error_code": "NO_DATA",
+        "message": message,
+        "diagnostics": diagnostics,
+    }
+
+
 @tool
 def gerar_grafico_universal_v2(
     descricao: str,
@@ -322,10 +372,14 @@ def gerar_grafico_universal_v2(
         df_filtered = df
 
     if df_filtered.empty:
-        return {
-            "status": "error",
-            "message": f"Nenhum dado encontrado para os filtros aplicados."
-        }
+        return _build_no_data_payload(
+            descricao=descricao,
+            filtro_segmento=filtro_segmento,
+            lista_unes=lista_unes,
+            filtro_categoria=filtro_categoria,
+            lista_produtos=lista_produtos,
+            reason="NO_FILTERED_ROWS",
+        )
 
     # 3. Dados finais prontos para agregação
     logger.info(f"Dados finais para gráfico: {len(df_filtered)} linhas")
@@ -494,7 +548,14 @@ def gerar_grafico_universal_v2(
     # -------------------------------------------------------------------------
     
     if df_agg is None or df_agg.empty:
-        return {"status": "error", "message": "Sem dados agregados"}
+        return _build_no_data_payload(
+            descricao=descricao,
+            filtro_segmento=filtro_segmento,
+            lista_unes=lista_unes,
+            filtro_categoria=filtro_categoria,
+            lista_produtos=lista_produtos,
+            reason="NO_AGGREGATED_ROWS",
+        )
 
     # Garantir tipos
     df_agg["dimensao"] = df_agg["dimensao"].astype(str)

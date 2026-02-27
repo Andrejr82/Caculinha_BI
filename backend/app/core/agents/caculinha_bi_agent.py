@@ -55,9 +55,11 @@ from backend.app.core.tools.universal_chart_generator import gerar_grafico_unive
 from backend.app.core.tools.test_minimal import teste_minimal  # DEBUG: Ferramenta mínima para teste
 try:
     from backend.app.core.tools.competitive_intelligence_tool import pesquisar_precos_concorrentes
+    from backend.app.core.tools.competitive_intelligence_tool import pesquisar_mercado_web
 except (ImportError, OSError):
     logger.warning("Competitive Intelligence Tool unavailable. Agent seguirá sem pesquisa concorrencial.")
     pesquisar_precos_concorrentes = None
+    pesquisar_mercado_web = None
 
 # Import legacy chart tools for compatibility
 from backend.app.core.tools.chart_tools import (
@@ -94,6 +96,7 @@ from backend.app.core.utils.field_mapper import FieldMapper
 # Import TypeConverter para serialização segura
 from backend.app.core.utils.serializers import TypeConverter, safe_json_dumps
 from backend.app.config.settings import settings
+from backend.app.core.utils.response_sanitizer import clean_response_violations
 
 # Import Tool Scoping - Security 2025
 from backend.app.core.utils.tool_scoping import ToolPermissionManager, get_scoped_tools
@@ -157,9 +160,12 @@ class CaculinhaBIAgent:
             consultar_dados_flexivel,  # Consulta genérica
             gerar_grafico_universal_v2,  # Visualização
             pesquisar_precos_concorrentes,  # Pesquisa concorrencial externa
+            pesquisar_mercado_web,  # Pesquisa de mercado aberta (ML, Google Shopping, etc.)
             calcular_abastecimento_une,  # Abastecimento
             encontrar_rupturas_criticas,  # Rupturas
+            sugerir_transferencias_automaticas,  # Otimização de transferências
             consultar_dicionario_dados,  # FIX 2026-02-04: Restaurado para schema discovery
+            analisar_historico_vendas,  # Histórico de vendas (analysis route)
             analisar_produto_todas_lojas,  # FIX 2026-02-04: Restaurado para análise multi-loja
         ]
         
@@ -349,68 +355,13 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         
         return {"function_declarations": declarations}
 
+    def _clean_response_violations(self, content: str, context_type: str = "generic") -> str:
+        """Sanitiza resposta técnica para narrativa legível."""
+        return clean_response_violations(content=content, context_type=context_type)
+
     def _clean_context7_violations(self, content: str, context_type: str = "generic") -> str:
-        """
-        Remove JSON bruto e estruturas técnicas das respostas (Context7 Storytelling).
-
-        Args:
-            content: Conteúdo a limpar
-            context_type: Tipo de contexto ("chart", "data", "analysis", "generic")
-
-        Returns:
-            Conteúdo limpo com narrativa natural
-        """
-        if not isinstance(content, str) or not content:
-            return content
-
-        import re
-
-        original_content = content
-        cleaned = content
-
-        # 1. Detectar e remover markdown JSON blocks (```json...```)
-        markdown_json_pattern = r'```json\s*\n(.*?)\n```'
-        if re.search(markdown_json_pattern, cleaned, re.DOTALL):
-            logger.warning("[CONTEXT7] Detectado markdown JSON block. Removendo.")
-            cleaned = re.sub(markdown_json_pattern, "", cleaned, flags=re.DOTALL)
-
-        # 2. Detectar e remover blocos JSON inline grandes (chart specs, etc)
-        # Padrão para detectar objetos JSON com "data" e "layout" (Plotly)
-        plotly_json_pattern = r'\{[\s\S]*?"data"[\s\S]*?"layout"[\s\S]*?\}'
-        if re.search(plotly_json_pattern, cleaned):
-            logger.warning("[CONTEXT7] Detectado Plotly JSON inline. Removendo.")
-            cleaned = re.sub(plotly_json_pattern, "", cleaned)
-
-        # 3. Detectar JSON puro no início (objeto ou array)
-        stripped = cleaned.strip()
-        if (stripped.startswith("{") or stripped.startswith("[")) and len(stripped) > 50:
-            # Tentar validar se é JSON
-            try:
-                json.loads(stripped)
-                logger.warning("[CONTEXT7] Detectado JSON puro. Substituindo com narrativa.")
-                cleaned = ""  # Limpar completamente, será substituído abaixo
-            except json.JSONDecodeError:
-                pass  # Não é JSON válido, manter
-
-        # 4. Se ficou vazio ou muito curto, substituir com narrativa contextual
-        cleaned = cleaned.strip()
-        if not cleaned or len(cleaned) < 10:
-            if context_type == "chart":
-                cleaned = "Aqui está o gráfico que você solicitou."
-            elif context_type == "data":
-                cleaned = "Recuperei os dados solicitados e organizei para você."
-            elif context_type == "analysis":
-                cleaned = "Com base nos dados disponíveis, aqui está a análise:"
-            else:
-                cleaned = "Processado com sucesso."
-
-            logger.info(f"[CONTEXT7] Substituído com narrativa contextual ({context_type})")
-
-        # 5. Se mudou, logar a transformação
-        if cleaned != original_content:
-            logger.info(f"[CONTEXT7] Limpeza aplicada. Antes: {len(original_content)} chars, Depois: {len(cleaned)} chars")
-
-        return cleaned
+        """Alias legado para manter compatibilidade com chamadas antigas."""
+        return self._clean_response_violations(content=content, context_type=context_type)
 
     async def _start_rag_warming(self) -> None:
         """
@@ -590,6 +541,92 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         except Exception:
                             pass
 
+        # Compatibilidade para ferramentas de previsão/analytics.
+        if func_name in {"prever_demanda", "prever_demanda_sazonal", "analise_regressao_vendas", "detectar_anomalias_vendas"}:
+            if "produto_codigo" in args and "produto_id" not in args:
+                args["produto_id"] = str(args.pop("produto_codigo"))
+            if "dias_previsao" in args and "periodo_dias" not in args:
+                args["periodo_dias"] = int(args.pop("dias_previsao"))
+            if "dias_analise" in args and "periodo_dias" not in args:
+                args["periodo_dias"] = int(args.pop("dias_analise"))
+            if "produto_id" in args and args["produto_id"] is not None:
+                args["produto_id"] = str(args["produto_id"])
+
+        # Compatibilidade para ferramentas de cálculo/otimização.
+        if func_name == "calcular_eoq":
+            if "produto_codigo" in args and "produto_id" not in args:
+                args["produto_id"] = str(args.pop("produto_codigo"))
+            if "produto_id" in args and args["produto_id"] is not None:
+                args["produto_id"] = str(args["produto_id"])
+
+        if func_name == "calcular_mc_produto":
+            if "produto_codigo" in args and "produto_id" not in args:
+                try:
+                    args["produto_id"] = int(args.pop("produto_codigo"))
+                except (TypeError, ValueError):
+                    args.pop("produto_codigo", None)
+            if "une" in args and "une_id" not in args:
+                try:
+                    args["une_id"] = int(args.pop("une"))
+                except (TypeError, ValueError):
+                    args.pop("une", None)
+
+        if func_name == "alocar_estoque_lojas":
+            if "produto_codigo" in args and "produto_id" not in args:
+                args["produto_id"] = str(args.pop("produto_codigo"))
+            if "produto_id" in args and args["produto_id"] is not None:
+                args["produto_id"] = str(args["produto_id"])
+
+        if func_name == "analisar_produto_todas_lojas":
+            if "produto_id" in args and "produto_codigo" not in args:
+                try:
+                    args["produto_codigo"] = int(args.pop("produto_id"))
+                except (TypeError, ValueError):
+                    args.pop("produto_id", None)
+            elif "produto_codigo" in args:
+                try:
+                    args["produto_codigo"] = int(args["produto_codigo"])
+                except (TypeError, ValueError):
+                    args.pop("produto_codigo", None)
+
+        if func_name == "calcular_abastecimento_une":
+            if "une" in args and "une_id" not in args:
+                args["une_id"] = str(args.pop("une"))
+            elif "une_id" in args and args["une_id"] is not None:
+                args["une_id"] = str(args["une_id"])
+
+        if func_name == "analisar_historico_vendas":
+            if "produto_codigo" in args and "codigo_produto" not in args:
+                try:
+                    args["codigo_produto"] = int(args.pop("produto_codigo"))
+                except (TypeError, ValueError):
+                    args.pop("produto_codigo", None)
+            if "une" in args and "codigo_une" not in args:
+                try:
+                    args["codigo_une"] = int(args.pop("une"))
+                except (TypeError, ValueError):
+                    args.pop("une", None)
+            if "codigo_produto" in args and args["codigo_produto"] is not None:
+                try:
+                    args["codigo_produto"] = int(args["codigo_produto"])
+                except (TypeError, ValueError):
+                    args.pop("codigo_produto", None)
+            if "codigo_une" in args and args["codigo_une"] is not None:
+                try:
+                    args["codigo_une"] = int(args["codigo_une"])
+                except (TypeError, ValueError):
+                    args.pop("codigo_une", None)
+
+        if func_name == "analise_correlacao_produtos":
+            if "produto_codigo" in args and "produtos_ids" not in args:
+                args["produtos_ids"] = [str(args.pop("produto_codigo"))]
+            raw_produtos = args.get("produtos_ids")
+            if raw_produtos is not None:
+                if isinstance(raw_produtos, str):
+                    args["produtos_ids"] = [p.strip() for p in raw_produtos.split(",") if p.strip()]
+                elif isinstance(raw_produtos, list):
+                    args["produtos_ids"] = [str(p) for p in raw_produtos if str(p).strip()]
+
         return args
 
     def _execute_tool_with_recovery(self, tool_to_run: Any, func_name: str, func_args: Dict[str, Any]) -> Any:
@@ -669,6 +706,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "gerar_grafico_universal": "tool.chart",
             "gerar_grafico_universal_v2": "tool.chart",
             "pesquisar_precos_concorrentes": "tool.competitive_research",
+            "pesquisar_mercado_web": "tool.market_research",
         }
         return mapping.get(str(tool_name or ""), f"tool.{str(tool_name or 'generic')}")
 
@@ -694,8 +732,9 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         explicit_competitive = any(
             k in q for k in [
                 "concorrente", "concorrência", "cotação", "cotacao", "pesquisa de preço",
-                "pesquisa de preco", "americanas", "amigão", "amigao", "tid", "bellart",
-                "tubarão", "tubarao", "kalunga", "casa&video", "casa e video"
+                "pesquisa de preco", "pesquisa de mercado", "preço de mercado", "preco de mercado",
+                "benchmark de mercado", "pesquisa concorrencial", "americanas", "amigão", "amigao",
+                "tid", "bellart", "tubarão", "tubarao", "kalunga", "casa&video", "casa e video"
             ]
         )
         return (
@@ -714,6 +753,21 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return {"type": "text", "result": {"mensagem": "Não consegui gerar o gráfico no momento."}}
         if tool_result.get("status") != "success":
             msg = tool_result.get("message") or tool_result.get("error") or "Falha ao gerar gráfico."
+            error_code = str(tool_result.get("error_code") or "")
+            diagnostics = tool_result.get("diagnostics", {}) if isinstance(tool_result.get("diagnostics"), dict) else {}
+            if error_code == "NO_DATA":
+                requested_segment = diagnostics.get("requested_segment")
+                likely_rls_block = bool(diagnostics.get("likely_rls_block"))
+                if likely_rls_block:
+                    msg = (
+                        f"Não consegui gerar o gráfico porque o segmento '{requested_segment or 'informado'}' "
+                        "não está disponível no escopo de acesso deste usuário (RLS)."
+                    )
+                else:
+                    msg = (
+                        "Não encontrei dados para montar o gráfico nesse recorte. "
+                        "Confirme segmento/período/lojas ou remova filtros mais restritivos."
+                    )
             return {"type": "text", "result": {"mensagem": f"Não consegui gerar o gráfico: {msg}"}}
 
         summary = tool_result.get("summary", {}) if isinstance(tool_result.get("summary"), dict) else {}
@@ -769,19 +823,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         }
 
     def _extract_segment_from_query(self, query: str) -> Optional[str]:
-        import re
-        q = (query or "").strip()
-        patterns = [
-            r"(?:do|da|de)?\s*segmento\s+([a-zA-ZÀ-ÿ0-9 _-]+?)(?:\s+em\s+|\s+na\s+|\s+no\s+|$)",
-            r"\bsegmento\s+([a-zA-ZÀ-ÿ0-9 _-]+)$",
-        ]
-        for p in patterns:
-            m = re.search(p, q, flags=re.IGNORECASE)
-            if m:
-                seg = m.group(1).strip()
-                if seg:
-                    return seg.upper()
-        return None
+        from backend.app.core.utils.query_router import extract_segment_filter
+        return extract_segment_filter(query)
 
     def _extract_state_from_query(self, query: str) -> Optional[str]:
         import re
@@ -794,15 +837,93 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 return uf
         return None
 
+    def _is_all_stores_request(self, query: str) -> bool:
+        from backend.app.core.utils.query_router import is_all_stores_scope
+        return is_all_stores_scope(query)
+
+    def _ensure_tool_selection_available(self, user_query: str, tool_selection: Any) -> None:
+        """
+        Garante que a ferramenta selecionada está disponível no escopo atual.
+        Se não estiver, aplica alias/fallback para evitar erro operacional.
+        """
+        selected = str(getattr(tool_selection, "tool_name", "") or "")
+        if not selected:
+            return
+
+        # Caso principal: ferramenta está disponível no role/dependências atuais.
+        if self._find_tool_by_name(selected) is not None:
+            return
+
+        alias_map = {
+            "prever_demanda_sazonal": "prever_demanda",
+        }
+        alias_target = alias_map.get(selected)
+        if alias_target and self._find_tool_by_name(alias_target) is not None:
+            logger.warning(f"[ROUTER] Tool '{selected}' indisponível. Usando alias '{alias_target}'.")
+            tool_selection.tool_name = alias_target
+            tool_selection.tool_params = self._normalize_tool_arguments(
+                alias_target,
+                getattr(tool_selection, "tool_params", {}) or {},
+            )
+            return
+
+        fallback_tools = list(getattr(tool_selection, "fallback_tools", []) or [])
+        for fallback_name in fallback_tools:
+            if self._find_tool_by_name(fallback_name) is None:
+                continue
+            logger.warning(f"[ROUTER] Tool '{selected}' indisponível. Fallback para '{fallback_name}'.")
+            params = dict(getattr(tool_selection, "tool_params", {}) or {})
+            if fallback_name == "gerar_grafico_universal_v2":
+                params.setdefault("descricao", user_query)
+                params.setdefault("tipo_grafico", "bar")
+            elif fallback_name == "consultar_dados_flexivel":
+                params.setdefault("colunas", ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"])
+                params.setdefault("limite", "50")
+            tool_selection.tool_name = fallback_name
+            tool_selection.tool_params = self._normalize_tool_arguments(fallback_name, params)
+            return
+
+        # Fallback final por tipo de consulta.
+        if self._is_chart_request(user_query) and self._find_tool_by_name("gerar_grafico_universal_v2") is not None:
+            logger.warning(f"[ROUTER] Tool '{selected}' indisponível. Fallback final para gráfico universal.")
+            tool_selection.tool_name = "gerar_grafico_universal_v2"
+            tool_selection.tool_params = {"descricao": user_query, "tipo_grafico": "bar", "limite": 50}
+            return
+
+        if self._find_tool_by_name("consultar_dados_flexivel") is not None:
+            logger.warning(f"[ROUTER] Tool '{selected}' indisponível. Fallback final para consulta flexível.")
+            tool_selection.tool_name = "consultar_dados_flexivel"
+            tool_selection.tool_params = {
+                "colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"],
+                "limite": "50",
+            }
+
     def _is_competitive_query(self, query: str) -> bool:
+        """Retorna True para qualquer query competitiva (concorrente OU mercado)."""
+        return self._is_specific_competitor_query(query) or self._is_market_research_query(query)
+
+    def _is_specific_competitor_query(self, query: str) -> bool:
+        """Retorna True se a query menciona concorrentes específicos."""
         q = (query or "").lower()
         return any(
             k in q for k in [
-                "concorrente", "concorrência", "cotação", "cotacao",
-                "pesquisa de preço", "pesquisa de preco", "comparar preço",
-                "comparar preco", "americanas", "amigão", "amigao",
+                "concorrente", "concorrência", "pesquisa concorrencial",
+                "americanas", "amigão", "amigao",
                 "bellart", "tid", "tubarão", "tubarao", "kalunga",
                 "casa&video", "casa e video",
+            ]
+        )
+
+    def _is_market_research_query(self, query: str) -> bool:
+        """Retorna True para pesquisa genérica de mercado (sem concorrente específico)."""
+        q = (query or "").lower()
+        return any(
+            k in q for k in [
+                "pesquisa de mercado", "preço de mercado", "preco de mercado",
+                "cotação", "cotacao", "pesquisa de preço", "pesquisa de preco",
+                "comparar preço", "comparar preco", "benchmark de mercado",
+                "quanto custa", "onde comprar", "preço na internet",
+                "preco na internet", "marketplace", "mercado livre",
             ]
         )
 
@@ -886,11 +1007,35 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         Ajusta roteamento/parâmetros para perguntas comerciais comuns, mantendo dados reais.
         """
         q = (user_query or "").lower()
-        is_all_stores = any(k in q for k in ["todas as lojas", "todas lojas", "todas as unes", "todas unes"])
+        ml_aliases = ["mercado livre", "mercadolivre", "meli"]
+        other_competitors = [
+            "americanas", "kalunga", "bellart", "shopee", "amazon",
+            "casa&video", "casa e video", "le biscuit", "lebiscuit",
+            "tubarão", "tubarao", "tid", "amigão", "amigao",
+        ]
+        mentions_ml = any(alias in q for alias in ml_aliases)
+        mentions_other_competitor = any(name in q for name in other_competitors)
+        is_all_stores = self._is_all_stores_request(user_query)
         segment = self._extract_segment_from_query(user_query)
         state = self._extract_state_from_query(user_query) or "RJ"
 
-        if self._is_competitive_query(user_query):
+        if self._is_specific_competitor_query(user_query):
+            # Mercado Livre explícito sem outro concorrente: usar pesquisa aberta.
+            if mentions_ml and not mentions_other_competitor:
+                import re as _re
+                product_query = _re.sub(
+                    r"(?i)(fa[çc]a\s+uma?\s+)?pesquisa\s+de\s+mercado\s+(do\s+produto\s+|de\s+|para\s+)?",
+                    "", user_query
+                ).strip() or user_query
+                tool_selection.tool_name = "pesquisar_mercado_web"
+                tool_selection.tool_params = {
+                    "termo_pesquisa": product_query,
+                    "limite": "15",
+                }
+                tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.92)
+                return
+
+            # Concorrente específico mencionado → pesquisar_precos_concorrentes
             competitors = self._extract_competitors_from_query(user_query)
             tool_selection.tool_name = "pesquisar_precos_concorrentes"
             tool_selection.tool_params = {
@@ -900,6 +1045,20 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 "cidade": "",
                 "limite": "15",
                 "concorrentes": competitors,
+            }
+            tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.92)
+            return
+
+        if self._is_market_research_query(user_query):
+            # Pesquisa de mercado genérica: prioriza ferramenta multi-concorrente.
+            tool_selection.tool_name = "pesquisar_precos_concorrentes"
+            tool_selection.tool_params = {
+                "descricao_produto": user_query,
+                "segmento": segment or "",
+                "estado": state,
+                "cidade": "",
+                "limite": "15",
+                "concorrentes": self._extract_competitors_from_query(user_query),
             }
             tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.92)
             return
@@ -1021,17 +1180,37 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             )
             return {"type": "text", "result": {"mensagem": msg}}
 
-        if tool_name == "pesquisar_precos_concorrentes":
+        if tool_name in ("pesquisar_precos_concorrentes", "pesquisar_mercado_web"):
             itens = tool_result.get("itens", []) or []
             total_itens = int(tool_result.get("total_itens", len(itens)) or len(itens))
-            providers = tool_result.get("providers_used", []) or []
             fontes = tool_result.get("fontes_consultadas", []) or []
             escopo = tool_result.get("escopo", {}) if isinstance(tool_result.get("escopo"), dict) else {}
-            quality = tool_result.get("quality_gate", {}) if isinstance(tool_result.get("quality_gate"), dict) else {}
             fallback_benchmark = bool(tool_result.get("fallback_benchmark_aplicado", False))
 
             if total_itens <= 0:
-                msg = tool_result.get("mensagem") or "Sem referências concorrenciais no momento."
+                scope_lines: List[str] = []
+                if escopo.get("estado"):
+                    scope_lines.append(f"- Estado: {escopo.get('estado')}")
+                if escopo.get("cidade"):
+                    scope_lines.append(f"- Cidade: {escopo.get('cidade')}")
+                if escopo.get("segmento"):
+                    scope_lines.append(f"- Segmento: {escopo.get('segmento')}")
+                if not scope_lines:
+                    scope_lines.append("- Recorte: mercado nacional")
+
+                msg = (
+                    "## Resumo executivo\n"
+                    "- A busca de mercado foi concluída, porém sem preço público confiável para este item nesta rodada.\n\n"
+                    "## Ação recomendada\n"
+                    "- Use esta resposta como alerta de baixa evidência e solicite 2-3 cotações diretas para fechar a negociação.\n\n"
+                    "## Recorte e evidência\n"
+                    + "\n".join(scope_lines)
+                    + "\n- Status: sem evidência pública suficiente no momento.\n\n"
+                    "## Como melhorar a próxima pesquisa\n"
+                    "- Informe marca/modelo ou SKU.\n"
+                    "- Informe especificação exata (medida, gramatura, cor, unidade).\n"
+                    "- Defina cidade e concorrentes-alvo para aumentar precisão."
+                )
                 return {"type": "text", "result": {"mensagem": msg}}
 
             def _fmt_money(v: Any) -> str:
@@ -1041,20 +1220,45 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 except Exception:
                     return str(v or "-")
 
+            def _fmt_competitor(value: Any) -> str:
+                raw = str(value or "-").strip()
+                if not raw:
+                    return "-"
+                mapping = {
+                    "benchmark_mercado": "Referência de mercado",
+                    "mercado livre": "Mercado Livre",
+                    "tid's": "TID'S",
+                }
+                normalized = raw.lower()
+                if normalized in mapping:
+                    return mapping[normalized]
+                return raw
+
+            price_values: List[float] = []
+            for item in itens:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    price_values.append(float(item.get("preco")))
+                except Exception:
+                    continue
+            min_price = min(price_values) if price_values else None
+            max_price = max(price_values) if price_values else None
             top = itens[:10]
-            header = "| Concorrente | Produto | Preço (R$) | Fonte |\n|---|---|---|---|\n"
+            header = "| Concorrente | Produto | Preço (R$) | Evidência |\n|---|---|---|---|\n"
             rows = []
             for item in top:
                 if not isinstance(item, dict):
                     continue
+                url = str(item.get("url") or "").strip()
                 rows.append(
                     "| "
                     + " | ".join(
                         [
-                            str(item.get("concorrente") or "-"),
+                            _fmt_competitor(item.get("concorrente")),
                             str(item.get("produto") or "-"),
                             _fmt_money(item.get("preco")),
-                            str(item.get("fonte") or "-"),
+                            "Link público" if url else "Referência operacional",
                         ]
                     )
                     + " |"
@@ -1062,46 +1266,77 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             table_md = header + ("\n".join(rows) if rows else "| - | - | - | - |")
             preco_medio = tool_result.get("preco_medio_referencia")
             preco_medio_txt = _fmt_money(preco_medio) if preco_medio is not None else "N/D"
-            scope_txt = ", ".join(
-                [
-                    f"Estado: {escopo.get('estado', '-')}",
-                    f"Cidade: {escopo.get('cidade', '-') or '-'}",
-                    f"Segmento: {escopo.get('segmento', '-') or '-'}",
-                ]
+            faixa_txt = "N/D"
+            if min_price is not None and max_price is not None:
+                faixa_txt = f"R$ {_fmt_money(min_price)} a R$ {_fmt_money(max_price)}"
+            competitors_found: List[str] = []
+            for item in itens:
+                if not isinstance(item, dict):
+                    continue
+                comp = _fmt_competitor(item.get("concorrente"))
+                if comp not in competitors_found:
+                    competitors_found.append(comp)
+
+            scope_lines: List[str] = []
+            if escopo.get("estado"):
+                scope_lines.append(f"- Estado: {escopo.get('estado')}")
+            if escopo.get("cidade"):
+                scope_lines.append(f"- Cidade: {escopo.get('cidade')}")
+            if escopo.get("segmento"):
+                scope_lines.append(f"- Segmento: {escopo.get('segmento')}")
+            scope_lines.append(
+                f"- Cobertura: {len(competitors_found)} concorrente(s) com preço identificado."
             )
-            providers_txt = ", ".join(providers) if providers else "manual"
-            quality_txt = f"validados={quality.get('validated', total_itens)}, descartados={quality.get('discarded', 0)}"
+            scope_txt = "\n".join(scope_lines)
+
             fontes_lines = []
             for f in fontes[:5]:
                 if not isinstance(f, dict):
                     continue
-                domain = str(f.get("dominio") or "n/a")
+                domain = str(f.get("dominio") or "fonte pública")
                 url = str(f.get("url") or "").strip()
-                source = str(f.get("fonte") or "n/a")
-                comp = str(f.get("concorrente") or "n/a")
+                comp = _fmt_competitor(f.get("concorrente") or "n/a")
                 if url:
-                    fontes_lines.append(f"- {comp} | {source} | {domain} | {url}")
+                    fontes_lines.append(f"- {comp} | {domain} | {url}")
                 else:
-                    fontes_lines.append(f"- {comp} | {source} | {domain}")
+                    fontes_lines.append(f"- {comp} | {domain}")
             fontes_txt = "\n".join(fontes_lines) if fontes_lines else "- Sem URL pública validada."
+            low_evidence = fallback_benchmark or total_itens < 3
+            action_txt = (
+                "Use esta faixa como referência inicial de negociação e confirme com cotação direta antes de fechar o pedido."
+                if low_evidence
+                else "Use a faixa mínima e média para negociar e confirme prazo/frete para decisão final de compra."
+            )
+            refinement_section = ""
+            if low_evidence:
+                refinement_section = (
+                    "\n\n## Como melhorar a próxima pesquisa\n"
+                    "- Informe marca/modelo ou SKU do item.\n"
+                    "- Inclua variação exata (tamanho, cor, unidade/embalagem).\n"
+                    "- Defina concorrentes-alvo e cidade para refinar a evidência."
+                )
+
             fallback_note = (
-                "\n- Observação: concorrente-alvo sem evidência suficiente; benchmark de mercado online aplicado automaticamente."
-                if fallback_benchmark else ""
+                "- Observação: sem evidência pública suficiente do concorrente-alvo nesta rodada; benchmark de mercado foi usado como referência complementar.\n"
+                if fallback_benchmark
+                else ""
             )
             msg = (
                 "## Resumo executivo\n"
                 f"- Pesquisa concorrencial concluída com {total_itens} referências.\n"
+                f"- Faixa de preço encontrada: {faixa_txt}.\n"
                 f"- Preço médio de referência: R$ {preco_medio_txt}.\n"
-                f"- Fontes consultadas: {providers_txt}.\n"
                 + fallback_note
                 + "\n## Tabela operacional\n"
                 + table_md
                 + "\n\n## Ação recomendada\n"
-                + "Use a menor faixa de preço como referência de negociação e valide prazo/frete antes de decidir compra."
+                + action_txt
                 + "\n\n## Recorte e evidência\n"
-                + f"- {scope_txt}\n- Método: {tool_result.get('metodo_consulta', 'fallback_externo')}.\n- Quality Gate: {quality_txt}.\n"
+                + scope_txt
+                + "\n"
                 + "## Fontes\n"
                 + fontes_txt
+                + refinement_section
             )
             return {"type": "text", "result": {"mensagem": msg}}
 
@@ -1425,6 +1660,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         # Ajustes comerciais de alto valor (gráfico explícito, toda rede, segmento).
         self._enrich_tool_selection_for_business(resolved_query, tool_selection)
+        # Garante compatibilidade com escopo de tools por role e dependências carregadas.
+        self._ensure_tool_selection_available(resolved_query, tool_selection)
         logger.info(
             f"[ROUTER] Adjusted tool: {tool_selection.tool_name} "
             f"(confidence: {tool_selection.confidence:.2f}, params: {tool_selection.tool_params})"

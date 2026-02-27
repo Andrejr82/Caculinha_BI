@@ -76,7 +76,7 @@ class ChartRequest(BaseModel):
         description="Filtro de categoria"
     )
     
-    tipo_grafico: constr(regex=r'^(bar|pie|line|auto)$') = Field(
+    tipo_grafico: constr(pattern=r'^(bar|pie|line|auto)$') = Field(
         default="auto",
         description="Tipo de gráfico"
     )
@@ -158,7 +158,7 @@ class ForecastRequest(BaseModel):
         description="Número de dias para prever"
     )
     
-    metodo: constr(regex=r'^(holt-winters|arima|prophet|auto)$') = Field(
+    metodo: constr(pattern=r'^(holt-winters|arima|prophet|auto)$') = Field(
         default="auto",
         description="Método de previsão"
     )

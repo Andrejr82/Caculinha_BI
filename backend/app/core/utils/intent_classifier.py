@@ -45,6 +45,11 @@ INTENT_PATTERNS = {
         (r"mostre\s+(um\s+|o\s+)?gr[aá]fico", 0.95),
         (r"crie?\s+(um\s+|o\s+)?gr[aá]fico", 0.95),
         (r"fa[çc]a\s+(um\s+|o\s+)?gr[aá]fico", 0.95),
+        (r"me\s+d[ea]\s+(um\s+|o\s+)?gr[aá]fico", 0.94),
+        (r"quero\s+(um\s+|o\s+)?gr[aá]fico", 0.93),
+        (r"\bgrafico\s+de\b", 0.92),
+        (r"\bgr[aá]fico\b", 0.90),
+        (r"\bchart\b", 0.90),
         
         # Padrões de ranking e comparação
         (r"ranking\s+de", 0.92),

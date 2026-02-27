@@ -8,13 +8,14 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict
+import structlog
 
-from backend.app.core.logging_config import log_api_request
+from backend.app.core.observability.context import get_context
 
 router = APIRouter(tags=["logs"])
 
 # Logger específico para logs do frontend
-frontend_logger = logging.getLogger("agentbi.frontend")
+frontend_logger = structlog.get_logger("agentbi.frontend")
 
 
 class FrontendLogEntry(BaseModel):
@@ -68,75 +69,80 @@ async def receive_frontend_logs(
     """
     try:
         logs_received = len(logs_request.logs)
+        ctx = get_context()
+        client_ip = request.client.host if request.client else None
 
         # Processa cada log
         for log_entry in logs_request.logs:
-            # Mapeia o nível do log
             python_level = map_frontend_log_level(log_entry.level)
 
-            # Prepara dados extras para o log
-            extra = {
+            event_data: dict[str, Any] = {
                 "source": "frontend",
                 "frontend_timestamp": log_entry.timestamp,
+                "frontend_level_name": log_entry.levelName,
+                "frontend_message": log_entry.message,
+                "client_ip": client_ip,
+                "path": str(request.url.path),
+                "request_id": ctx.request_id,
             }
 
-            # Adiciona contexto se disponível
             if log_entry.context:
-                extra["context"] = log_entry.context
+                event_data["context"] = log_entry.context
 
-            # Adiciona informações do usuário
             if log_entry.user:
-                extra["user_id"] = log_entry.user.get("id")
-                extra["user_email"] = log_entry.user.get("email")
+                event_data["frontend_user_id"] = log_entry.user.get("id")
+                event_data["frontend_user_email"] = log_entry.user.get("email")
 
-            # Adiciona informações da sessão
             if log_entry.session:
-                extra["session_id"] = log_entry.session.get("id")
-                extra["session_duration"] = log_entry.session.get("duration")
+                event_data["session_id"] = log_entry.session.get("id")
+                event_data["session_duration"] = log_entry.session.get("duration")
 
-            # Adiciona informações da página
             if log_entry.page:
-                extra["page_url"] = log_entry.page.get("url")
-                extra["page_title"] = log_entry.page.get("title")
+                event_data["page_url"] = log_entry.page.get("url")
+                event_data["page_title"] = log_entry.page.get("title")
+                event_data["page_referrer"] = log_entry.page.get("referrer")
 
-            # Adiciona informações do browser
             if log_entry.browser:
-                extra["user_agent"] = log_entry.browser.get("userAgent")
-                extra["browser_language"] = log_entry.browser.get("language")
-                extra["browser_platform"] = log_entry.browser.get("platform")
+                event_data["user_agent"] = log_entry.browser.get("userAgent")
+                event_data["browser_language"] = log_entry.browser.get("language")
+                event_data["browser_platform"] = log_entry.browser.get("platform")
 
-            # Adiciona informações de erro se disponível
-            error_info = None
             if log_entry.error:
-                error_info = (
-                    f"{log_entry.error.get('name', 'Error')}: "
-                    f"{log_entry.error.get('message', 'Unknown error')}"
-                )
-                if log_entry.error.get("stack"):
-                    error_info += f"\n{log_entry.error.get('stack')}"
-                extra["error"] = error_info
+                event_data["error"] = log_entry.error
 
-            # Registra o log
-            message = f"[Frontend] {log_entry.message}"
-            if error_info:
-                message += f" - {error_info}"
+            if python_level >= logging.CRITICAL:
+                frontend_logger.critical("frontend_log", **event_data)
+            elif python_level >= logging.ERROR:
+                frontend_logger.error("frontend_log", **event_data)
+            elif python_level >= logging.WARNING:
+                frontend_logger.warning("frontend_log", **event_data)
+            elif python_level >= logging.INFO:
+                frontend_logger.info("frontend_log", **event_data)
+            else:
+                frontend_logger.debug("frontend_log", **event_data)
 
-            frontend_logger.log(
-                python_level,
-                message,
-                extra=extra
-            )
+        frontend_logger.info(
+            "frontend_logs_batch_received",
+            source="frontend",
+            logs_received=logs_received,
+            client_ip=client_ip,
+            path=str(request.url.path),
+            request_id=ctx.request_id,
+        )
 
         return {
             "status": "accepted",
             "logs_received": logs_received,
-            "message": f"Successfully received {logs_received} log(s) from frontend"
+            "request_id": ctx.request_id,
+            "message": f"Successfully received {logs_received} log(s) from frontend",
         }
 
     except Exception as e:
         frontend_logger.error(
-            f"Error processing frontend logs: {str(e)}",
-            exc_info=True
+            "frontend_logs_processing_failed",
+            error=str(e),
+            path=str(request.url.path),
+            exc_info=True,
         )
         raise HTTPException(
             status_code=500,

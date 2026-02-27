@@ -20,6 +20,7 @@ services:
       # Evita que o Python bufferize logs (economiza um pouco)
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
+      - WATCHFILES_FORCE_POLLING=true
     # LIMITES DO DOCKER (Hard Limits)
     deploy:
       resources:
@@ -29,5 +30,5 @@ services:
         reservations:
           memory: 1G
     # Comando otimizado: apenas 1 worker para economizar RAM
-    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --reload
+    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend --reload-include *.py --reload-include .env
   # NÃO RODE O FRONTEND AQUI. Rode no terminal do Windows.

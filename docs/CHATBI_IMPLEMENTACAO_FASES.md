@@ -75,3 +75,10 @@
 - Observabilidade operacional do ChatBI: implementada.
 - Métricas de latência/erro/cache/tokens/uso de tools instrumentadas no fluxo de chat.
 - Dashboard SLO de ChatBI disponível em `GET /api/v1/admin/dashboard/chat-slo`.
+- Fase 3 (parcial - atualização 2026-02-26):
+- Templates oficiais de relatório implementados no backend (`/api/v1/chat/report-templates`).
+- Padronização de saída executiva ativa no ChatServiceV3 (`Resumo`, `Tabela`, `SQL/Python`, `Ação`, `Recorte/Evidência`).
+- LLMOps com dataset versionado criado em `backend/tests/llmops/datasets/chatbi_golden_v1.json`.
+- Regressão automatizada por release implementada em `backend/scripts/run_llmops_regression.py`.
+- Runbook de canary e rollback publicado em `docs/CHATBI_FASE3_RUNBOOK_CANARY_ROLLBACK.md`.
+- Canary dedicado para ChatBI implementado via `CHAT_CANARY_*`.

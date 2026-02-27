@@ -9,12 +9,17 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select, and_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.dependencies import get_current_user, get_db
 from backend.app.infrastructure.database.models import UserPreference, User
 
 router = APIRouter(prefix="/preferences", tags=["Preferences"])
+
+
+def _is_missing_table_error(exc: Exception) -> bool:
+    return "no such table" in str(exc).lower()
 
 
 # Pydantic Models
@@ -50,10 +55,16 @@ async def list_preferences(
 
     Returns a dictionary mapping preference keys to values.
     """
-    result = await db.execute(
-        select(UserPreference).where(UserPreference.user_id == current_user.id)
-    )
-    preferences = result.scalars().all()
+    try:
+        result = await db.execute(
+            select(UserPreference).where(UserPreference.user_id == current_user.id)
+        )
+        preferences = result.scalars().all()
+    except SQLAlchemyError as exc:
+        # Mantém endpoint operacional em ambientes sem migração completa.
+        if _is_missing_table_error(exc):
+            return PreferenceListResponse(preferences={})
+        raise
 
     return PreferenceListResponse(
         preferences={pref.key: pref.value for pref in preferences}
