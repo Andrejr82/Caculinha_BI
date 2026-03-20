@@ -30,6 +30,7 @@ from backend.app.api.v1.endpoints import (
     code_chat,
     dashboard,
     catalog,
+    basket_analysis,
     ingest,
     memory,
 )
@@ -41,6 +42,7 @@ router.include_router(health.router, tags=["Health"])
 router.include_router(auth.router, tags=["Auth"])
 router.include_router(auth_alt.router_alt, tags=["Auth"])
 router.include_router(analytics.router, tags=["Analytics"])
+router.include_router(basket_analysis.router, tags=["Analytics"])
 router.include_router(reports.router, tags=["Reports"])
 router.include_router(admin.router, tags=["Admin"])
 router.include_router(admin_dashboard.router, tags=["Admin Dashboard"])
@@ -60,6 +62,6 @@ router.include_router(dashboard.router, tags=["Dashboard"])
 
 # Legacy/Extra Endpoints
 router.include_router(catalog.router, prefix="/catalog", tags=["Catalog"])
-router.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
-router.include_router(memory.router, prefix="/memory", tags=["Memory"])
+router.include_router(ingest.router)
+router.include_router(memory.router)
 router.include_router(legacy_feedback.router, tags=["Feedback"])

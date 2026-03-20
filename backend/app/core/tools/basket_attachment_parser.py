@@ -206,6 +206,14 @@ def _build_transactions(records: Iterable[Dict[str, Any]]) -> List[List[str]]:
     return [row for row in transactions if row]
 
 
+def _has_explicit_transaction_ids(records: Iterable[Dict[str, Any]]) -> bool:
+    for record in records:
+        normalized = _coerce_record_keys(record)
+        if any(key in TRANSACTION_ID_ALIASES and _clean_value(value) for key, value in normalized.items()):
+            return True
+    return False
+
+
 def _records_from_delimited_text(content: str, delimiter_hint: Optional[str] = None) -> List[Dict[str, Any]]:
     if not content.strip():
         return []
@@ -338,12 +346,15 @@ def parse_single_attachment(content: str, filename: Optional[str] = None) -> Opt
     if records:
         items = _build_item_rows(records)
         transactions = _build_transactions(records)
+        has_explicit_transaction_ids = _has_explicit_transaction_ids(records)
 
         if items and not transactions:
             return {"kind": "itens", "payload": {"itens": items}, "warnings": warnings}
         if transactions and not items:
             return {"kind": "transacoes", "payload": {"transacoes": transactions}, "warnings": warnings}
         if items and transactions:
+            if has_explicit_transaction_ids:
+                return {"kind": "transacoes", "payload": {"transacoes": transactions}, "warnings": warnings}
             if any("preco_unitario" in item or "custo_unitario" in item for item in items):
                 return {"kind": "itens", "payload": {"itens": items}, "warnings": warnings}
             return {"kind": "transacoes", "payload": {"transacoes": transactions}, "warnings": warnings}
