@@ -190,9 +190,9 @@ class TestCircuitBreaker:
             pass
         
         # Deve rejeitar próxima chamada
-        from backend.app.infrastructure.resilience.circuit_breaker import CircuitBreakerOpenError
-        with pytest.raises(CircuitBreakerOpenError):
+        with pytest.raises(Exception) as exc_info:
             breaker.call(failing_func)
+        assert exc_info.type.__name__ == "CircuitBreakerOpenError"
     
     def test_circuit_breaker_stats(self):
         """Testa estatísticas do circuit breaker."""

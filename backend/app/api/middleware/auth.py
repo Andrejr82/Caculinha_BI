@@ -28,7 +28,7 @@ logger = structlog.get_logger(__name__)
 # Configurações unificadas via settings.py
 JWT_SECRET = settings.SECRET_KEY
 JWT_ALGORITHM = settings.ALGORITHM
-JWT_EXPIRATION_HOURS = settings.ACCESS_TOKEN_EXPIRE_MINUTES // 60
+JWT_EXPIRATION_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 LEGACY_TEST_JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
 
 # Rotas públicas (não requerem autenticação)
@@ -157,7 +157,7 @@ def create_access_token(
         "tenant_id": tenant_id,
         "role": role,
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRATION_MINUTES),
     }
     
     # Adicionar claims extras se fornecidos

@@ -158,6 +158,14 @@ class ContinuousLearner:
             self.stats['optimizations_triggered'] += 1
             recommendations.append(f"Otimização automática executada: {optimization_result}")
 
+        if feedback_type or confidence_score is not None:
+            try:
+                from backend.app.core.learning.unified_dataset_builder import build_default_unified_learning_dataset
+
+                build_default_unified_learning_dataset()
+            except Exception as rebuild_error:
+                logger.warning("Falha ao atualizar dataset unificado: %s", rebuild_error, exc_info=True)
+
         return {
             'actions_taken': actions_taken,
             'recommendations': recommendations,

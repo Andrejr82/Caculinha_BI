@@ -3,7 +3,7 @@ import auth from '@/store/auth';
 import {
   LayoutDashboard, MessageSquare, PieChart, FileText, Settings, LogOut,
   AlertTriangle, Truck, BookOpen, Terminal, Database, Lock, Shield, Lightbulb, HelpCircle, Code, Info,
-  ChevronLeft, ChevronRight, TrendingUp, BarChart3, Package
+  ChevronLeft, ChevronRight, TrendingUp, BarChart3, Package, Split
 } from 'lucide-solid';
 import { For, Show, children, createSignal, createResource } from 'solid-js';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -15,6 +15,28 @@ export default function Layout(props: any) {
   const location = useLocation();
   const navigate = useNavigate();
   const userRole = () => auth.user()?.role || 'user';
+  const routeLabels: Record<string, string> = {
+    '/dashboard': 'Monitoramento',
+    '/metrics': 'Analytics Avançado',
+    '/rupturas': 'Rupturas Críticas',
+    '/forecasting': 'Previsão de Demanda',
+    '/executive': 'Executivo',
+    '/suppliers': 'Fornecedores',
+    '/transfers': 'Transferências',
+    '/reports': 'Relatórios',
+    '/chat': 'Chat BI',
+    '/code-chat': 'Code Chat',
+    '/examples': 'Exemplos',
+    '/learning': 'Aprendizado',
+    '/playground': 'Playground Ops',
+    '/playground-lab': 'Playground Lab',
+    '/admin/dashboard': 'KPIs ChatBI',
+    '/diagnostics': 'Diagnóstico DB',
+    '/help': 'Ajuda',
+    '/about': 'Sobre',
+    '/profile': 'Alterar Senha',
+    '/admin': 'Administração',
+  };
 
   // Estado para controlar sidebar retrátil
   const [isCollapsed, setIsCollapsed] = createSignal(false);
@@ -105,6 +127,7 @@ export default function Layout(props: any) {
         { href: '/examples', icon: Lightbulb, label: 'Exemplos', roles: ['admin'] },
         { href: '/learning', icon: BookOpen, label: 'Aprendizado', roles: ['admin'] },
         { href: '/playground', icon: Terminal, label: 'Playground', roles: ['admin', 'user'] },
+        { href: '/playground-lab', icon: Split, label: 'Playground Lab', roles: ['admin', 'user'] },
       ]
     },
     {
@@ -120,11 +143,20 @@ export default function Layout(props: any) {
     }
   ];
 
+  const isActivePath = (href: string) => location.pathname === href || location.pathname.startsWith(`${href}/`);
+  const isPlaygroundRoute = (href: string) => href === '/playground' || href === '/playground-lab';
+  const pageTitle = () => {
+    const matched = Object.entries(routeLabels)
+      .sort((a, b) => b[0].length - a[0].length)
+      .find(([href]) => isActivePath(href));
+    return matched?.[1] || 'Dashboard';
+  };
+
   const NavItem = (props: { href: string; icon: any; label: string }) => (
     <A
       href={props.href}
       class={`nav-item flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 mx-2 mb-1
-        ${location.pathname.includes(props.href)
+        ${isActivePath(props.href)
           ? 'bg-sidebar-accent text-sidebar-primary shadow-sm'
           : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-primary'}
         ${isCollapsed() ? 'justify-center px-2' : ''}
@@ -179,7 +211,7 @@ export default function Layout(props: any) {
             {(group) => {
               const visibleItems = group.items.filter(item => {
                 if (!(item.roles.includes(userRole()) || item.roles.includes('*'))) return false;
-                if (item.href === '/playground' && userRole() !== 'admin' && !playgroundEnabledForUser()) return false;
+                if (isPlaygroundRoute(item.href) && userRole() !== 'admin' && !playgroundEnabledForUser()) return false;
                 return true;
               });
 
@@ -250,7 +282,7 @@ export default function Layout(props: any) {
             </Show>
             <span>Organização</span>
             <span class="text-border">/</span>
-            <span class="text-foreground font-medium capitalize">{location.pathname.replace('/', '') || 'Dashboard'}</span>
+            <span class="text-foreground font-medium">{pageTitle()}</span>
           </div>
 
           <div class="flex items-center gap-4">

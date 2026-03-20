@@ -1,713 +1,1274 @@
-import { createSignal, For, Show, onMount, createEffect } from 'solid-js';
+import { createEffect, createSignal, For, Show, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Terminal, Send, Trash2, Settings, Clock, Cpu, Code, Play, X, ChevronDown, ChevronRight, Split, LayoutTemplate, ThumbsUp, ThumbsDown, Download, FileJson } from 'lucide-solid';
-import { playgroundApi, authApi } from '../lib/api';
-import { MessageActions } from '../components/MessageActions';
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Code,
+  Cpu,
+  Download,
+  FileJson,
+  LayoutTemplate,
+  Play,
+  Send,
+  Settings,
+  Split,
+  Terminal,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  X,
+} from 'lucide-solid';
+
+import { authApi, playgroundApi } from '../lib/api';
+import { announcer } from '../components/ScreenReaderAnnouncer';
+import { toastManager } from '../components/Toast';
 import 'github-markdown-css/github-markdown.css';
 import './chat-markdown.css';
+import './playground-surfaces.css';
 
 interface Message {
-   id: string;
-   role: 'user' | 'assistant';
-   content: string;
-   timestamp: string;
-   request_id?: string;
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  request_id?: string;
+  feedback_status?: 'useful' | 'not_useful';
 }
 
 interface ModelInfo {
-   model: string;
-   temperature: number;
-   max_tokens: number;
-   json_mode: boolean;
-   playground_mode?: string;
-   playground_mode_label?: string;
-   remote_llm_enabled?: boolean;
-   default_temperature?: number;
-   default_max_tokens?: number;
-   max_temperature_limit?: number;
-   max_tokens_limit?: number;
-}
-
-interface CacheStats {
-   hits: number;
-   misses: number;
-   hit_rate: number;
-   enabled: boolean;
-}
-
-interface ChatResponse {
-   response: string;
-   model_info: ModelInfo;
-   metadata: {
-      response_time: number;
-      timestamp: string;
-      user: string;
-   };
-   cache_stats: CacheStats;
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  json_mode: boolean;
+  playground_mode?: string;
+  playground_mode_label?: string;
+  remote_llm_enabled?: boolean;
+  default_temperature?: number;
+  default_max_tokens?: number;
+  max_temperature_limit?: number;
+  max_tokens_limit?: number;
 }
 
 interface PlaygroundMetrics {
-   total_requests: number;
-   local_requests: number;
-   remote_requests: number;
-   feedback_total: number;
-   feedback_useful: number;
-   feedback_not_useful: number;
-   feedback_useful_rate: number;
+  total_requests: number;
+  local_requests: number;
+  remote_requests: number;
+  feedback_total: number;
+  feedback_useful: number;
+  feedback_not_useful: number;
+  feedback_useful_rate: number;
+}
+
+const PLAYGROUND_LAB_STORAGE_KEY = 'playground_lab_state_v1';
+const MAX_PERSISTED_LAB_MESSAGES = 12;
+
+function loadPersistedLabState() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(PLAYGROUND_LAB_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as {
+      compareMode?: boolean;
+      input?: string;
+      systemInstruction?: string;
+      temperature?: number;
+      maxTokens?: number;
+      jsonMode?: boolean;
+      modelA?: string;
+      modelB?: string;
+      messagesA?: Message[];
+      messagesB?: Message[];
+    };
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(content: string): string {
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatTime(timestamp?: string): string {
+  if (!timestamp) return '--:--';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function PlaygroundMetricCard(props: { label: string; value: string; note: string }) {
+  return (
+    <div class="playground-kpi">
+      <div class="playground-kpi-label">{props.label}</div>
+      <div class="playground-kpi-value">{props.value}</div>
+      <div class="playground-kpi-note">{props.note}</div>
+    </div>
+  );
+}
+
+function PlaygroundMessageBubble(props: {
+  message: Message;
+  onApprove?: () => void;
+  onReject?: () => void;
+}) {
+  const isAssistant = () => props.message.role === 'assistant';
+  const feedbackStatusLabel = () =>
+    props.message.feedback_status === 'useful' ? 'Útil registrado' : 'Não útil registrado';
+
+  return (
+    <div
+      class={`playground-message ${
+        isAssistant() ? 'playground-message--assistant' : 'playground-message--user'
+      }`}
+    >
+      <div class="playground-message-label">
+        <span>{isAssistant() ? 'Playground' : 'Você'}</span>
+        <span class="playground-message-time">{formatTime(props.message.timestamp)}</span>
+      </div>
+
+      <div
+        class="markdown-body playground-markdown bg-transparent"
+        innerHTML={
+          props.message.content ? escapeHtml(props.message.content).replace(/\n/g, '<br/>') : ''
+        }
+      />
+
+      <Show when={isAssistant() && props.message.request_id}>
+        <div class="playground-feedback">
+          <span class="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Feedback
+          </span>
+          <button
+            class="btn btn-ghost btn-xs"
+            onClick={() => props.onApprove?.()}
+            aria-pressed={props.message.feedback_status === 'useful'}
+            disabled={!!props.message.feedback_status}
+          >
+            <ThumbsUp size={12} />
+          </button>
+          <button
+            class="btn btn-ghost btn-xs"
+            onClick={() => props.onReject?.()}
+            aria-pressed={props.message.feedback_status === 'not_useful'}
+            disabled={!!props.message.feedback_status}
+          >
+            <ThumbsDown size={12} />
+          </button>
+          <Show when={props.message.feedback_status}>
+            <span class="playground-status-pill is-success">{feedbackStatusLabel()}</span>
+          </Show>
+          <span class="ml-auto text-[11px] font-mono text-muted-foreground">
+            {props.message.request_id}
+          </span>
+        </div>
+      </Show>
+    </div>
+  );
 }
 
 export default function Playground() {
-   const navigate = useNavigate();
-   // Panel A State
-   const [messagesA, setMessagesA] = createSignal<Message[]>([]);
-   const [modelA, setModelA] = createSignal('server-default');
-   const [responseTimeA, setResponseTimeA] = createSignal(0);
-   const [loadingA, setLoadingA] = createSignal(false);
+  const navigate = useNavigate();
 
-   // Panel B State (Compare Mode)
-   const [compareMode, setCompareMode] = createSignal(false);
-   const [messagesB, setMessagesB] = createSignal<Message[]>([]);
-   const [modelB, setModelB] = createSignal('server-default');
-   const [responseTimeB, setResponseTimeB] = createSignal(0);
-   const [loadingB, setLoadingB] = createSignal(false);
+  const [messagesA, setMessagesA] = createSignal<Message[]>([]);
+  const [modelA, setModelA] = createSignal('server-default');
+  const [responseTimeA, setResponseTimeA] = createSignal(0);
+  const [loadingA, setLoadingA] = createSignal(false);
 
-   // Shared State
-   const [input, setInput] = createSignal('');
-   const [systemInstruction, setSystemInstruction] = createSignal('');
-   let messagesEndRefA: HTMLDivElement | undefined;
-   let messagesEndRefB: HTMLDivElement | undefined;
+  const [compareMode, setCompareMode] = createSignal(false);
+  const [messagesB, setMessagesB] = createSignal<Message[]>([]);
+  const [modelB, setModelB] = createSignal('server-default');
+  const [responseTimeB, setResponseTimeB] = createSignal(0);
+  const [loadingB, setLoadingB] = createSignal(false);
 
-   const [showCodeModal, setShowCodeModal] = createSignal(false);
-   const [systemExpanded, setSystemExpanded] = createSignal(false);
+  const [input, setInput] = createSignal('');
+  const [systemInstruction, setSystemInstruction] = createSignal('');
+  const [showCodeModal, setShowCodeModal] = createSignal(false);
+  const [systemExpanded, setSystemExpanded] = createSignal(false);
 
-   // Controls
-   const [temperature, setTemperature] = createSignal(1.0);
-   const [maxTokens, setMaxTokens] = createSignal(2048);
-   const [jsonMode, setJsonMode] = createSignal(false);
+  const [temperature, setTemperature] = createSignal(1.0);
+  const [maxTokens, setMaxTokens] = createSignal(2048);
+  const [jsonMode, setJsonMode] = createSignal(false);
 
-   // Available models (Mock for now, could fetch from backend)
-   const models = [
-      { id: 'server-default', name: 'Server Default (settings.LLM_MODEL_NAME)' }
-   ];
+  const [modelInfo, setModelInfo] = createSignal<ModelInfo | null>(null);
+  const [metrics, setMetrics] = createSignal<PlaygroundMetrics | null>(null);
+  const [accessBlockedMessage, setAccessBlockedMessage] = createSignal<string | null>(null);
+  const [stateHydrated, setStateHydrated] = createSignal(false);
 
-   const [modelInfo, setModelInfo] = createSignal<ModelInfo | null>(null);
-   const [metrics, setMetrics] = createSignal<PlaygroundMetrics | null>(null);
-   const [accessBlockedMessage, setAccessBlockedMessage] = createSignal<string | null>(null);
+  let messagesEndRefA: HTMLDivElement | undefined;
+  let messagesEndRefB: HTMLDivElement | undefined;
 
-   onMount(async () => {
-      try {
-         const response = await playgroundApi.getInfo();
-         setModelInfo(response.data);
-         if (response.data.model) setModelA(response.data.model);
-         if (response.data?.playground_access_enabled === false) {
-            navigate('/dashboard', { replace: true });
-            return;
-         } else {
-            setAccessBlockedMessage(null);
-         }
-      } catch (error) {
-         console.error('Erro ao carregar info do modelo:', error);
-         const detail = (error as any)?.response?.data?.detail;
-         if ((error as any)?.response?.status === 403) {
-            navigate('/dashboard', { replace: true });
-            return;
-         }
+  const models = [{ id: 'server-default', name: 'Server Default (settings.LLM_MODEL_NAME)' }];
+
+  const biTasks = [
+    {
+      title: 'Ruptura por Loja',
+      system:
+        'Você é analista BI de varejo físico. Responda com Resumo executivo, Tabela operacional e Próximas ações.',
+      prompt: 'Monte uma SQL de ruptura por loja e período para priorizar reposição.',
+      copy: 'Fluxo rápido para priorização de reposição e recorte por período.',
+    },
+    {
+      title: 'Margem por Categoria',
+      system:
+        'Você é analista de performance comercial. Estruture resposta em Resumo executivo, Tabela operacional e Próximas ações.',
+      prompt: 'Quero um template SQL para analisar margem por categoria e identificar outliers.',
+      copy: 'Útil para achar outliers e categorias que drenam margem.',
+    },
+    {
+      title: 'Top Produtos',
+      system: 'Você é analista de sortimento. Use saída objetiva para decisão de loja física.',
+      prompt: 'Crie uma análise dos top produtos por venda e giro para lojas físicas.',
+      copy: 'Combina giro com ranking operacional para tomada de decisão.',
+    },
+    {
+      title: 'Transferências',
+      system: 'Você é analista de abastecimento. Priorize recomendações acionáveis.',
+      prompt: 'Preciso de uma query de transferências entre lojas com base no estoque.',
+      copy: 'Ajuda a montar um plano tático entre UNEs.',
+    },
+    {
+      title: 'Demanda',
+      system: 'Você é analista de planejamento. Entregue plano operacional curto.',
+      prompt: 'Sugira um roteiro para previsão de demanda semanal por loja e categoria.',
+      copy: 'Bom ponto de partida para demanda e sazonalidade.',
+    },
+  ];
+
+  const examples = [
+    {
+      title: 'Análise Financeira',
+      system:
+        'Você é um analista financeiro sênior. Responda de forma concisa e use tabelas markdown quando apropriado.',
+      prompt:
+        'Analise o ROI de uma campanha de marketing que custou R$ 50.000 e gerou R$ 120.000 em vendas.',
+      copy: 'Experimenta uma resposta curta com framing executivo.',
+    },
+    {
+      title: 'SQL Expert',
+      system: 'Você é um DBA especialista em SQL Server. Forneça apenas o código SQL otimizado.',
+      prompt: 'Escreva uma query para encontrar produtos que não venderam nos últimos 6 meses.',
+      copy: 'Força o Playground para geração focada em SQL puro.',
+    },
+    {
+      title: 'Python Data',
+      system: 'Você é um engenheiro de dados Python. Prefira a biblioteca Polars.',
+      prompt: "Crie um script para ler um arquivo Parquet e filtrar linhas onde 'status' é 'error'.",
+      copy: 'Bom para validar persona técnica e estilo de biblioteca.',
+    },
+  ];
+
+  onMount(async () => {
+    const persistedState = loadPersistedLabState();
+    if (persistedState) {
+      if (typeof persistedState.compareMode === 'boolean') setCompareMode(persistedState.compareMode);
+      if (typeof persistedState.input === 'string') setInput(persistedState.input);
+      if (typeof persistedState.systemInstruction === 'string') {
+        setSystemInstruction(persistedState.systemInstruction);
+        setSystemExpanded(!!persistedState.systemInstruction.trim());
       }
-      try {
-         const response = await playgroundApi.getMetrics();
-         setMetrics(response.data);
-      } catch {
-         // metrics may require admin; keep silent for non-admin users
+      if (typeof persistedState.temperature === 'number') setTemperature(persistedState.temperature);
+      if (typeof persistedState.maxTokens === 'number') setMaxTokens(persistedState.maxTokens);
+      if (typeof persistedState.jsonMode === 'boolean') setJsonMode(persistedState.jsonMode);
+      if (typeof persistedState.modelA === 'string') setModelA(persistedState.modelA);
+      if (typeof persistedState.modelB === 'string') setModelB(persistedState.modelB);
+      if (Array.isArray(persistedState.messagesA)) {
+        setMessagesA(persistedState.messagesA.filter((message) => message && typeof message.content === 'string').slice(-MAX_PERSISTED_LAB_MESSAGES));
       }
-   });
-
-   createEffect(() => {
-      if (messagesA()) setTimeout(() => messagesEndRefA?.scrollIntoView({ behavior: 'smooth' }), 100);
-      if (compareMode() && messagesB()) setTimeout(() => messagesEndRefB?.scrollIntoView({ behavior: 'smooth' }), 100);
-   });
-
-   const streamRequest = async (
-      _modelName: string,
-      currentHistory: Message[],
-      setMessages: (msgs: Message[]) => void,
-      setLoading: (l: boolean) => void,
-      setResponseTime: (t: number) => void
-   ) => {
-      setLoading(true);
-      const assistantId = Date.now().toString() + Math.random().toString();
-      let accumulatedText = "";
-      let requestId: string | undefined = undefined;
-
-      // Placeholder for assistant
-      const initialMsgs = [...currentHistory, {
-         id: assistantId,
-         role: 'assistant' as const,
-         content: '',
-         timestamp: new Date().toISOString()
-      }];
-      setMessages(initialMsgs);
-
-      // Proactive Token Refresh
-      try {
-         await authApi.getMe();
-      } catch (e) {
-         console.warn("⚠️ Falha ao renovar token no playground:", e);
+      if (Array.isArray(persistedState.messagesB)) {
+        setMessagesB(persistedState.messagesB.filter((message) => message && typeof message.content === 'string').slice(-MAX_PERSISTED_LAB_MESSAGES));
       }
+    }
+    setStateHydrated(true);
 
-      try {
-         const response = await fetch('/api/v1/playground/stream', {
-            method: 'POST',
-            headers: {
-               'Content-Type': 'application/json',
-               'Authorization': `Bearer ${sessionStorage.getItem('token')}` // Auth fix: use sessionStorage like rest of app
-            },
-            body: JSON.stringify({
-               message: currentHistory[currentHistory.length - 1].content,
-               history: currentHistory.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
-               system_instruction: systemInstruction(),
-               temperature: temperature(),
-               max_tokens: maxTokens(),
-               json_mode: jsonMode(),
-               stream: true
-            })
-         });
-
-         if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errText}`);
-         }
-
-         const reader = response.body?.getReader();
-         const decoder = new TextDecoder();
-
-         if (!reader) throw new Error("No reader");
-
-         let eventBuffer = "";
-         let streamCompleted = false;
-
-         while (!streamCompleted) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            eventBuffer += decoder.decode(value, { stream: true });
-            const events = eventBuffer.split('\n\n');
-            eventBuffer = events.pop() ?? "";
-
-            for (const eventChunk of events) {
-               if (eventChunk.startsWith('data: ')) {
-                  try {
-                     const data = JSON.parse(eventChunk.slice(6).trim());
-                     if (data.type === 'token') {
-                        accumulatedText += (data.text || '');
-                        setMessages(initialMsgs.map(m =>
-                           m.id === assistantId ? { ...m, content: accumulatedText, request_id: requestId } : m
-                        ));
-                     } else if (data.type === 'start') {
-                        requestId = data.request_id;
-                     } else if (data.type === 'degraded') {
-                        accumulatedText += (accumulatedText ? '\n\n' : '') + `⚠️ Modo degradado: ${data.text}`;
-                        setMessages(initialMsgs.map(m =>
-                           m.id === assistantId ? { ...m, content: accumulatedText || `⚠️ Modo degradado: ${data.text}`, request_id: requestId } : m
-                        ));
-                     } else if (data.type === 'done') {
-                        setResponseTime(data.metrics.time);
-                        if (data.request_id) requestId = data.request_id;
-                        streamCompleted = true;
-                        break;
-                     } else if (data.type === 'error') {
-                        accumulatedText += `\n\n⚠️ Não foi possível concluir no Playground: ${data.text}`;
-                        setMessages(initialMsgs.map(m =>
-                           m.id === assistantId ? { ...m, content: accumulatedText, request_id: requestId } : m
-                        ));
-                        streamCompleted = true;
-                        break;
-                     }
-                  } catch (e) {
-                     // ignore json parse error for partial chunks
-                  }
-               }
-            }
-         }
-
-         try {
-            await reader.cancel();
-         } catch {
-            // no-op
-         }
-
-      } catch (e: any) {
-         setMessages(initialMsgs.map(m =>
-            m.id === assistantId ? { ...m, content: `⚠️ Falha de conexão com o Playground: ${e.message}`, request_id: requestId } : m
-         ));
-      } finally {
-         setLoading(false);
+    try {
+      const response = await playgroundApi.getInfo();
+      setModelInfo(response.data);
+      if (response.data.model && !(persistedState?.modelA && persistedState.modelA !== 'server-default')) {
+        setModelA(response.data.model);
       }
-   };
-
-   const submitFeedback = async (message: Message, useful: boolean) => {
-      if (!message.request_id) return;
-      try {
-         await playgroundApi.submitFeedback({
-            request_id: message.request_id,
-            useful,
-         });
-      } catch (e) {
-         console.warn('Falha ao enviar feedback Playground', e);
+      if (response.data?.playground_access_enabled === false) {
+        navigate('/dashboard', { replace: true });
+        return;
       }
-   };
+      setAccessBlockedMessage(null);
+    } catch (error) {
+      const detail = (error as any)?.response?.data?.detail;
+      if ((error as any)?.response?.status === 403) {
+        navigate('/dashboard', { replace: true });
+        return;
+      }
+      setAccessBlockedMessage(detail || 'Não foi possível carregar as capacidades do Playground.');
+    }
 
-   const exportJson = () => {
-      const payload = { panelA: messagesA(), panelB: messagesB(), exported_at: new Date().toISOString() };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `playground-export-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-   };
+    try {
+      const response = await playgroundApi.getMetrics();
+      setMetrics(response.data);
+    } catch {
+      // Metrics may require admin; keep silent for non-admin users.
+    }
+  });
 
-   const exportCsv = () => {
-      const rows = [...messagesA(), ...messagesB()].map(m => ({
-         id: m.id,
-         role: m.role,
-         timestamp: m.timestamp,
-         request_id: m.request_id || '',
-         content: (m.content || '').replace(/\n/g, ' ').replace(/"/g, '""')
-      }));
-      const header = 'id,role,timestamp,request_id,content';
-      const csv = [header, ...rows.map(r => `"${r.id}","${r.role}","${r.timestamp}","${r.request_id}","${r.content}"`)].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `playground-export-${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-   };
+  createEffect(() => {
+    if (messagesA()) {
+      setTimeout(() => messagesEndRefA?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+    if (compareMode() && messagesB()) {
+      setTimeout(() => messagesEndRefB?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  });
 
-   const sendMessage = async (e?: Event) => {
-      e?.preventDefault();
-      if (accessBlockedMessage()) return;
-      if (!input().trim() || loadingA() || loadingB()) return;
+  createEffect(() => {
+    if (!stateHydrated() || typeof window === 'undefined') return;
 
-      const userContent = input();
-      setInput('');
+    const payload = {
+      compareMode: compareMode(),
+      input: input(),
+      systemInstruction: systemInstruction(),
+      temperature: temperature(),
+      maxTokens: maxTokens(),
+      jsonMode: jsonMode(),
+      modelA: modelA(),
+      modelB: modelB(),
+      messagesA: messagesA().slice(-MAX_PERSISTED_LAB_MESSAGES),
+      messagesB: messagesB().slice(-MAX_PERSISTED_LAB_MESSAGES),
+    };
 
-      const userMessage: Message = {
-         id: Date.now().toString(),
-         role: 'user',
-         content: userContent,
-         timestamp: new Date().toISOString()
+    try {
+      window.localStorage.setItem(PLAYGROUND_LAB_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore localStorage quota issues.
+    }
+  });
+
+  const streamRequest = async (
+    panelLabel: string,
+    modelName: string,
+    currentHistory: Message[],
+    setMessages: (msgs: Message[]) => void,
+    setLoading: (value: boolean) => void,
+    setResponseTime: (value: number) => void,
+  ) => {
+    setLoading(true);
+    const assistantId = Date.now().toString() + Math.random().toString();
+    let accumulatedText = '';
+    let requestId: string | undefined;
+
+    const initialMessages = [
+      ...currentHistory,
+      {
+        id: assistantId,
+        role: 'assistant' as const,
+        content: 'Processando resposta do Playground...',
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    setMessages(initialMessages);
+    announcer.polite(`Streaming iniciado no ${panelLabel}.`);
+
+    try {
+      await authApi.getMe();
+    } catch (error) {
+      console.warn('Falha ao renovar token no Playground:', error);
+    }
+
+    try {
+      const payload: Record<string, unknown> = {
+        message: currentHistory[currentHistory.length - 1].content,
+        history: currentHistory.slice(0, -1).map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+        system_instruction: systemInstruction(),
+        temperature: temperature(),
+        max_tokens: maxTokens(),
+        json_mode: jsonMode(),
+        stream: true,
       };
 
-      // Update Panel A
-      const newHistoryA = [...messagesA(), userMessage];
-      setMessagesA(newHistoryA);
-      streamRequest(modelA(), newHistoryA, setMessagesA, setLoadingA, setResponseTimeA);
-
-      // Update Panel B (if active)
-      if (compareMode()) {
-         const newHistoryB = [...messagesB(), userMessage];
-         setMessagesB(newHistoryB);
-         streamRequest(modelB(), newHistoryB, setMessagesB, setLoadingB, setResponseTimeB);
+      if (modelName && modelName !== 'server-default') {
+        payload.model = modelName;
       }
-   };
 
-   const clearHistory = () => {
-      if (confirm('Deseja limpar o histórico?')) {
-         setMessagesA([]);
-         setMessagesB([]);
-         setResponseTimeA(0);
-         setResponseTimeB(0);
+      const response = await fetch('/api/v1/playground/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-   };
 
-   const loadExample = (ex: any) => {
-      setSystemInstruction(ex.system);
-      setInput(ex.prompt);
-      setSystemExpanded(true);
-   };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-   const generateCodeSnippet = () => {
-      // ... existing logic ...
-      return "Code snippet generator to be updated for stream...";
-   };
+      if (!reader) throw new Error('No reader');
 
-   // BI Task Cards
-   const biTasks = [
-      {
-         title: "Ruptura por Loja",
-         system: "Você é analista BI de varejo físico. Responda com Resumo, Tabela e Ação recomendada.",
-         prompt: "Monte uma SQL de ruptura por loja e período para priorizar reposição."
-      },
-      {
-         title: "Margem por Categoria",
-         system: "Você é analista de performance comercial. Estruture resposta em Resumo, Tabela e Ação.",
-         prompt: "Quero um template SQL para analisar margem por categoria e identificar outliers."
-      },
-      {
-         title: "Top Produtos",
-         system: "Você é analista de sortimento. Use saída objetiva para decisão de loja física.",
-         prompt: "Crie uma análise dos top produtos por venda e giro para lojas físicas."
-      },
-      {
-         title: "Transferências",
-         system: "Você é analista de abastecimento. Priorize recomendações acionáveis.",
-         prompt: "Preciso de uma query de transferências entre lojas com base no estoque."
-      },
-      {
-         title: "Demanda",
-         system: "Você é analista de planejamento. Entregue plano operacional curto.",
-         prompt: "Sugira um roteiro para previsão de demanda semanal por loja e categoria."
+      let eventBuffer = '';
+      let streamCompleted = false;
+
+      while (!streamCompleted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        eventBuffer += decoder.decode(value, { stream: true });
+        const events = eventBuffer.split('\n\n');
+        eventBuffer = events.pop() ?? '';
+
+        for (const eventChunk of events) {
+          if (!eventChunk.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(eventChunk.slice(6).trim());
+            if (data.type === 'token') {
+              accumulatedText += data.text || '';
+              setMessages(
+                initialMessages.map((message) =>
+                  message.id === assistantId
+                    ? { ...message, content: accumulatedText, request_id: requestId }
+                    : message,
+                ),
+              );
+            } else if (data.type === 'start') {
+              requestId = data.request_id;
+            } else if (data.type === 'degraded') {
+              accumulatedText +=
+                (accumulatedText ? '\n\n' : '') + `⚠️ Modo degradado: ${data.text}`;
+              setMessages(
+                initialMessages.map((message) =>
+                  message.id === assistantId
+                    ? {
+                        ...message,
+                        content: accumulatedText || `⚠️ Modo degradado: ${data.text}`,
+                        request_id: requestId,
+                      }
+                    : message,
+                ),
+              );
+            } else if (data.type === 'warning') {
+              accumulatedText += (accumulatedText ? '\n\n' : '') + `⚠️ ${data.text}`;
+              setMessages(
+                initialMessages.map((message) =>
+                  message.id === assistantId
+                    ? { ...message, content: accumulatedText, request_id: requestId }
+                    : message,
+                ),
+              );
+            } else if (data.type === 'done') {
+              if (data.request_id) requestId = data.request_id;
+              if (!accumulatedText.trim()) {
+                accumulatedText = 'Sem resposta retornada pelo Playground nesta execução.';
+              }
+              setMessages(
+                initialMessages.map((message) =>
+                  message.id === assistantId
+                    ? { ...message, content: accumulatedText, request_id: requestId }
+                    : message,
+                ),
+              );
+              setResponseTime(data.metrics?.time || 0);
+              streamCompleted = true;
+              break;
+            } else if (data.type === 'error') {
+              accumulatedText =
+                (accumulatedText.trim() ? `${accumulatedText}\n\n` : '') +
+                `⚠️ Não foi possível concluir no Playground: ${data.text}`;
+              setMessages(
+                initialMessages.map((message) =>
+                  message.id === assistantId
+                    ? { ...message, content: accumulatedText, request_id: requestId }
+                    : message,
+                ),
+              );
+              streamCompleted = true;
+              break;
+            }
+          } catch {
+            // Ignore JSON parse error for partial chunks.
+          }
+        }
       }
-   ];
 
-   const examples = [
-      {
-         title: "Análise Financeira",
-         system: "Você é um analista financeiro sênior. Responda de forma concisa e use tabelas markdown quando apropriado.",
-         prompt: "Analise o ROI de uma campanha de marketing que custou R$ 50.000 e gerou R$ 120.000 em vendas."
-      },
-      {
-         title: "SQL Expert",
-         system: "Você é um DBA especialista em SQL Server. Forneça apenas o código SQL otimizado.",
-         prompt: "Escreva uma query para encontrar produtos que não venderam nos últimos 6 meses."
-      },
-      {
-         title: "Python Data",
-         system: "Você é um engenheiro de dados Python. Prefira a biblioteca Polars.",
-         prompt: "Crie um script para ler um arquivo Parquet e filtrar linhas onde 'status' é 'error'."
+      try {
+        await reader.cancel();
+      } catch {
+        // No-op.
       }
-   ];
+    } catch (error: any) {
+      setMessages(
+        initialMessages.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content: `⚠️ Falha de conexão com o Playground: ${error.message}`,
+                request_id: requestId,
+              }
+            : message,
+        ),
+      );
+      toastManager.error(`Falha no stream: ${error.message}`);
+      announcer.assertive(`Falha de conexão com o Playground: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-   return (
-      <div class="h-full flex flex-col bg-background max-w-[100vw] overflow-hidden relative">
-         {/* Header */}
-         <div class="border-b bg-card/50 backdrop-blur-sm p-3 flex items-center justify-between gap-4 z-10 shrink-0">
-            <div>
-               <h2 class="text-lg font-bold flex items-center gap-2 text-foreground">
-                  <Terminal class="text-primary" />
-                  Playground
-                  <span class="px-2 py-0.5 rounded-full bg-secondary text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                     {compareMode() ? 'Compare Mode' : 'Single Mode'}
-                  </span>
-               </h2>
-            </div>
+  const submitFeedback = async (message: Message, useful: boolean) => {
+    if (!message.request_id) return;
+    try {
+      await playgroundApi.submitFeedback({
+        request_id: message.request_id,
+        useful,
+      });
+      const feedbackStatus: Message['feedback_status'] = useful ? 'useful' : 'not_useful';
+      const updateMessage = (candidate: Message) =>
+        candidate.id === message.id
+          ? { ...candidate, feedback_status: feedbackStatus }
+          : candidate;
+      setMessagesA((prev) => prev.map(updateMessage));
+      setMessagesB((prev) => prev.map(updateMessage));
+      toastManager.success(useful ? 'Feedback útil registrado.' : 'Feedback registrado.');
+      announcer.polite('Feedback registrado no Playground.');
+    } catch (error) {
+      console.warn('Falha ao enviar feedback Playground', error);
+      toastManager.error('Não foi possível registrar o feedback.');
+      announcer.assertive('Não foi possível registrar o feedback do Playground.');
+    }
+  };
 
-            <div class="flex items-center gap-3">
-               <div class="flex items-center gap-2 bg-secondary/30 rounded-lg p-1 border border-border/50">
-                  <button
-                     onClick={() => setCompareMode(false)}
-                     class={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${!compareMode() ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                     <LayoutTemplate size={14} class="inline mr-1.5" /> Single
-                  </button>
-                  <button
-                     onClick={() => setCompareMode(true)}
-                     class={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${compareMode() ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                     <Split size={14} class="inline mr-1.5" /> Compare
-                  </button>
-               </div>
+  const exportJson = () => {
+    const payload = {
+      panelA: messagesA(),
+      panelB: messagesB(),
+      exported_at: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `playground-export-${Date.now()}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toastManager.success('Exportação JSON iniciada.');
+  };
 
-               <button
-                  onClick={() => setShowCodeModal(true)}
-                  class="btn btn-ghost btn-icon"
-                  title="Ver Código"
-               >
-                  <Code size={18} />
-               </button>
-               <button onClick={exportJson} class="btn btn-ghost btn-icon" title="Exportar JSON">
-                  <Download size={18} />
-               </button>
-               <button onClick={exportCsv} class="btn btn-ghost btn-icon" title="Exportar CSV">
-                  <FileJson size={18} />
-               </button>
-            </div>
-         </div>
+  const exportCsv = () => {
+    const rows = [...messagesA(), ...messagesB()].map((message) => ({
+      id: message.id,
+      role: message.role,
+      timestamp: message.timestamp,
+      request_id: message.request_id || '',
+      content: (message.content || '').replace(/\n/g, ' ').replace(/"/g, '""'),
+    }));
+    const header = 'id,role,timestamp,request_id,content';
+    const csv = [
+      header,
+      ...rows.map(
+        (row) =>
+          `"${row.id}","${row.role}","${row.timestamp}","${row.request_id}","${row.content}"`,
+      ),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `playground-export-${Date.now()}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toastManager.success('Exportação CSV iniciada.');
+  };
 
-         <div class="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_300px]">
-            {/* Main Workspace */}
-            <div class="flex flex-col min-h-0 bg-background/50 relative">
+  const sendMessage = async (event?: Event) => {
+    event?.preventDefault();
+    if (accessBlockedMessage()) return;
+    if (!input().trim() || loadingA() || loadingB()) return;
 
-               {/* System Instruction */}
-               <div class="border-b bg-card/20 shrink-0">
-                  <button
-                     onClick={() => setSystemExpanded(!systemExpanded())}
-                     class="w-full flex items-center justify-between p-2 px-4 text-xs font-bold uppercase tracking-wider text-muted hover:bg-card/40"
-                  >
-                     <div class="flex items-center gap-2">
-                        <Settings size={14} /> Persona / System Prompt
-                     </div>
-                     {systemExpanded() ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
+    const userContent = input();
+    setInput('');
 
-                  <Show when={systemExpanded()}>
-                     <div class="p-4 pt-0 animate-in slide-in-from-top-2">
-                        <textarea
-                           class="input w-full min-h-[80px] font-mono text-sm bg-background/50"
-                           placeholder="Ex: Você é um assistente especialista em análise de dados. Responda sempre em JSON."
-                           value={systemInstruction()}
-                           onInput={(e) => setSystemInstruction(e.currentTarget.value)}
-                        />
-                     </div>
-                  </Show>
-               </div>
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: userContent,
+      timestamp: new Date().toISOString(),
+    };
 
-               {/* Chat Panels Container */}
-               <div class="flex-1 flex min-h-0 overflow-hidden">
-                  {/* Panel A */}
-                  <div class={`flex-1 flex flex-col min-w-0 border-r border-border/50 ${compareMode() ? '' : 'max-w-4xl mx-auto border-r-0'}`}>
-                     {/* Panel Header */}
-                     <div class="p-2 border-b bg-muted/10 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
-                           <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-                           <select
-                              class="bg-transparent text-sm font-semibold text-foreground focus:outline-none cursor-pointer"
-                              value={modelA()}
-                              onChange={(e) => setModelA(e.currentTarget.value)}
-                           >
-                              <For each={models}>{m => <option value={m.id}>{m.name}</option>}</For>
-                           </select>
-                        </div>
-                        <span class="text-xs font-mono text-muted-foreground">
-                           {loadingA() ? <Clock size={12} class="animate-spin inline" /> : `${responseTimeA().toFixed(2)}s`}
-                        </span>
-                     </div>
+    const newHistoryA = [...messagesA(), userMessage];
+    setMessagesA(newHistoryA);
+    void streamRequest('painel A', modelA(), newHistoryA, setMessagesA, setLoadingA, setResponseTimeA);
 
-                     {/* Messages A */}
-                     <div class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
-                        <For each={messagesA()}>
-                           {(msg) => (
-                              <div class={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                 <div class={`max-w-[90%] rounded-xl p-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card border'}`}>
-                                    <div class="markdown-body bg-transparent" innerHTML={msg.content ? msg.content.replace(/\n/g, '<br/>') : ''} />
-                                    <Show when={msg.role === 'assistant' && msg.request_id}>
-                                       <div class="flex items-center gap-2 mt-2">
-                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, true)}><ThumbsUp size={12} /></button>
-                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, false)}><ThumbsDown size={12} /></button>
-                                       </div>
-                                    </Show>
-                                    {/* Note: In real app use marked() here */}
-                                 </div>
-                              </div>
-                           )}
-                        </For>
-                        <div ref={messagesEndRefA} />
-                     </div>
-                  </div>
+    if (compareMode()) {
+      const newHistoryB = [...messagesB(), userMessage];
+      setMessagesB(newHistoryB);
+      void streamRequest('painel B', modelB(), newHistoryB, setMessagesB, setLoadingB, setResponseTimeB);
+    }
+  };
 
-                  {/* Panel B (Compare Mode) */}
-                  <Show when={compareMode()}>
-                     <div class="flex-1 flex flex-col min-w-0 bg-secondary/5">
-                        {/* Panel Header */}
-                        <div class="p-2 border-b bg-muted/10 flex justify-between items-center">
-                           <div class="flex items-center gap-2">
-                              <span class="w-2 h-2 rounded-full bg-purple-500"></span>
-                              <select
-                                 class="bg-transparent text-sm font-semibold text-foreground focus:outline-none cursor-pointer"
-                                 value={modelB()}
-                                 onChange={(e) => setModelB(e.currentTarget.value)}
-                              >
-                                 <For each={models}>{m => <option value={m.id}>{m.name}</option>}</For>
-                              </select>
-                           </div>
-                           <span class="text-xs font-mono text-muted-foreground">
-                              {loadingB() ? <Clock size={12} class="animate-spin inline" /> : `${responseTimeB().toFixed(2)}s`}
-                           </span>
-                        </div>
+  const clearHistory = () => {
+    if (!confirm('Deseja limpar o histórico?')) return;
+    setMessagesA([]);
+    setMessagesB([]);
+    setResponseTimeA(0);
+    setResponseTimeB(0);
+    try {
+      window.localStorage.removeItem(PLAYGROUND_LAB_STORAGE_KEY);
+    } catch {
+      // Ignore storage cleanup issues.
+    }
+    toastManager.success('Sessão do laboratório limpa.');
+    announcer.polite('Sessão do laboratório limpa.');
+  };
 
-                        {/* Messages B */}
-                        <div class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
-                           <For each={messagesB()}>
-                              {(msg) => (
-                                 <div class={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                 <div class={`max-w-[90%] rounded-xl p-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card border'}`}>
-                                    <div class="markdown-body bg-transparent" innerHTML={msg.content ? msg.content.replace(/\n/g, '<br/>') : ''} />
-                                    <Show when={msg.role === 'assistant' && msg.request_id}>
-                                       <div class="flex items-center gap-2 mt-2">
-                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, true)}><ThumbsUp size={12} /></button>
-                                          <button class="btn btn-ghost btn-xs" onClick={() => submitFeedback(msg, false)}><ThumbsDown size={12} /></button>
-                                       </div>
-                                    </Show>
-                                 </div>
-                                 </div>
-                              )}
-                           </For>
-                           <div ref={messagesEndRefB} />
-                        </div>
-                     </div>
-                  </Show>
-               </div>
+  const loadExample = (example: { system: string; prompt: string }) => {
+    setSystemInstruction(example.system);
+    setInput(example.prompt);
+    setSystemExpanded(true);
+    toastManager.info('Exemplo carregado no laboratório.', 2500);
+  };
 
-               {/* Input Area */}
-               <div class="p-4 border-t bg-background/80 backdrop-blur-md shrink-0">
-                  <form onSubmit={sendMessage} class="flex gap-3 max-w-4xl mx-auto">
-                     <button
-                        type="button"
-                        onClick={clearHistory}
-                        class="btn btn-ghost btn-icon text-muted hover:text-destructive"
-                        title="Limpar"
-                     >
-                        <Trash2 size={20} />
-                     </button>
+  const generateCodeSnippet = () => {
+    const prompt = input().trim() || 'Explique rapidamente as vendas por loja.';
+    const system = systemInstruction().trim();
+    const basePayload: Record<string, unknown> = {
+      message: prompt,
+      history: [],
+      temperature: Number(temperature().toFixed(1)),
+      max_tokens: maxTokens(),
+      json_mode: jsonMode(),
+      stream: true,
+    };
 
-                     <div class="flex-1 relative">
-                        <input
-                           type="text"
-                           class="input w-full pr-12 shadow-sm font-mono text-sm"
-                           placeholder={compareMode() ? "Enviar para ambos os modelos..." : "Digite sua mensagem..."}
-                           value={input()}
-                           onInput={(e) => setInput(e.currentTarget.value)}
-                        disabled={loadingA() || loadingB()}
-                        />
-                     </div>
+    if (system) basePayload.system_instruction = system;
 
-                     <button
-                        type="submit"
-                        class="btn btn-primary shadow-md hover:shadow-lg transition-all"
-                        disabled={!!accessBlockedMessage() || (loadingA() || loadingB()) || !input().trim()}
-                     >
-                        <Show when={!loadingA() && !loadingB()} fallback={<Clock size={20} class="animate-spin" />}>
-                           <Send size={20} />
-                        </Show>
-                     </button>
-                  </form>
-               </div>
-            </div>
+    const buildSnippetPayload = (modelName: string) => ({
+      ...basePayload,
+      ...(modelName && modelName !== 'server-default' ? { model: modelName } : {}),
+    });
 
-            {/* Right Sidebar - Configuration */}
-            <div class="border-l bg-card/30 p-6 overflow-y-auto hidden lg:block">
-               <div class="sticky top-0 space-y-8">
-                  <div class="p-3 rounded-lg border bg-background/70 text-xs text-muted">
-                     <strong>Modo:</strong> {modelInfo()?.playground_mode_label || 'Local only'}
-                     <Show when={metrics()}>
-                        <div class="mt-2 space-y-1">
-                           <div>Req 7d: {metrics()!.total_requests}</div>
-                           <div>Feedback útil: {metrics()!.feedback_useful_rate}%</div>
-                        </div>
-                     </Show>
-                  </div>
-                  {/* Settings Group */}
-                  <div class="space-y-4">
-                     <h3 class="font-bold flex items-center gap-2 text-foreground/80">
-                        <Settings size={18} /> Parâmetros
-                     </h3>
+    const payload = buildSnippetPayload(modelA());
+    const comparePayload: Record<string, unknown> | null = compareMode()
+      ? buildSnippetPayload(modelB())
+      : null;
 
-                     <div class="space-y-4 p-4 bg-background border rounded-xl shadow-sm">
-                        {/* Temperature */}
-                        <div class="space-y-3">
-                           <div class="flex justify-between items-center">
-                              <label class="text-sm font-medium">Temperatura</label>
-                              <span class="text-xs font-mono bg-secondary px-2 py-1 rounded">{temperature().toFixed(1)}</span>
-                           </div>
-                           <input
-                              type="range" min="0" max="2" step="0.1"
-                              value={temperature()}
-                              onInput={(e) => setTemperature(parseFloat(e.currentTarget.value))}
-                              class="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                           />
-                        </div>
+    const snippetLines = [
+      "const token = sessionStorage.getItem('token');",
+      '',
+      `const panelA = ${JSON.stringify(payload, null, 2)};`,
+      comparePayload ? `const panelB = ${JSON.stringify(comparePayload, null, 2)};` : '',
+      '',
+      'async function streamPlayground(panelName, payload) {',
+      "  const response = await fetch('/api/v1/playground/stream', {",
+      "    method: 'POST',",
+      '    headers: {',
+      "      'Content-Type': 'application/json',",
+      '      Authorization: `Bearer ${token}`,',
+      '    },',
+      '    body: JSON.stringify(payload),',
+      '  });',
+      '',
+      '  if (!response.ok) {',
+      "    throw new Error(`HTTP ${response.status}`);",
+      '  }',
+      '',
+      '  const reader = response.body?.getReader();',
+      '  const decoder = new TextDecoder();',
+      "  let buffer = '';",
+      '',
+      '  while (reader) {',
+      '    const { done, value } = await reader.read();',
+      '    if (done) break;',
+      '    buffer += decoder.decode(value, { stream: true });',
+      "    const events = buffer.split('\\n\\n');",
+      "    buffer = events.pop() ?? '';",
+      '',
+      '    for (const eventChunk of events) {',
+      "      if (!eventChunk.startsWith('data: ')) continue;",
+      "      const event = JSON.parse(eventChunk.slice(6));",
+      "      if (event.type === 'token') {",
+      "        console.log(panelName, event.text);",
+      '      }',
+      "      if (event.type === 'done') {",
+      "        console.log(panelName, 'done', event.metrics);",
+      '      }',
+      '    }',
+      '  }',
+      '}',
+      '',
+      comparePayload
+        ? "await Promise.all([streamPlayground('panel-a', panelA), streamPlayground('panel-b', panelB)]);"
+        : "await streamPlayground('panel-a', panelA);",
+    ];
 
-                        <div class="h-px bg-border/50"></div>
+    return snippetLines.filter(Boolean).join('\n');
+  };
 
-                        {/* Max Tokens */}
-                        <div class="space-y-3">
-                           <div class="flex justify-between items-center">
-                              <label class="text-sm font-medium">Max Tokens</label>
-                              <span class="text-xs font-mono bg-secondary px-2 py-1 rounded">{maxTokens()}</span>
-                           </div>
-                           <input
-                              type="range" min="100" max={modelInfo()?.max_tokens_limit || 8192} step="100"
-                              value={maxTokens()}
-                              onInput={(e) => setMaxTokens(parseInt(e.currentTarget.value))}
-                              class="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                           />
-                        </div>
-                     </div>
-                  </div>
+  const totalMessages = () => messagesA().length + (compareMode() ? messagesB().length : 0);
+  const usefulRate = () =>
+    metrics() ? `${metrics()!.feedback_useful_rate.toFixed(0)}%` : 'Sem dados';
 
-                  {/* Modes Group */}
-                  <div class="space-y-4">
-                     <h3 class="font-bold flex items-center gap-2 text-foreground/80">
-                        <Cpu size={18} /> Output
-                     </h3>
-
-                     <div class="space-y-3 p-4 bg-background border rounded-xl shadow-sm">
-                        <div class="flex items-center justify-between group">
-                           <div class="space-y-0.5">
-                              <label class="text-sm font-medium">JSON Mode</label>
-                              <p class="text-xs text-muted">Estrutura rígida</p>
-                           </div>
-                           <input
-                              type="checkbox"
-                              checked={jsonMode()}
-                              onChange={(e) => setJsonMode(e.currentTarget.checked)}
-                              class="toggle toggle-sm toggle-primary"
-                           />
-                        </div>
-                     </div>
-                  </div>
-
-                  <Show when={messagesA().length === 0}>
-                     <div class="space-y-2 mt-8">
-                        <h3 class="font-bold text-foreground/80 text-sm">Tarefas BI</h3>
-                        <For each={biTasks}>
-                           {(example) => (
-                              <button
-                                 onClick={() => loadExample(example)}
-                                 class="w-full p-3 rounded-lg border border-border/50 hover:border-primary/50 hover:bg-secondary/50 transition-all text-left group"
-                              >
-                                 <div class="font-semibold text-xs group-hover:text-primary transition-colors mb-1 flex items-center gap-2">
-                                    <Play size={12} /> {example.title}
-                                 </div>
-                              </button>
-                           )}
-                        </For>
-                        <h3 class="font-bold text-foreground/80 text-sm pt-3">Exemplos Técnicos</h3>
-                        <For each={examples}>
-                           {(example) => (
-                              <button
-                                 onClick={() => loadExample(example)}
-                                 class="w-full p-3 rounded-lg border border-border/50 hover:border-primary/50 hover:bg-secondary/50 transition-all text-left group"
-                              >
-                                 <div class="font-semibold text-xs group-hover:text-primary transition-colors mb-1 flex items-center gap-2">
-                                    <Play size={12} /> {example.title}
-                                 </div>
-                              </button>
-                           )}
-                        </For>
-                     </div>
-                  </Show>
-
-               </div>
-            </div>
-         </div>
-
-         {/* Code Modal */}
-         <Show when={showCodeModal()}>
-            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-               <div class="bg-card w-full max-w-2xl rounded-xl shadow-2xl border animate-in zoom-in-95">
-                  <div class="flex items-center justify-between p-4 border-b">
-                     <h3 class="font-bold flex items-center gap-2"><Code size={20} /> Snippet de Integração</h3>
-                     <button onClick={() => setShowCodeModal(false)} class="btn btn-ghost btn-icon btn-sm"><X size={18} /></button>
-                  </div>
-                  <div class="p-0 overflow-hidden">
-                     <pre class="bg-secondary/50 p-4 text-xs font-mono overflow-x-auto text-foreground">
-                        {generateCodeSnippet()}
-                     </pre>
-                  </div>
-                  <div class="p-4 border-t flex justify-end gap-2">
-                     <button onClick={() => setShowCodeModal(false)} class="btn btn-outline">Fechar</button>
-                     <button class="btn btn-primary" onClick={() => {
-                        navigator.clipboard.writeText(generateCodeSnippet());
-                        setShowCodeModal(false);
-                     }}>Copiar Código</button>
-                  </div>
-               </div>
-            </div>
-         </Show>
+  const renderEmptyState = (title: string, copy: string) => (
+    <div class="playground-empty">
+      <div>
+        <div class="playground-empty-title">{title}</div>
+        <p class="playground-empty-copy">{copy}</p>
       </div>
-   );
+
+      <div class="grid gap-3 md:grid-cols-2">
+        <For each={biTasks.slice(0, 4)}>
+          {(task) => (
+            <button class="playground-task-button" onClick={() => loadExample(task)}>
+              <div class="playground-task-button-title">
+                <Play size={14} />
+                {task.title}
+              </div>
+              <div class="playground-task-button-copy">{task.copy}</div>
+            </button>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+
+  return (
+    <div class="playground-scene h-full overflow-hidden">
+      <div class="playground-shell h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4 p-4">
+        <div class="playground-main-column flex flex-col gap-4">
+          <section class="playground-surface playground-hero">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div class="space-y-4">
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="playground-chip">
+                      <Terminal size={14} />
+                      <strong>Playground BI</strong>
+                    </span>
+                    <span class="playground-chip">
+                      <Cpu size={14} />
+                      {modelInfo()?.playground_mode_label || 'Local first'}
+                    </span>
+                    <span class="playground-chip">
+                      <Clock size={14} />
+                      {compareMode() ? 'Comparação ativa' : 'Single mode'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h1 class="text-3xl font-bold text-foreground">
+                      Laboratório de prompts com leitura operacional clara
+                    </h1>
+                    <p class="max-w-3xl text-sm leading-7 text-muted-foreground">
+                      Ajuste persona, temperatura, tokens e compare respostas sem perder o foco
+                      em execução. O layout privilegia leitura, diferença entre painéis e sinais
+                      de qualidade para cada rodada.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="playground-kpi-grid">
+                  <PlaygroundMetricCard
+                    label="Sessões"
+                    value={String(totalMessages())}
+                    note={
+                      compareMode()
+                        ? 'Mensagens espelhadas nos dois painéis'
+                        : 'Fluxo simples de inspeção'
+                    }
+                  />
+                  <PlaygroundMetricCard
+                    label="Feedback útil"
+                    value={usefulRate()}
+                    note={
+                      metrics()
+                        ? `${metrics()!.feedback_total} feedbacks acumulados`
+                        : 'Sem telemetria para este perfil'
+                    }
+                  />
+                  <PlaygroundMetricCard
+                    label="Execução"
+                    value={modelInfo()?.remote_llm_enabled ? 'Híbrida' : 'Local-first'}
+                    note="A interface preserva streaming e fallback degradado."
+                  />
+                </div>
+              </div>
+
+                <div class="flex flex-col items-stretch gap-3 xl:items-end">
+                  <button
+                    onClick={() => navigate('/playground')}
+                    class="btn btn-ghost gap-2"
+                    title="Voltar ao fluxo operacional"
+                    aria-label="Voltar ao fluxo operacional"
+                  >
+                    <ArrowLeft size={16} />
+                    Fluxo Ops
+                  </button>
+                  <div class="playground-toggle">
+                  <button
+                    classList={{ active: !compareMode() }}
+                    onClick={() => setCompareMode(false)}
+                    aria-pressed={!compareMode()}
+                  >
+                    <LayoutTemplate size={14} />
+                    Single
+                  </button>
+                  <button
+                    classList={{ active: compareMode() }}
+                    onClick={() => setCompareMode(true)}
+                    aria-pressed={compareMode()}
+                  >
+                    <Split size={14} />
+                    Compare
+                  </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 xl:justify-end">
+                  <button
+                    onClick={() => setShowCodeModal(true)}
+                    class="btn btn-outline gap-2"
+                    title="Ver snippet"
+                    aria-label="Abrir snippet de integração"
+                  >
+                    <Code size={16} />
+                    Snippet
+                  </button>
+                  <button onClick={exportJson} class="btn btn-outline gap-2" title="Exportar JSON">
+                    <FileJson size={16} />
+                    JSON
+                  </button>
+                  <button onClick={exportCsv} class="btn btn-primary gap-2" title="Exportar CSV">
+                    <Download size={16} />
+                    CSV
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <Show when={accessBlockedMessage()}>
+            <div class="playground-note border border-destructive/20 bg-destructive/5 text-destructive" role="alert">
+              {accessBlockedMessage()}
+            </div>
+          </Show>
+
+          <section class="playground-surface overflow-hidden rounded-[26px]">
+            <button
+              onClick={() => setSystemExpanded(!systemExpanded())}
+              class="w-full flex items-center justify-between px-5 py-4 text-left"
+            >
+              <div>
+                <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Persona e instrução de sistema
+                </div>
+                <div class="mt-1 text-sm font-semibold text-foreground">
+                  Defina o enquadramento antes de abrir uma rodada de comparação.
+                </div>
+              </div>
+              <div class="playground-chip">
+                <Settings size={14} />
+                {systemExpanded() ? 'Ocultar' : 'Editar'}
+                <Show when={systemExpanded()} fallback={<ChevronRight size={14} />}>
+                  <ChevronDown size={14} />
+                </Show>
+              </div>
+            </button>
+
+            <Show when={systemExpanded()}>
+              <div class="border-t px-5 pb-5 pt-1">
+                <textarea
+                  class="input w-full min-h-[120px] resize-none font-mono text-sm leading-6"
+                  placeholder="Ex.: Você é um assistente especialista em análise de dados. Responda sempre em JSON."
+                  value={systemInstruction()}
+                  onInput={(event) => setSystemInstruction(event.currentTarget.value)}
+                  aria-label="Instrução de sistema"
+                />
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <span class="playground-chip">
+                    Temperatura <strong>{temperature().toFixed(1)}</strong>
+                  </span>
+                  <span class="playground-chip">
+                    Max tokens <strong>{maxTokens()}</strong>
+                  </span>
+                  <span class="playground-chip">
+                    JSON <strong>{jsonMode() ? 'on' : 'off'}</strong>
+                  </span>
+                </div>
+              </div>
+            </Show>
+          </section>
+
+          <div class="xl:hidden grid gap-3">
+            <section class="playground-surface playground-sidebar-card">
+              <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                Deck móvel
+              </div>
+              <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                <For each={examples.slice(0, 2)}>
+                  {(example) => (
+                    <button class="playground-task-button" onClick={() => loadExample(example)}>
+                      <div class="playground-task-button-title">
+                        <Play size={14} />
+                        {example.title}
+                      </div>
+                      <div class="playground-task-button-copy">{example.copy}</div>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </section>
+          </div>
+
+          <div class="flex-1 min-h-0">
+            <div
+              class={`grid h-full min-h-0 gap-4 ${
+                compareMode()
+                  ? 'grid-cols-1 2xl:grid-cols-2'
+                  : 'grid-cols-1 max-w-5xl mx-auto'
+              }`}
+            >
+              <section class="playground-panel">
+                <div class="playground-panel-header px-5 py-4">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="h-3 w-3 rounded-full bg-[var(--chart-2)] shadow-[0_0_0_6px_rgba(0,174,239,0.12)]" />
+                      <div>
+                        <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                          Painel A
+                        </div>
+                        <div class="mt-1 flex items-center gap-3">
+                          <select
+                            class="bg-transparent text-sm font-semibold text-foreground focus:outline-none"
+                            value={modelA()}
+                            onChange={(event) => setModelA(event.currentTarget.value)}
+                            aria-label="Modelo do painel A"
+                          >
+                            <For each={models}>
+                              {(model) => <option value={model.id}>{model.name}</option>}
+                            </For>
+                          </select>
+                          <span class="text-xs text-muted-foreground">
+                            {loadingA() ? 'Streaming em andamento' : 'Canal de referência'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="playground-chip">
+                        <Clock size={14} />
+                        {loadingA() ? 'Processando' : `${responseTimeA().toFixed(2)}s`}
+                      </span>
+                      <span class="playground-chip">
+                        <strong>{messagesA().length}</strong> mensagens
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="playground-scroll flex-1 p-5">
+                  <Show
+                    when={messagesA().length > 0}
+                    fallback={renderEmptyState(
+                      'Comece com um prompt de BI ou um caso técnico.',
+                      'A superfície foi desenhada para leitura executiva primeiro e inspeção de prompt depois. Use um dos cartões abaixo para abrir a sessão com contexto útil.',
+                    )}
+                  >
+                    <div class="space-y-5">
+                      <For each={messagesA()}>
+                        {(message) => (
+                          <PlaygroundMessageBubble
+                            message={message}
+                            onApprove={() => void submitFeedback(message, true)}
+                            onReject={() => void submitFeedback(message, false)}
+                          />
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                  <div ref={messagesEndRefA} />
+                </div>
+              </section>
+
+              <Show when={compareMode()}>
+                <section class="playground-panel">
+                  <div class="playground-panel-header px-5 py-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <div class="flex items-center gap-3">
+                        <span class="h-3 w-3 rounded-full bg-[var(--chart-3)] shadow-[0_0_0_6px_rgba(102,45,145,0.12)]" />
+                        <div>
+                          <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                            Painel B
+                          </div>
+                          <div class="mt-1 flex items-center gap-3">
+                            <select
+                              class="bg-transparent text-sm font-semibold text-foreground focus:outline-none"
+                              value={modelB()}
+                              onChange={(event) => setModelB(event.currentTarget.value)}
+                              aria-label="Modelo do painel B"
+                            >
+                              <For each={models}>
+                                {(model) => <option value={model.id}>{model.name}</option>}
+                              </For>
+                            </select>
+                            <span class="text-xs text-muted-foreground">
+                              Mesmo prompt, leitura paralela
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="playground-chip">
+                          <Clock size={14} />
+                          {loadingB() ? 'Processando' : `${responseTimeB().toFixed(2)}s`}
+                        </span>
+                        <span class="playground-chip">
+                          <strong>{messagesB().length}</strong> mensagens
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="playground-scroll flex-1 p-5">
+                    <Show
+                      when={messagesB().length > 0}
+                      fallback={renderEmptyState(
+                        'Compare tom, estrutura e velocidade.',
+                        'O segundo painel recebe a mesma pergunta e ajuda a inspecionar diferença de framing, densidade e comportamento degradado sem mudar o contexto.',
+                      )}
+                    >
+                      <div class="space-y-5">
+                        <For each={messagesB()}>
+                          {(message) => (
+                            <PlaygroundMessageBubble
+                              message={message}
+                              onApprove={() => void submitFeedback(message, true)}
+                              onReject={() => void submitFeedback(message, false)}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                    <div ref={messagesEndRefB} />
+                  </div>
+                </section>
+              </Show>
+            </div>
+          </div>
+
+          <section class="playground-compose-card p-4">
+            <form onSubmit={sendMessage} class="flex flex-col gap-3 xl:flex-row xl:items-end">
+              <button
+                type="button"
+                onClick={clearHistory}
+                class="btn btn-ghost btn-icon text-muted-foreground hover:text-destructive self-start"
+                title="Limpar histórico"
+              >
+                <Trash2 size={18} />
+              </button>
+
+              <div class="flex-1">
+                <label class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Prompt principal
+                </label>
+                <input
+                  type="text"
+                  class="input mt-2 h-12 w-full pr-12 font-mono text-sm shadow-sm"
+                  placeholder={
+                    compareMode()
+                      ? 'Envie um prompt para os dois painéis...'
+                      : 'Digite sua mensagem para o Playground...'
+                  }
+                  value={input()}
+                  onInput={(event) => setInput(event.currentTarget.value)}
+                  disabled={loadingA() || loadingB()}
+                  aria-label="Prompt principal do laboratório"
+                />
+              </div>
+
+              <div class="flex items-center gap-2 xl:pb-[1px]">
+                <span class="playground-chip">
+                  <Settings size={14} />
+                  {systemInstruction().trim() ? 'Persona ativa' : 'Sem persona fixa'}
+                </span>
+                <button
+                  type="submit"
+                  class="btn btn-primary h-12 gap-2 px-5 shadow-md hover:shadow-lg transition-all"
+                  disabled={
+                    !!accessBlockedMessage() || loadingA() || loadingB() || !input().trim()
+                  }
+                >
+                  <Show when={!loadingA() && !loadingB()} fallback={<Clock size={18} class="animate-spin" />}>
+                    <Send size={18} />
+                  </Show>
+                  Enviar
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <aside class="hidden min-h-0 xl:flex xl:flex-col xl:gap-4 xl:overflow-y-auto xl:pr-1">
+          <section class="playground-surface playground-sidebar-card">
+            <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Console de configuração
+            </div>
+
+            <div class="mt-4 space-y-4">
+              <div>
+                <div class="mb-2 flex items-center justify-between">
+                  <label class="text-sm font-semibold text-foreground">Temperatura</label>
+                  <span class="playground-chip">
+                    <strong>{temperature().toFixed(1)}</strong>
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={temperature()}
+                  onInput={(event) => setTemperature(parseFloat(event.currentTarget.value))}
+                  class="w-full accent-primary"
+                />
+              </div>
+
+              <div>
+                <div class="mb-2 flex items-center justify-between">
+                  <label class="text-sm font-semibold text-foreground">Max tokens</label>
+                  <span class="playground-chip">
+                    <strong>{maxTokens()}</strong>
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="100"
+                  max={modelInfo()?.max_tokens_limit || 8192}
+                  step="100"
+                  value={maxTokens()}
+                  onInput={(event) => setMaxTokens(parseInt(event.currentTarget.value, 10))}
+                  class="w-full accent-primary"
+                />
+              </div>
+
+              <div class="playground-note">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-semibold text-foreground">JSON Mode</div>
+                    <div class="text-xs leading-6">
+                      Força estrutura rígida para respostas comparáveis.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={jsonMode()}
+                    onChange={(event) => setJsonMode(event.currentTarget.checked)}
+                    class="toggle toggle-sm toggle-primary"
+                    aria-label="Ativar JSON mode"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="playground-surface playground-sidebar-card">
+            <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Tarefas BI
+            </div>
+            <div class="mt-4 grid gap-3">
+              <For each={biTasks}>
+                {(task) => (
+                  <button class="playground-task-button" onClick={() => loadExample(task)}>
+                    <div class="playground-task-button-title">
+                      <Play size={14} />
+                      {task.title}
+                    </div>
+                    <div class="playground-task-button-copy">{task.copy}</div>
+                  </button>
+                )}
+              </For>
+            </div>
+          </section>
+
+          <section class="playground-surface playground-sidebar-card">
+            <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Exemplos técnicos
+            </div>
+            <div class="mt-4 grid gap-3">
+              <For each={examples}>
+                {(example) => (
+                  <button class="playground-task-button" onClick={() => loadExample(example)}>
+                    <div class="playground-task-button-title">
+                      <Play size={14} />
+                      {example.title}
+                    </div>
+                    <div class="playground-task-button-copy">{example.copy}</div>
+                  </button>
+                )}
+              </For>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <Show when={showCodeModal()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+          <div class="playground-surface w-full max-w-3xl rounded-[28px] overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="playground-snippet-title">
+            <div class="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Snippet de integração
+                </div>
+                <div id="playground-snippet-title" class="mt-1 flex items-center gap-2 text-lg font-bold text-foreground">
+                  <Code size={18} />
+                  Base atual do stream do Playground
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCodeModal(false)}
+                class="btn btn-ghost btn-icon btn-sm"
+                aria-label="Fechar snippet"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div class="p-5">
+              <pre class="rounded-[22px] bg-secondary/60 p-4 text-xs font-mono overflow-x-auto text-foreground">
+                {generateCodeSnippet()}
+              </pre>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t px-5 py-4">
+              <button onClick={() => setShowCodeModal(false)} class="btn btn-outline">
+                Fechar
+              </button>
+              <button
+                class="btn btn-primary"
+                onClick={() => {
+                  void navigator.clipboard.writeText(generateCodeSnippet());
+                  toastManager.success('Snippet copiado.');
+                  announcer.polite('Snippet copiado para a área de transferência.');
+                  setShowCodeModal(false);
+                }}
+              >
+                Copiar código
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
 }

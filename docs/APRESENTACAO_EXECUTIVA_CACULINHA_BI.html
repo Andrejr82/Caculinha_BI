@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apresentacao Executiva - Caculinha BI</title>
+  <style>
+    :root {
+      --bg: #f3ecde;
+      --paper: #fbf7f0;
+      --ink: #1b1f18;
+      --muted: #5d675b;
+      --accent: #a4492b;
+      --accent-soft: #e6b79c;
+      --forest: #2f5a47;
+      --gold: #d5a94b;
+      --line: rgba(27, 31, 24, 0.12);
+      --shadow: 0 24px 60px rgba(62, 43, 24, 0.12);
+      --radius: 28px;
+      --slide-padding: clamp(28px, 5vw, 72px);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(213, 169, 75, 0.16), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(164, 73, 43, 0.14), transparent 28%),
+        linear-gradient(180deg, #efe6d5 0%, var(--bg) 100%);
+      font-family: "Aptos", "Segoe UI", "Trebuchet MS", sans-serif;
+      overflow-x: hidden;
+    }
+
+    .toolbar {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 14px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      border-radius: 999px;
+      background: rgba(251, 247, 240, 0.82);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(44, 31, 17, 0.08);
+    }
+
+    .toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .toolbar-badge {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: var(--forest);
+      color: #f8f4ec;
+      font-size: 0.76rem;
+      letter-spacing: 0.08em;
+    }
+
+    .toolbar-note {
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: right;
+    }
+
+    .slides {
+      scroll-snap-type: y mandatory;
+    }
+
+    .slide {
+      position: relative;
+      min-height: 100vh;
+      padding: calc(var(--slide-padding) + 70px) var(--slide-padding) var(--slide-padding);
+      display: grid;
+      align-items: center;
+      scroll-snap-align: start;
+    }
+
+    .frame {
+      width: min(1220px, 100%);
+      margin: 0 auto;
+      padding: clamp(28px, 4vw, 54px);
+      border-radius: var(--radius);
+      background: rgba(251, 247, 240, 0.86);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow: var(--shadow);
+    }
+
+    .frame.dark {
+      background:
+        radial-gradient(circle at top right, rgba(213, 169, 75, 0.16), transparent 24%),
+        linear-gradient(135deg, #20362d 0%, #13221c 100%);
+      color: #f6efe3;
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(164, 73, 43, 0.1);
+      color: var(--accent);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .dark .eyebrow {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fde6d6;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      line-height: 0.96;
+      letter-spacing: -0.03em;
+    }
+
+    h1 {
+      font-size: clamp(3.3rem, 7vw, 6.4rem);
+      max-width: 10ch;
+    }
+
+    h2 {
+      font-size: clamp(2.4rem, 5vw, 4.2rem);
+      max-width: 11ch;
+      margin-bottom: 18px;
+    }
+
+    h3 {
+      font-size: clamp(1.35rem, 2vw, 1.9rem);
+      margin-bottom: 10px;
+    }
+
+    .lede {
+      margin-top: 22px;
+      max-width: 58ch;
+      font-size: clamp(1.08rem, 2vw, 1.35rem);
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .dark .lede,
+    .dark .body-copy,
+    .dark .mini,
+    .dark .step-copy,
+    .dark .label {
+      color: rgba(246, 239, 227, 0.84);
+    }
+
+    .hero-grid,
+    .split,
+    .two-col {
+      display: grid;
+      gap: 28px;
+    }
+
+    .hero-grid {
+      grid-template-columns: 1.2fr 0.9fr;
+      align-items: end;
+    }
+
+    .split,
+    .two-col {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+    }
+
+    .big-quote {
+      margin: 0;
+      padding: 28px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.58);
+      border: 1px solid var(--line);
+      font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(1.7rem, 3vw, 2.6rem);
+      line-height: 1.14;
+    }
+
+    .dark .big-quote {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .pill {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(47, 90, 71, 0.1);
+      color: var(--forest);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .dark .pill {
+      background: rgba(255, 255, 255, 0.12);
+      color: #f4ece0;
+    }
+
+    .grid-3,
+    .grid-4,
+    .term-grid,
+    .metric-grid,
+    .ownership-grid,
+    .risk-grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4,
+    .term-grid,
+    .metric-grid,
+    .ownership-grid,
+    .risk-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 24px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid var(--line);
+    }
+
+    .dark .card {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .card strong,
+    .step-number,
+    .metric {
+      display: block;
+      margin-bottom: 12px;
+      font-size: 0.84rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .dark .card strong,
+    .dark .step-number,
+    .dark .metric {
+      color: var(--gold);
+    }
+
+    .card p,
+    .body-copy,
+    .step-copy,
+    .mini,
+    .label {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .step-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .step {
+      padding: 22px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      min-height: 210px;
+    }
+
+    .dark .step {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .step-number {
+      font-size: 1.05rem;
+    }
+
+    .timeline-bar {
+      position: relative;
+      height: 8px;
+      margin: 28px 0 20px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--gold) 46%, var(--forest) 100%);
+    }
+
+    .mini {
+      font-size: 0.92rem;
+    }
+
+    .metric {
+      font-size: 2.3rem;
+      line-height: 1;
+      text-transform: none;
+      letter-spacing: -0.04em;
+    }
+
+    .label {
+      font-size: 0.92rem;
+      margin-top: 6px;
+    }
+
+    .term-word {
+      font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 1.8rem;
+      margin-bottom: 10px;
+    }
+
+    .term-plain {
+      margin-bottom: 10px;
+      font-weight: 700;
+      color: var(--forest);
+    }
+
+    .dark .term-plain {
+      color: #d8e6db;
+    }
+
+    .accent-panel {
+      padding: 26px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(164, 73, 43, 0.12), rgba(213, 169, 75, 0.22));
+      border: 1px solid rgba(164, 73, 43, 0.12);
+    }
+
+    .dark .accent-panel {
+      background: linear-gradient(135deg, rgba(213, 169, 75, 0.14), rgba(255, 255, 255, 0.06));
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .footer-note {
+      margin-top: 22px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .slide-index {
+      position: absolute;
+      right: clamp(28px, 5vw, 54px);
+      bottom: clamp(22px, 3vw, 32px);
+      font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: 1rem;
+      color: rgba(27, 31, 24, 0.42);
+    }
+
+    .dark .slide-index {
+      color: rgba(246, 239, 227, 0.46);
+    }
+
+    .dots {
+      position: fixed;
+      right: 22px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 55;
+      display: grid;
+      gap: 10px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(27, 31, 24, 0.18);
+      transition: transform 160ms ease, background 160ms ease;
+    }
+
+    .dot.active {
+      transform: scale(1.55);
+      background: var(--accent);
+    }
+
+    @media (max-width: 1100px) {
+      .hero-grid,
+      .split,
+      .two-col,
+      .grid-3,
+      .grid-4,
+      .term-grid,
+      .metric-grid,
+      .ownership-grid,
+      .risk-grid,
+      .step-row {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .toolbar {
+        left: 10px;
+        right: 10px;
+        padding: 12px 14px;
+        border-radius: 24px;
+      }
+
+      .toolbar-note {
+        display: none;
+      }
+
+      .hero-grid,
+      .split,
+      .two-col,
+      .grid-3,
+      .grid-4,
+      .term-grid,
+      .metric-grid,
+      .ownership-grid,
+      .risk-grid,
+      .step-row {
+        grid-template-columns: 1fr;
+      }
+
+      .dots {
+        display: none;
+      }
+
+      .slide {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="toolbar-title">
+      <span class="toolbar-badge">Caculinha BI</span>
+      <span>Apresentacao Executiva</span>
+    </div>
+    <div class="toolbar-note">Use as setas do teclado ou role a pagina</div>
+  </div>
+
+  <nav class="dots" aria-label="Navegacao da apresentacao">
+    <span class="dot active"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+    <span class="dot"></span>
+  </nav>
+
+  <main class="slides">
+    <section class="slide" id="slide-1">
+      <div class="frame dark hero-grid">
+        <div>
+          <div class="eyebrow">Visao para Diretoria</div>
+          <h1>O que e o Caculinha BI, em linguagem humana.</h1>
+          <p class="lede">
+            O Caculinha BI transforma perguntas em linguagem natural em respostas operacionais com dados,
+            graficos e dashboards. Em vez de pedir relatorios para varias areas, o gestor conversa com o sistema.
+          </p>
+          <div class="pill-row">
+            <span class="pill">Varejo</span>
+            <span class="pill">Chat com dados reais</span>
+            <span class="pill">Dashboard no proprio fluxo</span>
+          </div>
+        </div>
+        <blockquote class="big-quote">
+          "Pergunte como gestor. Receba como decisor."
+        </blockquote>
+        <div class="slide-index">01</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-2">
+      <div class="frame">
+        <div class="eyebrow">Problema que ele resolve</div>
+        <h2>O sistema encurta a distancia entre pergunta e decisao.</h2>
+        <div class="grid-3">
+          <article class="card">
+            <strong>Antes</strong>
+            <h3>Muitas etapas</h3>
+            <p>O gestor pergunta, alguem extrai dado, outra pessoa monta planilha, outra gera grafico.</p>
+          </article>
+          <article class="card">
+            <strong>Agora</strong>
+            <h3>Uma conversa</h3>
+            <p>A pergunta entra no chat e o sistema devolve resposta, evidencias e visualizacao no mesmo fluxo.</p>
+          </article>
+          <article class="card">
+            <strong>Impacto</strong>
+            <h3>Mais velocidade</h3>
+            <p>Menos dependencia operacional para chegar a uma leitura inicial do negocio.</p>
+          </article>
+        </div>
+        <div class="slide-index">02</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-3">
+      <div class="frame">
+        <div class="eyebrow">A jornada em 5 passos</div>
+        <h2>Uma pergunta atravessa o sistema assim.</h2>
+        <div class="timeline-bar"></div>
+        <div class="step-row">
+          <article class="step">
+            <span class="step-number">Passo 1</span>
+            <h3>O usuario pergunta</h3>
+            <p class="step-copy">Exemplo: "Mostre os produtos com mais risco de ruptura no segmento Artes".</p>
+          </article>
+          <article class="step">
+            <span class="step-number">Passo 2</span>
+            <h3>O sistema identifica quem esta falando</h3>
+            <p class="step-copy">Ele entende qual usuario entrou e em qual contexto interno da Caçula esta respondendo.</p>
+          </article>
+          <article class="step">
+            <span class="step-number">Passo 3</span>
+            <h3>O motor escolhe o melhor caminho</h3>
+            <p class="step-copy">Decide se precisa consultar dados, gerar grafico, montar dashboard ou pesquisar mercado.</p>
+          </article>
+          <article class="step">
+            <span class="step-number">Passo 4</span>
+            <h3>Os especialistas entram em acao</h3>
+            <p class="step-copy">As funcoes do sistema executam a consulta e montam a resposta.</p>
+          </article>
+          <article class="step">
+            <span class="step-number">Passo 5</span>
+            <h3>A resposta chega aos poucos</h3>
+            <p class="step-copy">O chat vai mostrando progresso e entrega texto, tabela, grafico ou dashboard.</p>
+          </article>
+        </div>
+        <div class="footer-note">Para gestor: a leitura importante aqui e que o sistema nao responde "por chute". Ele passa por camadas e funcoes antes de falar.</div>
+        <div class="slide-index">03</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-4">
+      <div class="frame dark">
+        <div class="eyebrow">Traduzindo a sopa de letrinhas</div>
+        <h2>As palavras tecnicas que mais confundem, em portugues claro.</h2>
+        <div class="term-grid">
+          <article class="card">
+            <div class="term-word">Tenant</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É o contexto interno que o sistema usa dentro da própria Caçula.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">Contexto por tenant</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É o sistema lembrar em qual contexto interno da Caçula está respondendo naquele momento.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">JWT</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É o crachá digital do usuário. Sem ele, o backend não sabe quem está pedindo a informação.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">SSE</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É a resposta chegando em partes, sem esperar tudo ficar pronto no fim.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">Tool</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É uma função especializada: consultar dados, montar gráfico, pesquisar mercado.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">Session ID</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É o código da conversa atual. Ajuda o sistema a não perder o contexto.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">Rate limit</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É o limite de uso por tempo. Serve para proteger o sistema de excesso e abuso.</p>
+          </article>
+          <article class="card">
+            <div class="term-word">Role</div>
+            <div class="term-plain">Em palavras simples</div>
+            <p>É o perfil do usuário. Define o que cada pessoa pode ver ou fazer.</p>
+          </article>
+        </div>
+        <div class="slide-index">04</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-5">
+      <div class="frame">
+        <div class="eyebrow">Anatomia do sistema</div>
+        <h2>Se fosse uma operacao humana, o sistema seria assim.</h2>
+        <div class="grid-4">
+          <article class="card">
+            <strong>Cockpit</strong>
+            <h3>Frontend</h3>
+            <p>É a cabine de controle onde o usuário entra, navega e conversa com o sistema.</p>
+          </article>
+          <article class="card">
+            <strong>Portaria</strong>
+            <h3>Middlewares</h3>
+            <p>É a camada que verifica identidade, contexto interno, limite de uso e rastreabilidade da requisição.</p>
+          </article>
+          <article class="card">
+            <strong>Cerebro</strong>
+            <h3>ChatServiceV3</h3>
+            <p>É o maestro. Decide o fluxo e coordena a execução da resposta.</p>
+          </article>
+          <article class="card">
+            <strong>Especialistas</strong>
+            <h3>Tools</h3>
+            <p>São os executores. Consultam dados, montam análises e produzem visualizações.</p>
+          </article>
+        </div>
+        <div class="accent-panel" style="margin-top: 22px;">
+          <h3>Fonte principal de verdade</h3>
+          <p class="body-copy">
+            Hoje, o coração operacional do sistema é o arquivo <code>admmat.parquet</code>, que guarda a base principal de análise.
+          </p>
+        </div>
+        <div class="slide-index">05</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-6">
+      <div class="frame dark two-col">
+        <div class="stack">
+          <div class="eyebrow">Por que isso importa para gestao</div>
+          <h2>Tenant aqui nao significa varias empresas. Significa contexto interno da Caçula.</h2>
+          <p class="lede">
+            Como a empresa é uma só, Caçula, tenant aqui significa o contexto interno em que o sistema está operando,
+            ele consegue aplicar o ambiente correto, os limites corretos e, em certos casos, o recorte correto dos dados.
+          </p>
+        </div>
+        <div class="stack">
+          <article class="card">
+            <strong>Sem contexto</strong>
+            <p>O risco e misturar contexto interno errado, permissao errada ou configuracao errada.</p>
+          </article>
+          <article class="card">
+            <strong>Com contexto</strong>
+            <p>O sistema responde no contexto interno certo, com o perfil certo e dentro dos limites certos.</p>
+          </article>
+          <article class="card">
+            <strong>Em frase unica</strong>
+            <p>Contexto por tenant e o que impede a plataforma de tratar todas as situacoes internas da Caçula como se fossem iguais.</p>
+          </article>
+        </div>
+        <div class="slide-index">06</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-7">
+      <div class="frame">
+        <div class="eyebrow">O que a diretoria deve observar</div>
+        <h2>Quatro perguntas importam mais que o resto.</h2>
+        <div class="metric-grid">
+          <article class="card">
+            <div class="metric">1</div>
+            <div class="label">O sistema está respondendo rápido o suficiente para apoiar decisão?</div>
+          </article>
+          <article class="card">
+            <div class="metric">2</div>
+            <div class="label">As permissões estão corretas para cada perfil de usuário?</div>
+          </article>
+          <article class="card">
+            <div class="metric">3</div>
+            <div class="label">A base principal de dados está íntegra e atualizada?</div>
+          </article>
+          <article class="card">
+            <div class="metric">4</div>
+            <div class="label">Quando há falha, o sistema explica bem ou só quebra silenciosamente?</div>
+          </article>
+        </div>
+        <div class="footer-note">Boa gestão do produto aqui significa equilibrar velocidade, clareza, segurança e confiabilidade dos dados.</div>
+        <div class="slide-index">07</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-8">
+      <div class="frame">
+        <div class="eyebrow">Riscos atuais</div>
+        <h2>Os pontos que merecem cuidado executivo e tecnico.</h2>
+        <div class="risk-grid">
+          <article class="card">
+            <strong>Legado</strong>
+            <h3>Partes antigas convivem com partes novas</h3>
+            <p>Isso aumenta o cuidado necessário antes de mudar autenticação, chat ou rotas.</p>
+          </article>
+          <article class="card">
+            <strong>Memoria local</strong>
+            <h3>Alguns limites e caches ainda são locais</h3>
+            <p>Funciona, mas exige atenção se a operação crescer ou se o ambiente distribuir carga.</p>
+          </article>
+          <article class="card">
+            <strong>Dependencias externas</strong>
+            <h3>Parte do valor depende de provedores e fontes externas</h3>
+            <p>Pesquisa de mercado e alguns fluxos podem variar conforme disponibilidade externa.</p>
+          </article>
+          <article class="card">
+            <strong>Permissoes</strong>
+            <h3>Controle de acesso é central</h3>
+            <p>Qualquer erro de perfil, tenant ou segmento pode virar problema de governança.</p>
+          </article>
+        </div>
+        <div class="slide-index">08</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-9">
+      <div class="frame dark">
+        <div class="eyebrow">Como o time entra</div>
+        <h2>Distribuicao simples para 4 pessoas sem criar ilhas.</h2>
+        <div class="ownership-grid">
+          <article class="card">
+            <strong>Voce</strong>
+            <h3>Arquitetura e direcao</h3>
+            <p>Conecta negocio, backlog, integracao entre frentes e decisao final de rollout.</p>
+          </article>
+          <article class="card">
+            <strong>Integrante 1</strong>
+            <h3>Portaria</h3>
+            <p>Auth, tenant, rate limit e regras de acesso.</p>
+          </article>
+          <article class="card">
+            <strong>Integrante 2</strong>
+            <h3>Cerebro</h3>
+            <p>Fluxo do chat, roteamento, tools e resposta com dados.</p>
+          </article>
+          <article class="card">
+            <strong>Integrante 3</strong>
+            <h3>Cockpit</h3>
+            <p>Frontend, experiência do chat, rotas e comportamento visual.</p>
+          </article>
+        </div>
+        <div class="footer-note">Regra de ouro: cada pessoa aprofunda sua frente, mas todas precisam entender a jornada completa da pergunta.</div>
+        <div class="slide-index">09</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const dots = Array.from(document.querySelectorAll('.dot'));
+
+    function activateDot(index) {
+      dots.forEach((dot, i) => dot.classList.toggle('active', i === index));
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const index = slides.indexOf(entry.target);
+          if (index >= 0) activateDot(index);
+        }
+      });
+    }, { threshold: 0.55 });
+
+    slides.forEach((slide) => observer.observe(slide));
+
+    document.addEventListener('keydown', (event) => {
+      const currentIndex = dots.findIndex((dot) => dot.classList.contains('active'));
+      if (event.key === 'ArrowDown' || event.key === 'PageDown' || event.key === ' ') {
+        event.preventDefault();
+        const next = Math.min(slides.length - 1, currentIndex + 1);
+        slides[next].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+        event.preventDefault();
+        const prev = Math.max(0, currentIndex - 1);
+        slides[prev].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  </script>
+</body>
+</html>

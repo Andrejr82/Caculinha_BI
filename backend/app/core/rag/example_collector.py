@@ -1,11 +1,16 @@
 # backend/app/core/rag/example_collector.py
 
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from backend.app.config.settings import settings
+from backend.app.core.learning.unified_dataset_builder import get_unified_rag_corpus_path
+
+logger = logging.getLogger(__name__)
+
 
 class ExampleCollector:
     """
@@ -16,7 +21,7 @@ class ExampleCollector:
     def __init__(self, examples_dir: str = settings.LEARNING_EXAMPLES_PATH):
         self.examples_dir = examples_dir
         os.makedirs(self.examples_dir, exist_ok=True)
-        print(f"ExampleCollector initialized in {self.examples_dir}")
+        logger.info("ExampleCollector initialized in %s", self.examples_dir)
 
     def _get_daily_file_path(self, date: Optional[datetime] = None) -> str:
         """Generates the file path for a given day's examples."""
@@ -25,7 +30,37 @@ class ExampleCollector:
         date_str = date.strftime("%Y-%m-%d")
         return os.path.join(self.examples_dir, f"examples_{date_str}.jsonl")
 
-    def add_example(self, user_id: str, query: str, code: str, result: Dict[str, Any], intent: str, timestamp: Optional[datetime] = None):
+    def _entry_exists(self, file_path: str, example_id: Optional[str]) -> bool:
+        if not example_id or not os.path.exists(file_path):
+            return False
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if str(entry.get("example_id") or "") == str(example_id):
+                        return True
+        except OSError as e:
+            print(f"Error reading example file for dedupe {file_path}: {e}")
+        return False
+
+    def add_example(
+        self,
+        user_id: str,
+        query: str,
+        code: str,
+        result: Dict[str, Any],
+        intent: str,
+        timestamp: Optional[datetime] = None,
+        example_id: Optional[str] = None,
+        assistant_response: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """
         Adds a new successful example to the daily examples file.
         """
@@ -38,26 +73,44 @@ class ExampleCollector:
             "query": query,
             "code": code,
             "result_summary": self._summarize_result(result),
-            "intent": intent # e.g., "sales_analysis", "product_comparison"
+            "intent": intent, # e.g., "sales_analysis", "product_comparison"
+            "example_id": example_id,
+            "assistant_response": assistant_response,
+            "metadata": metadata if isinstance(metadata, dict) and metadata else {},
         }
         file_path = self._get_daily_file_path(timestamp)
         
         try:
+            if self._entry_exists(file_path, example_id):
+                logger.info("ExampleCollector: skipping duplicate example_id=%s", example_id)
+                return False
             with open(file_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            print(f"Example added to collector for user {user_id}.")
+            logger.info("Example added to collector for user %s.", user_id)
+            return True
         except OSError as e:
-            print(f"Error writing example file {file_path}: {e}")
+            logger.warning("Error writing example file %s: %s", file_path, e)
+            return False
 
     def _summarize_result(self, result: Dict[str, Any]) -> str:
         """Creates a brief summary of the result."""
-        # For simplicity, just return the first 100 chars of the result if it's a string, or its type.
-        if isinstance(result, dict) and "result" in result:
-            res = result["result"]
-            if isinstance(res, str):
-                return res[:100] + ("..." if len(res) > 100 else "")
-            return f"Dict result with keys: {list(res.keys())}"
-        return str(type(result))
+        if isinstance(result, dict):
+            if isinstance(result.get("response_text"), str) and result["response_text"].strip():
+                text = result["response_text"].strip()
+                return text[:220] + ("..." if len(text) > 220 else "")
+            if "result" in result:
+                res = result["result"]
+                if isinstance(res, str):
+                    return res[:220] + ("..." if len(res) > 220 else "")
+                if isinstance(res, dict) and isinstance(res.get("mensagem"), str):
+                    text = res["mensagem"].strip()
+                    return text[:220] + ("..." if len(text) > 220 else "")
+                return f"Dict result with keys: {list(res.keys())}"
+            if isinstance(result.get("summary"), str):
+                text = result["summary"].strip()
+                return text[:220] + ("..." if len(text) > 220 else "")
+            return json.dumps(result, ensure_ascii=False)[:220]
+        return str(result)[:220]
 
     def get_all_examples(self, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """
@@ -91,9 +144,26 @@ class ExampleCollector:
                                 if start_date <= entry_timestamp <= end_date:
                                     all_examples.append(entry)
                             except json.JSONDecodeError:
-                                print(f"Warning: Corrupt JSON line in {filename}: {line.strip()}")
+                                logger.warning("Warning: Corrupt JSON line in %s: %s", filename, line.strip())
                 except OSError as e:
-                    print(f"Error reading examples file {file_path}: {e}")
+                    logger.warning("Error reading examples file %s: %s", file_path, e)
+
+        unified_rag_path = get_unified_rag_corpus_path(self.examples_dir)
+        if unified_rag_path.exists():
+            try:
+                with open(unified_rag_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                            if entry.get("query"):
+                                all_examples.append(entry)
+                        except json.JSONDecodeError:
+                            logger.warning("Warning: Corrupt JSON line in %s: %s", unified_rag_path, line)
+            except OSError as e:
+                logger.warning("Error reading unified examples file %s: %s", unified_rag_path, e)
         
         return all_examples
 

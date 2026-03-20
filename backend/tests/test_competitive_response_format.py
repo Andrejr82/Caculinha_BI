@@ -33,11 +33,15 @@ def test_competitive_response_hides_internal_system_fields() -> None:
 
     assert "## Resumo executivo" in msg
     assert "## Tabela operacional" in msg
-    assert "## Ação recomendada" in msg
-    assert "## Recorte e evidência" in msg
-    assert "## Fontes" in msg
+    assert "## Próximas ações" in msg
+    assert "## Recorte e evidência" not in msg
+    assert "## Fontes consultadas" in msg
     assert "## Como melhorar a próxima pesquisa" in msg
     assert "Quality Gate" not in msg
     assert "fallback_seed_local" not in msg
     assert "metodo_consulta" not in msg
     assert "Referência de mercado" in msg
+    assert out["source"] == "tool.pesquisar_precos_concorrentes"
+    assert isinstance(out.get("confidence"), float)
+    assert isinstance(out.get("mode"), str)
+    assert isinstance(out.get("citations"), list)

@@ -8,6 +8,8 @@ Operar o ChatBI em liberacao controlada (canary), com validacao de regressao e p
   - `CHAT_CANARY_ENABLED`
   - `CHAT_CANARY_ALLOWED_ROLES`
   - `CHAT_CANARY_ALLOWED_USERS`
+- Runbook de capacidade seletiva disponivel:
+  - `docs/CHATBI_CAPABILITY_ROLLOUT_RUNBOOK.md`
 - Dataset LLMOps versionado:
   - `backend/tests/llmops/datasets/chatbi_golden_v1.json`
 

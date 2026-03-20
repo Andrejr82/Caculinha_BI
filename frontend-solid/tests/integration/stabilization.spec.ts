@@ -38,19 +38,35 @@ test.describe('Stabilization Flows', () => {
     await page.goto('/playground');
     await page.waitForLoadState('networkidle');
 
-    const input = page.locator('input[type="text"]').first();
+    const input = page.locator('textarea').first();
     await expect(input).toBeVisible();
     await input.fill('explique rapidamente as vendas');
     await page.keyboard.press('Enter');
 
-    await page.waitForTimeout(4000);
-    const bodyText = (await page.locator('body').innerText()).toLowerCase();
-    expect(
-      bodyText.includes('erro') ||
-      bodyText.includes('temporariamente ocupado') ||
-      bodyText.includes('playground') ||
-      bodyText.includes('single mode')
-    ).toBeTruthy();
+    const assistantBubble = page.locator('.playground-message--assistant').last();
+    await expect(assistantBubble).toBeVisible({ timeout: 10000 });
+    await expect(assistantBubble).toContainText(
+      /processando resposta|sem resposta retornada|falha de conexão|modo degradado|playground|resumo executivo/i,
+    );
+  });
+
+  test('login -> Playground lab -> compare controls stay reachable', async ({ adminPage: page }) => {
+    await page.goto('/playground-lab');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('button', { name: /single/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /compare/i })).toBeVisible();
+
+    const input = page.getByLabel(/prompt principal do laboratório/i);
+    await expect(input).toBeVisible();
+    await input.fill('comparar resposta operacional');
+    await page.keyboard.press('Enter');
+
+    const assistantBubble = page.locator('.playground-message--assistant').last();
+    await expect(assistantBubble).toBeVisible({ timeout: 10000 });
+    await expect(assistantBubble).toContainText(
+      /processando resposta|sem resposta retornada|falha de conexão|modo degradado|playground|resumo executivo/i,
+    );
   });
 });
 

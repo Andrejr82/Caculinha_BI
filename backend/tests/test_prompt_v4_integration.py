@@ -5,9 +5,20 @@ Testa se o sistema está usando o prompt consolidado corretamente
 import requests
 import json
 import time
+import os
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 BASE_URL = "http://localhost:8000"
+pytestmark = [pytest.mark.manual, pytest.mark.external]
+
+if os.getenv("RUN_MANUAL_HTTP_TESTS", "0") != "1":
+    pytest.skip(
+        "teste HTTP manual; defina RUN_MANUAL_HTTP_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
 
 class Colors:
     GREEN = '\033[92m'
@@ -18,8 +29,9 @@ class Colors:
 
 def get_auth_token():
     """Obtém token de autenticação do arquivo ou usa fallback"""
+    token_path = Path(__file__).resolve().parent / "test_token.txt"
     try:
-        with open("tests/test_token.txt", "r") as f:
+        with open(token_path, "r", encoding="utf-8") as f:
             return f.read().strip()
     except:
         # Fallback: tentar obter token via login
@@ -29,7 +41,7 @@ def get_auth_token():
             if response.status_code == 200:
                 token = response.json().get("access_token")
                 # Salvar para próximas execuções
-                with open("tests/test_token.txt", "w") as f:
+                with open(token_path, "w", encoding="utf-8") as f:
                     f.write(token)
                 return token
         except:

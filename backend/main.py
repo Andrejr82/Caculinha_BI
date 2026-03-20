@@ -49,11 +49,42 @@ async def lifespan(app: FastAPI):
     # Inicializar serviços
     from backend.services.metrics import MetricsService
     from backend.services.billing import BillingService
+    from backend.application.agents.memory_agent import MemoryAgent
+    from backend.application.agents.vectorization_agent import VectorizationAgent
+    from backend.infrastructure.adapters.sqlite_memory_adapter import SQLiteMemoryAdapter
+    from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAdapter
+    from backend.app.services.image_analysis import ImageAnalysisService
+    from backend.app.api.v1.endpoints.memory import set_memory_agent
+    from backend.app.api.v1.endpoints.ingest import set_ingest_dependencies
+    from backend.app.core.utils.session_manager import SessionManager
     
     MetricsService()
     BillingService()
+
+    memory_db_path = SessionManager.default_db_path()
+    vector_db_path = memory_db_path.with_name("conversation_vectors.duckdb")
+    memory_repository = SQLiteMemoryAdapter(str(memory_db_path))
+    await memory_repository._ensure_initialized()
+    memory_agent = MemoryAgent(memory_repository)
+    set_memory_agent(memory_agent)
+    app.state.memory_agent = memory_agent
+    app.state.memory_db_path = str(memory_db_path)
+
+    vectorization_agent = VectorizationAgent()
+    vector_adapter = DuckDBVectorAdapter(str(vector_db_path))
+    await vector_adapter._ensure_initialized()
+    image_analysis_service = ImageAnalysisService()
+    set_ingest_dependencies(vector_adapter, vectorization_agent, image_analysis_service)
+    app.state.ingest_vector_adapter = vector_adapter
+    app.state.ingest_vectorization_agent = vectorization_agent
+    app.state.image_analysis_service = image_analysis_service
+    app.state.vector_db_path = str(vector_db_path)
     
-    logger.info("services_initialized")
+    logger.info(
+        "services_initialized",
+        memory_db_path=str(memory_db_path),
+        vector_db_path=str(vector_db_path),
+    )
     
     yield
     

@@ -6,6 +6,17 @@ Seguindo AAA Pattern (Arrange, Act, Assert)
 import sys
 import os
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.realdata]
+
+if os.getenv("RUN_REALDATA_TESTS", "0") != "1":
+    pytest.skip(
+        "teste com dados reais; defina RUN_REALDATA_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
 
 # Adicionar backend ao path
 backend_path = Path(__file__).resolve().parent.parent
@@ -236,7 +247,7 @@ if __name__ == "__main__":
     for i, r in enumerate(resultado["resultados"][:3], 1):
         print(f"   {i}. UNE {r['UNE']}: {r['VENDA_30DD']} vendas")
 
-@patch('app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
+@patch('backend.app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
 def test_limite_100_funciona_com_dados_reais(mock_rls):
     """
     DADO: Query sem filtro (muitos resultados)
@@ -258,7 +269,7 @@ def test_limite_100_funciona_com_dados_reais(mock_rls):
     assert total == 100, f"Esperava exatamente 100 resultados, recebeu {total}"
     print(f"✅ PASS: Limite 100 retornou exatamente {total} resultados")
 
-@patch('app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
+@patch('backend.app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
 def test_limite_500_maximo_com_dados_reais(mock_rls):
     """
     DADO: Query sem filtro com limite=1000
@@ -280,7 +291,7 @@ def test_limite_500_maximo_com_dados_reais(mock_rls):
     assert total == 500, f"Esperava 500 (máximo), recebeu {total}"
     print(f"✅ PASS: Limite máximo de 500 aplicado corretamente ({total} resultados)")
 
-@patch('app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
+@patch('backend.app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
 def test_agregacao_com_limite(mock_rls):
     """
     DADO: Query com agregação (soma de vendas por UNE)
@@ -310,7 +321,7 @@ def test_agregacao_com_limite(mock_rls):
     print(f"✅ PASS: Agregação retornou top {total} UNEs")
     print(f"   Top 3: {valores[:3]}")
 
-@patch('app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
+@patch('backend.app.core.tools.flexible_query_tool.get_current_user_segments', return_value=["*"])
 def test_comparacao_antes_depois_correcao(mock_rls):
     """
     DADO: Produto 369947 com 35 UNEs

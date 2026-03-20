@@ -11,6 +11,6 @@ def test_enforce_json_schema_from_partial_payload():
 
 def test_enforce_text_schema_wraps_plain_text():
     normalized = enforce_playground_response_schema("Resposta simples", json_mode=False)
-    assert "## Resumo" in normalized
-    assert "## Tabela" in normalized
-    assert "## Ação recomendada" in normalized
+    assert "## Resumo executivo" in normalized
+    assert "## Tabela operacional" in normalized
+    assert "## Próximas ações" in normalized

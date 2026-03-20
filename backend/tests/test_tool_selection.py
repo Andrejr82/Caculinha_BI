@@ -5,11 +5,25 @@ Valida se o LLM seleciona analisar_produto_todas_lojas quando deveria
 import requests
 import json
 import uuid
+import os
+from pathlib import Path
+import pytest
 
 BASE_URL = "http://localhost:8000"
 
-# Ler token válido
-with open("tests/test_token.txt", "r") as f:
+pytestmark = [pytest.mark.manual, pytest.mark.external]
+
+if os.getenv("RUN_MANUAL_HTTP_TESTS", "0") != "1":
+    pytest.skip(
+        "teste HTTP manual; defina RUN_MANUAL_HTTP_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
+
+token_path = Path(__file__).resolve().parent / "test_token.txt"
+if not token_path.exists():
+    pytest.skip("teste HTTP manual: token de teste não encontrado.", allow_module_level=True)
+
+with open(token_path, "r", encoding="utf-8") as f:
     token = f.read().strip()
 
 print("=" * 60)

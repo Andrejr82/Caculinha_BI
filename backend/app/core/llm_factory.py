@@ -1,14 +1,20 @@
 import logging
 import sys
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable
 from backend.app.config.settings import settings
 from backend.app.core.llm_groq_adapter import GroqLLMAdapter
 from backend.app.core.llm_base import BaseLLMAdapter
+from backend.app.infrastructure.resilience.circuit_breaker import (
+    CircuitBreakerOpenError,
+    get_circuit_breaker,
+)
 
 logger = logging.getLogger(__name__)
 
 # Legacy namespace compatibility for contract tests that patch "app.core.llm_factory".
-sys.modules.setdefault("app.core.llm_factory", sys.modules[__name__])
+_THIS_MODULE = sys.modules[__name__]
+sys.modules["app.core.llm_factory"] = _THIS_MODULE
+sys.modules["backend.app.core.llm_factory"] = _THIS_MODULE
 
 
 class LLMFactory:
@@ -57,6 +63,19 @@ class SmartLLM:
         "grq": "groq",
         "mock": "mock",
     }
+    _DEFAULT_TASK_PROVIDER_PREFERENCE = {
+        "market_research": ["google", "groq"],
+        "competitive_research": ["google", "groq"],
+        "calculation": ["groq", "google"],
+        "forecasting": ["groq", "google"],
+        "optimization": ["groq", "google"],
+        "anomaly": ["groq", "google"],
+        "analysis": ["groq", "google"],
+        "data_query": ["groq", "google"],
+        "metadata": ["groq", "google"],
+        "visualization": ["groq", "google"],
+        "dashboard": ["groq", "google"],
+    }
 
     class _MockLLMAdapter(BaseLLMAdapter):
         provider = "mock"
@@ -91,6 +110,9 @@ class SmartLLM:
             logger.info("SmartLLM: Gemini desabilitado (sem API key válida). Usando apenas Groq.")
 
         self.provider_chain = self._build_provider_chain(self.primary)
+        self.task_provider_routing = self._parse_task_provider_routing(
+            str(getattr(settings, "LLM_TASK_PROVIDER_ROUTING", "") or "")
+        )
         logger.info(
             f"SmartLLM initialized: primary={self.primary}, chain={self.provider_chain}, "
             f"gemini_available={self._gemini_available}"
@@ -114,6 +136,69 @@ class SmartLLM:
                 unique_chain.append(item)
                 seen.add(item)
         return unique_chain
+
+    def _normalize_task_type(self, task_type: Optional[str]) -> str:
+        return str(task_type or "").strip().lower().replace("-", "_")
+
+    def _parse_task_provider_routing(self, raw_mapping: str) -> Dict[str, List[str]]:
+        """
+        Parseia mapeamento por tarefa vindo de env.
+        Formato aceito:
+          - "calculation=groq,google;market_research=google,groq"
+        """
+        routing: Dict[str, List[str]] = {}
+        if not raw_mapping:
+            return routing
+
+        chunks = [chunk.strip() for chunk in str(raw_mapping).split(";") if chunk.strip()]
+        for chunk in chunks:
+            if "=" not in chunk:
+                continue
+            task_raw, providers_raw = chunk.split("=", 1)
+            task_key = self._normalize_task_type(task_raw)
+            if not task_key:
+                continue
+
+            providers = [
+                self._normalize_provider(item)
+                for item in providers_raw.split(",")
+                if item and str(item).strip()
+            ]
+            if not providers:
+                continue
+
+            # Completa com cadeia global para preservar fallback.
+            chain = providers + self.provider_chain
+            deduped: List[str] = []
+            seen = set()
+            for provider in chain:
+                if provider in seen:
+                    continue
+                seen.add(provider)
+                deduped.append(provider)
+            routing[task_key] = deduped
+
+        return routing
+
+    def _resolve_provider_chain_for_task(self, task_type: Optional[str]) -> List[str]:
+        normalized_task = self._normalize_task_type(task_type)
+        if not normalized_task:
+            return list(self.provider_chain)
+
+        configured = self.task_provider_routing.get(normalized_task)
+        if configured:
+            return list(configured)
+
+        preferred = self._DEFAULT_TASK_PROVIDER_PREFERENCE.get(normalized_task, [])
+        chain = preferred + self.provider_chain
+        deduped: List[str] = []
+        seen = set()
+        for provider in chain:
+            if provider in seen:
+                continue
+            seen.add(provider)
+            deduped.append(provider)
+        return deduped
 
 
     @property
@@ -152,6 +237,20 @@ class SmartLLM:
             return self.gemini
         if provider == "mock":
             return self.mock
+        return None
+
+    @staticmethod
+    def _provider_breaker_name(provider: str) -> str:
+        return f"llm_provider_{provider}"
+
+    def _call_with_circuit_breaker(self, provider: str, fn: Callable[[], Any]) -> Any:
+        breaker = get_circuit_breaker(self._provider_breaker_name(provider))
+        return breaker.call(fn)
+
+    @staticmethod
+    def _extract_result_error(result: Any) -> Optional[str]:
+        if isinstance(result, dict) and "error" in result:
+            return str(result.get("error") or "erro desconhecido")
         return None
 
     def get_provider_status(self) -> Dict[str, Any]:
@@ -244,10 +343,11 @@ class SmartLLM:
             return messages
         return self._compact_messages_for_fallback(messages)
 
-    async def generate_response(self, prompt: str) -> str:
+    async def generate_response(self, prompt: str, task_type: Optional[str] = None) -> str:
         """Async generation with provider-chain fallback."""
         last_error = "Nenhum provedor LLM disponível"
-        for provider in self.provider_chain:
+        provider_chain = self._resolve_provider_chain_for_task(task_type)
+        for provider in provider_chain:
             adapter = self._get_adapter(provider)
             if adapter is None:
                 continue
@@ -263,41 +363,62 @@ class SmartLLM:
                 logger.warning(f"Falha em {provider} durante generate_response: {e}")
         raise Exception(self._sanitize_user_error(last_error))
 
-    def generate_with_history(self, messages, system_instruction=None, **kwargs):
+    def generate_with_history(self, messages, system_instruction=None, task_type: Optional[str] = None, **kwargs):
         """
         Gera resposta com histórico, delegando para o adapter ativo.
         """
         last_error = "Nenhum adaptador LLM disponível em SmartLLM"
-        for idx, provider in enumerate(self.provider_chain):
+        provider_chain = self._resolve_provider_chain_for_task(task_type)
+        for idx, provider in enumerate(provider_chain):
             adapter = self._get_adapter(provider)
             if adapter is None:
                 continue
 
             prepared_messages = self._prepare_messages_for_primary(messages) if idx == 0 else self._compact_messages_for_fallback(messages)
             try:
-                if self.system_instruction and hasattr(adapter, "system_instruction"):
-                    adapter.system_instruction = self.system_instruction
+                def _invoke_with_history():
+                    if self.system_instruction and hasattr(adapter, "system_instruction"):
+                        adapter.system_instruction = self.system_instruction
 
-                if hasattr(adapter, "generate_with_history"):
-                    return adapter.generate_with_history(prepared_messages, system_instruction, **kwargs)
+                    if hasattr(adapter, "generate_with_history"):
+                        raw_result = adapter.generate_with_history(prepared_messages, system_instruction, **kwargs)
+                        provider_error = self._extract_result_error(raw_result)
+                        if provider_error:
+                            raise RuntimeError(provider_error)
+                        return raw_result
 
-                result = adapter.get_completion(prepared_messages)
-                if "error" not in result:
-                    return result.get("content", "")
-                last_error = str(result.get("error", "erro desconhecido"))
+                    raw_result = adapter.get_completion(prepared_messages)
+                    if not isinstance(raw_result, dict):
+                        raise RuntimeError("resposta inválida")
+                    provider_error = self._extract_result_error(raw_result)
+                    if provider_error:
+                        raise RuntimeError(provider_error)
+                    return raw_result.get("content", "")
+
+                return self._call_with_circuit_breaker(provider, _invoke_with_history)
+            except CircuitBreakerOpenError as e:
+                last_error = str(e)
+                logger.warning(f"Circuit breaker aberto para {provider}: {e}")
+                continue
             except Exception as e:
                 last_error = str(e)
                 logger.warning(f"Falha em {provider} durante generate_with_history: {e}")
 
         raise Exception(self._sanitize_user_error(last_error))
 
-    def get_completion(self, messages: List[Dict[str, str]], tools: Optional[Dict] = None) -> Dict[str, Any]:
+    def get_completion(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[Dict] = None,
+        task_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Sync completion with provider-chain fallback.
         """
         errors: List[str] = []
+        provider_chain = self._resolve_provider_chain_for_task(task_type)
 
-        for idx, provider in enumerate(self.provider_chain):
+        for idx, provider in enumerate(provider_chain):
             adapter = self._get_adapter(provider)
             if adapter is None:
                 errors.append(f"{provider}: indisponível")
@@ -306,21 +427,26 @@ class SmartLLM:
             request_messages = self._prepare_messages_for_primary(messages) if idx == 0 else self._compact_messages_for_fallback(messages)
 
             try:
-                if self.system_instruction and hasattr(adapter, "system_instruction"):
-                    adapter.system_instruction = self.system_instruction
+                def _invoke_completion():
+                    if self.system_instruction and hasattr(adapter, "system_instruction"):
+                        adapter.system_instruction = self.system_instruction
 
-                result = adapter.get_completion(request_messages, tools)
-                if not isinstance(result, dict):
-                    errors.append(f"{provider}: resposta inválida")
-                    continue
+                    raw_result = adapter.get_completion(request_messages, tools)
+                    if not isinstance(raw_result, dict):
+                        raise RuntimeError("resposta inválida")
+                    provider_error = self._extract_result_error(raw_result)
+                    if provider_error:
+                        raise RuntimeError(provider_error)
+                    return raw_result
 
-                if "error" in result:
-                    errors.append(f"{provider}: {result.get('error')}")
-                    logger.warning(f"[RETRY] {provider} falhou: {result.get('error')}")
-                    continue
+                result = self._call_with_circuit_breaker(provider, _invoke_completion)
 
                 result["provider"] = provider
                 return result
+            except CircuitBreakerOpenError as e:
+                errors.append(f"{provider}: circuit breaker aberto")
+                logger.warning(f"[RETRY] {provider} ignorado por circuit breaker aberto: {e}")
+                continue
             except Exception as e:
                 errors.append(f"{provider}: {e}")
                 logger.warning(f"[RETRY] {provider} exceção: {e}", exc_info=True)
