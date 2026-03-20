@@ -223,18 +223,38 @@ class CaculinhaBIAgent:
                 from backend.app.core.tools.advanced_analytics_tool import (
                     analise_regressao_vendas,
                     detectar_anomalias_vendas,
-                    analise_correlacao_produtos
+                    analise_correlacao_produtos,
+                    segmentar_lojas_por_performance,
+                    classificar_risco_estoque,
                 )
                 optional_tools.extend([
                     analise_regressao_vendas,
                     detectar_anomalias_vendas,
-                    analise_correlacao_produtos
+                    analise_correlacao_produtos,
+                    segmentar_lojas_por_performance,
+                    classificar_risco_estoque,
                 ])
                 logger.info("[OK] Advanced Analytics tools loaded (Gemini 2.5 Pro STEM features)")
             except ImportError as e:
                 logger.warning(f"[WARNING] Advanced Analytics tools missing (SciPy/Sklearn issue): {e}")
 
-        # 4. RAG Tools (LangChain/FAISS/Torch dependency)
+        # 4. Basket / Promotion / Margin Tools
+            try:
+                from backend.app.core.tools.basket_tools import (
+                    analisar_cesta_compras,
+                    simular_promocao_cesta,
+                    minerar_cestas_frequentes,
+                )
+                optional_tools.extend([
+                    analisar_cesta_compras,
+                    simular_promocao_cesta,
+                    minerar_cestas_frequentes,
+                ])
+                logger.info("[OK] Basket analysis tools loaded")
+            except ImportError as e:
+                logger.warning(f"[WARNING] Basket analysis tools missing: {e}")
+
+        # 5. RAG Tools (LangChain/FAISS/Torch dependency)
         # Already handled via self.buscar_produtos_inteligente logic in _register_retriever_tools
         # But for 'all_bi_tools' list used for scoping, we add it if enabled
         if self.enable_rag and self.buscar_produtos_inteligente and not settings.DEV_FAST_MODE:
@@ -627,6 +647,32 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 elif isinstance(raw_produtos, list):
                     args["produtos_ids"] = [str(p) for p in raw_produtos if str(p).strip()]
 
+        if func_name in {"analisar_cesta_compras", "simular_promocao_cesta"}:
+            raw_items = args.get("itens")
+            if isinstance(raw_items, str):
+                try:
+                    args["itens"] = json.loads(raw_items)
+                except json.JSONDecodeError:
+                    pass
+            raw_targets = args.get("produto_ids_alvo")
+            if isinstance(raw_targets, str):
+                try:
+                    parsed_targets = json.loads(raw_targets)
+                    if isinstance(parsed_targets, list):
+                        args["produto_ids_alvo"] = [str(v) for v in parsed_targets]
+                    else:
+                        args["produto_ids_alvo"] = [v.strip() for v in raw_targets.split(",") if v.strip()]
+                except json.JSONDecodeError:
+                    args["produto_ids_alvo"] = [v.strip() for v in raw_targets.split(",") if v.strip()]
+
+        if func_name == "minerar_cestas_frequentes":
+            raw_transactions = args.get("transacoes")
+            if isinstance(raw_transactions, str):
+                try:
+                    args["transacoes"] = json.loads(raw_transactions)
+                except json.JSONDecodeError:
+                    pass
+
         return args
 
     def _execute_tool_with_recovery(self, tool_to_run: Any, func_name: str, func_args: Dict[str, Any]) -> Any:
@@ -669,6 +715,41 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         q = (query or "").lower()
         return any(k in q for k in ["gráfico", "grafico", "plot", "visual", "barra", "pizza", "linha"])
 
+    def _is_dashboard_request(self, query: str) -> bool:
+        q = (query or "").lower()
+        return any(k in q for k in ["dashboard", "painel", "kpi", "kpis", "indicadores"])
+
+    def _infer_chart_breakdown(self, query: str) -> Optional[str]:
+        from backend.app.core.utils.query_router import extract_chart_breakdown
+
+        return extract_chart_breakdown(query)
+
+    def _is_grounded_product_store_query(self, query: str) -> bool:
+        from backend.app.core.utils.query_router import (
+            extract_product_code,
+            extract_product_store_ranking_request,
+            is_product_rupture_query,
+            is_product_store_leader_query,
+        )
+
+        q = (query or "").lower()
+        product = extract_product_code(query)
+        if not product:
+            return False
+
+        if is_product_rupture_query(query):
+            return True
+        if is_product_store_leader_query(query):
+            return True
+        if extract_product_store_ranking_request(query):
+            return True
+
+        store_terms = any(token in q for token in ["loja", "lojas", "une", "unes"])
+        objective_terms = any(
+            token in q for token in ["vende", "vendem", "venda", "vendas", "estoque", "ruptura", "rupturas"]
+        )
+        return store_terms and objective_terms
+
     def _is_small_talk_query(self, query: str) -> bool:
         q = (query or "").strip().lower()
         if not q:
@@ -701,10 +782,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         mapping = {
             "Pensando": "system.thinking",
             "Processando resposta": "system.finalizing",
+            "calculation_sandbox": "tool.calculation_sandbox",
             "consultar_dados_flexivel": "tool.data_query",
             "consultar_dados_gerais": "tool.metadata_query",
             "gerar_grafico_universal": "tool.chart",
             "gerar_grafico_universal_v2": "tool.chart",
+            "gerar_dashboard_executivo": "tool.dashboard",
             "pesquisar_precos_concorrentes": "tool.competitive_research",
             "pesquisar_mercado_web": "tool.market_research",
         }
@@ -721,6 +804,792 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             }
         )
 
+    def _resolve_llm_task_type(self, intent: Optional[Any], tool_name: str, query: str) -> str:
+        q = (query or "").lower()
+        normalized_tool = str(tool_name or "").strip().lower()
+        intent_value = str(getattr(intent, "value", intent or "")).strip().lower()
+
+        if normalized_tool in {"pesquisar_precos_concorrentes", "pesquisar_mercado_web"}:
+            return "market_research"
+        if normalized_tool == "gerar_dashboard_executivo":
+            return "dashboard"
+        if normalized_tool in {"gerar_grafico_universal_v2", "gerar_grafico_universal"}:
+            return "visualization"
+
+        if intent_value:
+            return intent_value
+
+        if any(k in q for k in ["pesquisa de mercado", "concorrente", "cotação", "cotacao"]):
+            return "market_research"
+        if any(k in q for k in ["dashboard", "gráfico", "grafico", "chart"]):
+            return "visualization"
+        if any(k in q for k in ["eoq", "lote econômico", "lote economico", "sensibilidade", "simulação", "simulacao"]):
+            return "calculation"
+        return "analysis"
+
+    def _llm_get_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[Dict[str, Any]],
+        task_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Chamada compatível para adapters antigos (sem task_type) e SmartLLM (com task_type).
+        """
+        try:
+            return self.llm.get_completion(messages, tools=tools, task_type=task_type)
+        except TypeError:
+            return self.llm.get_completion(messages, tools=tools)
+
+    def _extract_numeric_hint(self, query: str, patterns: List[str]) -> Optional[float]:
+        import re
+        q = (query or "").lower()
+        for pattern in patterns:
+            match = re.search(pattern, q)
+            if not match:
+                continue
+            try:
+                raw = str(match.group(1)).replace(",", ".")
+                return float(raw)
+            except Exception:
+                continue
+        return None
+
+    def _extract_percent_hint(self, query: str) -> Optional[float]:
+        import re
+        q = (query or "").lower()
+        match = re.search(r"(\d+(?:[.,]\d+)?)\s*%", q)
+        if not match:
+            return None
+        try:
+            return float(str(match.group(1)).replace(",", ".")) / 100.0
+        except Exception:
+            return None
+
+    def _is_tool_failure_result(self, tool_result: Any) -> bool:
+        if not isinstance(tool_result, dict):
+            return False
+
+        if tool_result.get("error"):
+            return True
+
+        if "success" in tool_result and bool(tool_result.get("success")) is False:
+            return True
+
+        status = str(tool_result.get("status", "")).strip().lower()
+        if status in {"error", "failed", "failure"}:
+            return True
+
+        if status and status not in {"success", "ok"}:
+            return True
+
+        return False
+
+    def _is_tool_success_result(self, tool_result: Any) -> bool:
+        if not isinstance(tool_result, dict):
+            return False
+
+        if self._is_tool_failure_result(tool_result):
+            return False
+
+        if "success" in tool_result:
+            return bool(tool_result.get("success"))
+
+        status = str(tool_result.get("status", "")).strip().lower()
+        if status in {"success", "ok"}:
+            return True
+
+        if len(tool_result.get("resultados", []) or []) > 0:
+            return True
+
+        return False
+
+    def _is_effectively_empty_tool_result(self, tool_name: str, tool_result: Any) -> bool:
+        if not isinstance(tool_result, dict):
+            return False
+
+        normalized_tool = str(tool_name or "").strip().lower()
+        message = str(tool_result.get("mensagem") or tool_result.get("message") or "").lower()
+        no_data_markers = (
+            "nenhum dado encontrado",
+            "não encontrei dados",
+            "nao encontrei dados",
+            "não encontrei resultados",
+            "nao encontrei resultados",
+            "sem dados",
+            "sem evidência",
+            "sem evidencia",
+        )
+        if any(marker in message for marker in no_data_markers):
+            return True
+
+        if normalized_tool in {"gerar_grafico_universal_v2", "gerar_dashboard_executivo"}:
+            chart_data = tool_result.get("chart_data")
+            if isinstance(chart_data, str) and chart_data.strip():
+                try:
+                    chart_data = json.loads(chart_data)
+                except json.JSONDecodeError:
+                    # Algumas ferramentas retornam chart_data como JSON string.
+                    # Se o payload existe, não devemos forçar fallback prematuro.
+                    return False
+            if isinstance(chart_data, dict):
+                traces = chart_data.get("data")
+                if isinstance(traces, list) and len(traces) > 0:
+                    return False
+
+            dashboard_spec = tool_result.get("dashboard_spec")
+            if isinstance(dashboard_spec, str) and dashboard_spec.strip():
+                try:
+                    dashboard_spec = json.loads(dashboard_spec)
+                except json.JSONDecodeError:
+                    return False
+            if isinstance(dashboard_spec, dict):
+                widgets = dashboard_spec.get("widgets")
+                if isinstance(widgets, list) and len(widgets) > 0:
+                    return False
+
+            return True
+
+        if "resultados" in tool_result and len(tool_result.get("resultados", []) or []) == 0:
+            return True
+
+        if "total_resultados" in tool_result and int(tool_result.get("total_resultados") or 0) == 0:
+            return True
+
+        if "itens" in tool_result and len(tool_result.get("itens", []) or []) == 0:
+            return True
+
+        if "total_itens" in tool_result and int(tool_result.get("total_itens") or 0) == 0:
+            return True
+
+        return False
+
+    def _should_attempt_semantic_recovery(
+        self,
+        user_query: str,
+        tool_name: str,
+        tool_result: Any = None,
+        tool_error: Optional[Exception] = None,
+    ) -> bool:
+        if tool_error is not None:
+            return True
+
+        if self._is_tool_failure_result(tool_result):
+            return True
+
+        if self._is_effectively_empty_tool_result(tool_name, tool_result):
+            normalized_tool = str(tool_name or "").strip().lower()
+            if normalized_tool in {
+                "gerar_dashboard_executivo",
+                "gerar_grafico_universal_v2",
+                "consultar_dados_flexivel",
+                "pesquisar_precos_concorrentes",
+                "pesquisar_mercado_web",
+            }:
+                return True
+
+        return False
+
+    def _infer_semantic_fallback_tools(
+        self,
+        primary_tool_name: str,
+        configured_fallbacks: Optional[List[str]] = None,
+        user_query: Optional[str] = None,
+    ) -> List[str]:
+        grounded_product_store_query = self._is_grounded_product_store_query(user_query or "")
+        fallback_order: List[str] = list(configured_fallbacks or [])
+        if grounded_product_store_query and fallback_order:
+            allowed_for_grounded = {"consultar_dados_flexivel", "analisar_produto_todas_lojas"}
+            if "ruptur" in str(user_query or "").lower():
+                allowed_for_grounded = {"analisar_produto_todas_lojas"}
+            fallback_order = [
+                tool_name for tool_name in fallback_order
+                if str(tool_name or "").strip() in allowed_for_grounded
+            ]
+        if user_query:
+            if grounded_product_store_query:
+                is_product_rupture = "ruptur" in str(user_query or "").lower()
+                if str(primary_tool_name or "") == "consultar_dados_flexivel":
+                    fallback_order.extend(["analisar_produto_todas_lojas"])
+                elif str(primary_tool_name or "") == "analisar_produto_todas_lojas" and not is_product_rupture:
+                    fallback_order.extend(["consultar_dados_flexivel"])
+            elif self._is_dashboard_request(user_query):
+                fallback_order.extend(["gerar_grafico_universal_v2", "consultar_dados_flexivel"])
+            elif self._is_chart_request(user_query):
+                fallback_order.extend(["gerar_grafico_universal_v2", "consultar_dados_flexivel"])
+
+            if self._is_specific_competitor_query(user_query):
+                fallback_order.extend(["pesquisar_precos_concorrentes", "pesquisar_mercado_web"])
+            elif self._is_market_research_query(user_query):
+                fallback_order.extend(["pesquisar_mercado_web", "pesquisar_precos_concorrentes"])
+
+        default_map = {
+            "gerar_dashboard_executivo": ["gerar_grafico_universal_v2", "consultar_dados_flexivel"],
+            "gerar_grafico_universal_v2": ["consultar_dados_flexivel"],
+            "consultar_dados_flexivel": ["gerar_grafico_universal_v2"],
+            "analisar_produto_todas_lojas": ["consultar_dados_flexivel"],
+            "pesquisar_precos_concorrentes": ["pesquisar_mercado_web", "consultar_dados_flexivel"],
+            "pesquisar_mercado_web": ["pesquisar_precos_concorrentes", "consultar_dados_flexivel"],
+            "calcular_eoq": ["consultar_dados_flexivel"],
+        }
+        if grounded_product_store_query:
+            default_map["consultar_dados_flexivel"] = ["analisar_produto_todas_lojas"]
+            if "ruptur" in str(user_query or "").lower():
+                default_map["analisar_produto_todas_lojas"] = []
+        for candidate in default_map.get(str(primary_tool_name or ""), []):
+            fallback_order.append(candidate)
+
+        deduped: List[str] = []
+        seen = set()
+        for tool in fallback_order:
+            normalized = str(tool or "").strip()
+            if not normalized or normalized in seen or normalized == primary_tool_name:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+        return deduped
+
+    def _build_semantic_fallback_params(
+        self,
+        user_query: str,
+        fallback_tool_name: str,
+        primary_tool_params: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        params = dict(primary_tool_params or {})
+        if fallback_tool_name == "gerar_grafico_universal_v2":
+            params = {
+                "descricao": user_query,
+                "tipo_grafico": params.get("tipo_grafico", "bar"),
+                "limite": params.get("limite", 50),
+            }
+            segment = self._extract_segment_from_query(user_query)
+            if segment:
+                params["filtro_segmento"] = segment
+            une = self._extract_une_from_query(user_query)
+            if une:
+                params["filtro_une"] = une
+            breakdown = self._infer_chart_breakdown(user_query)
+            if breakdown:
+                params["quebra_por"] = breakdown
+        elif fallback_tool_name == "consultar_dados_flexivel":
+            params = params if isinstance(params, dict) else {}
+            segment = self._extract_segment_from_query(user_query)
+            une = self._extract_une_from_query(user_query)
+            breakdown = self._infer_chart_breakdown(user_query)
+
+            if self._is_chart_request(user_query) or self._is_dashboard_request(user_query):
+                group_map = {
+                    "SEGMENTO": ["NOMESEGMENTO"],
+                    "LOJA": ["UNE"],
+                    "CATEGORIA": ["NOMECATEGORIA"],
+                    "GRUPO": ["NOMEGRUPO"],
+                    "PRODUTO": ["NOME"],
+                    "FABRICANTE": ["NOMEFABRICANTE"],
+                }
+                params["agregacao"] = "SUM"
+                params["coluna_agregacao"] = "VENDA_30DD"
+                params["agrupar_por"] = group_map.get(str(breakdown or "SEGMENTO").upper(), ["NOMESEGMENTO"])
+                params["ordenar_por"] = "valor"
+                params["ordem_desc"] = True
+                params["limite"] = params.get("limite", "50")
+                filtros = params.get("filtros", {})
+                if not isinstance(filtros, dict):
+                    filtros = {}
+                if segment:
+                    filtros["NOMESEGMENTO"] = segment
+                if une:
+                    filtros["UNE"] = int(une) if str(une).isdigit() else une
+                if filtros:
+                    params["filtros"] = filtros
+            else:
+                params.setdefault("colunas", ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"])
+                params.setdefault("limite", "50")
+        elif fallback_tool_name == "pesquisar_precos_concorrentes":
+            params = {
+                "descricao_produto": params.get("descricao_produto") or params.get("termo_pesquisa") or user_query,
+                "limite": params.get("limite", "10"),
+                "estado": params.get("estado") or self._extract_state_from_query(user_query) or "RJ",
+            }
+            segment = self._extract_segment_from_query(user_query)
+            competitors = self._extract_competitors_from_query(user_query)
+            if segment:
+                params["segmento"] = segment
+            if competitors:
+                params["concorrentes"] = competitors
+        elif fallback_tool_name == "pesquisar_mercado_web":
+            params = {
+                "termo_pesquisa": params.get("termo_pesquisa") or params.get("descricao_produto") or user_query,
+                "limite": params.get("limite", "15"),
+            }
+        return self._normalize_tool_arguments(fallback_tool_name, params)
+
+    async def _execute_semantic_tool_fallback(
+        self,
+        user_query: str,
+        primary_tool_name: str,
+        primary_tool_params: Optional[Dict[str, Any]],
+        fallback_tools: Optional[List[str]],
+        on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        candidates = self._infer_semantic_fallback_tools(
+            primary_tool_name,
+            fallback_tools,
+            user_query=user_query,
+        )
+        for fallback_tool_name in candidates:
+            tool_to_run = self._find_tool_by_name(fallback_tool_name)
+            if tool_to_run is None:
+                continue
+
+            fallback_params = self._build_semantic_fallback_params(user_query, fallback_tool_name, primary_tool_params)
+            logger.warning(
+                f"[TOOL-RECOVERY] {primary_tool_name} falhou; tentando fallback semântico {fallback_tool_name} "
+                f"com params={fallback_params}"
+            )
+            try:
+                await self._emit_progress(on_progress, fallback_tool_name, "executing")
+                fallback_result = await asyncio.to_thread(
+                    self._execute_tool_with_recovery,
+                    tool_to_run,
+                    fallback_tool_name,
+                    fallback_params,
+                )
+            except Exception as fallback_error:
+                logger.warning(
+                    f"[TOOL-RECOVERY] fallback {fallback_tool_name} também falhou: {fallback_error}"
+                )
+                continue
+
+            if self._is_tool_failure_result(fallback_result) or self._is_effectively_empty_tool_result(
+                fallback_tool_name,
+                fallback_result,
+            ):
+                logger.warning(
+                    f"[TOOL-RECOVERY] fallback {fallback_tool_name} retornou erro ou resultado vazio."
+                )
+                continue
+
+            return {
+                "tool_name": fallback_tool_name,
+                "tool_params": fallback_params,
+                "tool_result": fallback_result,
+            }
+        return None
+
+    def _execute_semantic_tool_fallback_sync(
+        self,
+        user_query: str,
+        primary_tool_name: str,
+        primary_tool_params: Optional[Dict[str, Any]],
+        fallback_tools: Optional[List[str]],
+    ) -> Optional[Dict[str, Any]]:
+        candidates = self._infer_semantic_fallback_tools(
+            primary_tool_name,
+            fallback_tools,
+            user_query=user_query,
+        )
+        for fallback_tool_name in candidates:
+            tool_to_run = self._find_tool_by_name(fallback_tool_name)
+            if tool_to_run is None:
+                continue
+
+            fallback_params = self._build_semantic_fallback_params(
+                user_query,
+                fallback_tool_name,
+                primary_tool_params,
+            )
+            logger.warning(
+                f"[TOOL-RECOVERY][SYNC] {primary_tool_name} falhou; tentando fallback semântico "
+                f"{fallback_tool_name} com params={fallback_params}"
+            )
+            try:
+                fallback_result = self._execute_tool_with_recovery(
+                    tool_to_run,
+                    fallback_tool_name,
+                    fallback_params,
+                )
+            except Exception as fallback_error:
+                logger.warning(
+                    f"[TOOL-RECOVERY][SYNC] fallback {fallback_tool_name} também falhou: {fallback_error}"
+                )
+                continue
+
+            if self._is_tool_failure_result(fallback_result) or self._is_effectively_empty_tool_result(
+                fallback_tool_name,
+                fallback_result,
+            ):
+                logger.warning(
+                    f"[TOOL-RECOVERY][SYNC] fallback {fallback_tool_name} retornou erro ou resultado vazio."
+                )
+                continue
+
+            return {
+                "tool_name": fallback_tool_name,
+                "tool_params": fallback_params,
+                "tool_result": fallback_result,
+            }
+        return None
+
+    def _has_business_metric_hint(self, query: str) -> bool:
+        q = (query or "").lower()
+        metric_tokens = [
+            "venda",
+            "vendas",
+            "estoque",
+            "margem",
+            "ruptura",
+            "rupturas",
+            "preço",
+            "preco",
+            "custo",
+            "ticket",
+            "faturamento",
+            "receita",
+            "demanda",
+            "giro",
+            "abastecimento",
+        ]
+        return any(token in q for token in metric_tokens)
+
+    def _has_market_subject_hint(self, query: str) -> bool:
+        import re
+
+        q = (query or "").lower()
+        generic_phrases = [
+            "pesquisa de mercado",
+            "pesquisa de preço",
+            "pesquisa de preco",
+            "comparar preço",
+            "comparar preco",
+            "preço de mercado",
+            "preco de mercado",
+            "quanto custa",
+            "onde comprar",
+            "cotação",
+            "cotacao",
+            "concorrente",
+            "concorrência",
+            "concorrencia",
+            "mercado",
+            "internet",
+        ]
+        for phrase in generic_phrases:
+            q = q.replace(phrase, " ")
+
+        tokens = [
+            token
+            for token in re.findall(r"[a-z0-9à-ÿ]+", q)
+            if len(token) > 2
+            and token
+            not in {
+                "para",
+                "com",
+                "sem",
+                "dos",
+                "das",
+                "por",
+                "uma",
+                "uns",
+                "nas",
+                "nos",
+                "faca",
+                "faça",
+                "quero",
+                "preciso",
+                "busque",
+                "buscar",
+                "pesquise",
+                "mostrar",
+                "mostre",
+            }
+        ]
+        return len(tokens) > 0
+
+    def _format_tool_result_for_path(
+        self,
+        user_query: str,
+        tool_name: str,
+        tool_result: Any,
+        tool_params: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if tool_name == "gerar_grafico_universal_v2":
+            if self._is_dashboard_request(user_query) and not self._is_dashboard_followup_nonvisual_query(user_query):
+                return self._format_governed_dashboard_result(user_query, tool_result, tool_params)
+            return self._format_governed_chart_result(user_query, tool_result, tool_params)
+        if tool_name == "gerar_dashboard_executivo":
+            return self._format_governed_dashboard_result(user_query, tool_result, tool_params)
+        if tool_name in {
+            "consultar_dados_flexivel",
+            "pesquisar_precos_concorrentes",
+            "pesquisar_mercado_web",
+            "encontrar_rupturas_criticas",
+            "analisar_historico_vendas",
+            "calcular_eoq",
+            "analisar_produto_todas_lojas",
+        }:
+            return self._format_deterministic_result(user_query, tool_name, tool_result, tool_params)
+        return {"type": "text", "result": {"mensagem": "Consulta executada."}}
+
+    def _should_use_calculation_sandbox(self, intent: Any, tool_name: str, query: str) -> bool:
+        if not self.code_gen_agent:
+            return False
+
+        q = (query or "").lower()
+        intent_value = str(getattr(intent, "value", intent or "")).lower()
+        explicit_keywords = [
+            "simulação",
+            "simulacao",
+            "cenário",
+            "cenario",
+            "sensibilidade",
+            "what-if",
+            "what if",
+            "eoq",
+            "lote econômico",
+            "lote economico",
+        ]
+        if any(k in q for k in explicit_keywords):
+            return True
+        return intent_value == "calculation" and tool_name in {"calcular_eoq", "consultar_dados_flexivel"}
+
+    def _resolve_product_snapshot_for_calculation(
+        self,
+        user_query: str,
+        params: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        import re
+        args = dict(params or {})
+        product_id = str(args.get("produto_id") or args.get("produto_codigo") or "").strip()
+        if not product_id:
+            match = re.search(r"(?:produto|sku|item)\s+(\d+)", user_query.lower())
+            if match:
+                product_id = str(match.group(1))
+
+        snapshot: Dict[str, Any] = {"produto_id": product_id or None}
+        if not product_id:
+            return snapshot
+
+        query_tool = self._find_tool_by_name("consultar_dados_flexivel")
+        if query_tool is None:
+            return snapshot
+
+        base_params = {
+            "colunas": ["PRODUTO", "NOME", "VENDA_30DD", "ULTIMA_ENTRADA_CUSTO_CD"],
+            "filtros": {"PRODUTO": int(product_id)},
+            "limite": "1",
+        }
+        try:
+            result = self._execute_tool_with_recovery(query_tool, "consultar_dados_flexivel", base_params)
+            rows = result.get("resultados", []) if isinstance(result, dict) else []
+            if rows and isinstance(rows[0], dict):
+                row = rows[0]
+                snapshot["produto_nome"] = row.get("NOME")
+                snapshot["venda_30dd"] = row.get("VENDA_30DD")
+                snapshot["custo_unitario"] = row.get("ULTIMA_ENTRADA_CUSTO_CD")
+        except Exception as error:
+            logger.warning(f"[SANDBOX] Falha ao coletar snapshot de produto {product_id}: {error}")
+
+        return snapshot
+
+    def _format_calculation_sandbox_result(
+        self,
+        user_query: str,
+        calc_result: Dict[str, Any],
+        assumptions: Dict[str, Any],
+        sensitivity: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        if calc_result.get("error"):
+            return {
+                "type": "text",
+                "result": {"mensagem": f"Não consegui concluir o cálculo no sandbox: {calc_result.get('error')}"},
+                "source": "sandbox.code_gen_agent",
+                "mode": "deterministic_sandbox_failed",
+                "confidence": 0.35,
+                "citations": [],
+            }
+
+        eoq = calc_result.get("eoq")
+        orders = calc_result.get("orders_per_year")
+        total_cost = calc_result.get("total_cost")
+        order_point = calc_result.get("order_point")
+        demand_annual = assumptions.get("demand_annual")
+        unit_cost = assumptions.get("unit_cost")
+        order_cost = assumptions.get("order_cost")
+        holding_pct = assumptions.get("holding_cost_pct")
+        product_id = assumptions.get("produto_id")
+        product_name = assumptions.get("produto_nome")
+
+        def _fmt_num(value: Any, digits: int = 2) -> str:
+            try:
+                if value is None:
+                    return "-"
+                return f"{float(value):,.{digits}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return str(value)
+
+        assumptions_lines = [
+            f"- Produto: {product_id or 'não informado'}" + (f" ({product_name})" if product_name else ""),
+            f"- Demanda anual usada: {_fmt_num(demand_annual, 0)} unidades",
+            f"- Custo por pedido: R$ {_fmt_num(order_cost)}",
+            f"- Custo unitário: R$ {_fmt_num(unit_cost)}",
+            f"- Custo de armazenagem: {_fmt_num(float(holding_pct or 0) * 100, 1)}% a.a.",
+        ]
+
+        msg = (
+            "## Resumo executivo\n"
+            "- Cálculo no sandbox concluído.\n"
+            f"- EOQ recomendado: {_fmt_num(eoq, 0)} unidades por pedido.\n"
+            f"- Pedidos por ano: {_fmt_num(orders, 1)}.\n"
+            f"- Custo total anual estimado: R$ {_fmt_num(total_cost)}.\n"
+            f"- Ponto de pedido de referência: {_fmt_num(order_point, 0)} unidades.\n\n"
+            "## Premissas\n"
+            + "\n".join(assumptions_lines)
+        )
+
+        table_data: List[Dict[str, Any]] = [
+            {"Indicador": "EOQ recomendado", "Valor": _fmt_num(eoq, 0)},
+            {"Indicador": "Pedidos por ano", "Valor": _fmt_num(orders, 1)},
+            {"Indicador": "Custo total anual (R$)", "Valor": _fmt_num(total_cost)},
+            {"Indicador": "Ponto de pedido", "Valor": _fmt_num(order_point, 0)},
+        ]
+
+        if sensitivity:
+            table = "| Cenário | Demanda anual | EOQ | Pedidos/ano |\n|---|---:|---:|---:|\n"
+            for row in sensitivity:
+                table += (
+                    f"| {row.get('cenario')} | {_fmt_num(row.get('demand_annual'), 0)} | "
+                    f"{_fmt_num(row.get('eoq'), 0)} | {_fmt_num(row.get('orders_per_year'), 1)} |\n"
+                )
+            msg += "\n\n## Sensibilidade\n" + table
+            table_data = [
+                {
+                    "Cenario": str(row.get("cenario") or "-"),
+                    "Demanda anual": _fmt_num(row.get("demand_annual"), 0),
+                    "EOQ": _fmt_num(row.get("eoq"), 0),
+                    "Pedidos/ano": _fmt_num(row.get("orders_per_year"), 1),
+                }
+                for row in sensitivity
+            ]
+
+        citations = [{"source": "sandbox.code_gen_agent", "domain": "internal", "url": "", "competitor": "n/a"}]
+        if product_id:
+            citations.append({"source": "admmat.parquet", "domain": "internal_data", "url": "", "competitor": "n/a"})
+
+        confidence = 0.86 if sensitivity else 0.82
+        if assumptions.get("from_database"):
+            confidence += 0.06
+        confidence = round(min(confidence, 0.95), 2)
+
+        return {
+            "type": "text",
+            "result": {"mensagem": msg},
+            "source": "sandbox.code_gen_agent",
+            "mode": "deterministic_sandbox",
+            "confidence": confidence,
+            "citations": citations,
+            "table_data": table_data,
+            "calculation": {
+                "assumptions": assumptions,
+                "result": calc_result,
+                "sensitivity": sensitivity or [],
+            },
+        }
+
+    def _execute_calculation_sandbox(self, user_query: str, tool_selection: Any) -> Optional[Dict[str, Any]]:
+        if not self.code_gen_agent:
+            return None
+
+        params = dict(getattr(tool_selection, "tool_params", {}) or {})
+        snapshot = self._resolve_product_snapshot_for_calculation(user_query, params)
+
+        demand_annual = self._extract_numeric_hint(
+            user_query,
+            [
+                r"demanda\s+anual\s+(?:de\s+)?(\d+(?:[.,]\d+)?)",
+                r"(\d+(?:[.,]\d+)?)\s+unidades?\s+por\s+ano",
+            ],
+        )
+        order_cost = self._extract_numeric_hint(
+            user_query,
+            [
+                r"custo\s+(?:do|de)\s+pedido\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+            ],
+        )
+        unit_cost = self._extract_numeric_hint(
+            user_query,
+            [
+                r"custo\s+unit[aá]rio\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+                r"pre[çc]o\s+unit[aá]rio\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+            ],
+        )
+        holding_cost_pct = self._extract_percent_hint(user_query)
+
+        if demand_annual is None:
+            venda_30dd = snapshot.get("venda_30dd")
+            try:
+                if venda_30dd is not None:
+                    demand_annual = float(venda_30dd) * 12.0
+            except Exception:
+                demand_annual = None
+        if unit_cost is None:
+            try:
+                if snapshot.get("custo_unitario") is not None:
+                    unit_cost = float(snapshot.get("custo_unitario"))
+            except Exception:
+                unit_cost = None
+
+        order_cost = order_cost if order_cost and order_cost > 0 else 150.0
+        holding_cost_pct = holding_cost_pct if holding_cost_pct and holding_cost_pct > 0 else 0.25
+
+        if demand_annual is None or demand_annual <= 0 or unit_cost is None or unit_cost <= 0:
+            return None
+
+        calc_result = self.code_gen_agent.calculate_eoq_internal(
+            demand_annual=float(demand_annual),
+            order_cost=float(order_cost),
+            holding_cost_pct=float(holding_cost_pct),
+            unit_cost=float(unit_cost),
+        )
+
+        q = (user_query or "").lower()
+        wants_sensitivity = any(k in q for k in ["sensibilidade", "simulação", "simulacao", "cenário", "cenario", "what if", "what-if"])
+        sensitivity_rows: Optional[List[Dict[str, Any]]] = None
+        if wants_sensitivity:
+            sensitivity_pct = self._extract_percent_hint(user_query) or 0.20
+            sensitivity_pct = max(0.05, min(float(sensitivity_pct), 0.60))
+            scenarios = [
+                ("Base", float(demand_annual)),
+                ("Demanda -{}".format(int(sensitivity_pct * 100)), float(demand_annual) * (1 - sensitivity_pct)),
+                ("Demanda +{}".format(int(sensitivity_pct * 100)), float(demand_annual) * (1 + sensitivity_pct)),
+            ]
+            sensitivity_rows = []
+            for label, scenario_demand in scenarios:
+                scenario_calc = self.code_gen_agent.calculate_eoq_internal(
+                    demand_annual=float(max(1.0, scenario_demand)),
+                    order_cost=float(order_cost),
+                    holding_cost_pct=float(holding_cost_pct),
+                    unit_cost=float(unit_cost),
+                )
+                sensitivity_rows.append(
+                    {
+                        "cenario": label,
+                        "demand_annual": scenario_demand,
+                        "eoq": scenario_calc.get("eoq"),
+                        "orders_per_year": scenario_calc.get("orders_per_year"),
+                    }
+                )
+
+        assumptions = {
+            "produto_id": snapshot.get("produto_id"),
+            "produto_nome": snapshot.get("produto_nome"),
+            "demand_annual": round(float(demand_annual), 2),
+            "order_cost": round(float(order_cost), 2),
+            "unit_cost": round(float(unit_cost), 2),
+            "holding_cost_pct": round(float(holding_cost_pct), 4),
+            "from_database": bool(snapshot.get("venda_30dd") is not None and snapshot.get("custo_unitario") is not None),
+        }
+        return self._format_calculation_sandbox_result(user_query, calc_result, assumptions, sensitivity_rows)
+
     def _requires_governed_path(self, intent: Any, tool_name: str, confidence: float, query: str) -> bool:
         """
         Fluxo governado para reduzir variação e aumentar assertividade em produção.
@@ -728,6 +1597,15 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         intent_val = getattr(intent, "value", str(intent))
         q = (query or "").lower()
         high_value_intents = {"data_query", "visualization", "analysis"}
+        local_critical_tools = {
+            "consultar_dados_flexivel",
+            "encontrar_rupturas_criticas",
+            "analisar_historico_vendas",
+            "pesquisar_precos_concorrentes",
+            "pesquisar_mercado_web",
+            "gerar_dashboard_executivo",
+            "gerar_grafico_universal_v2",
+        }
         explicit_business = any(k in q for k in ["vendas", "venda", "total", "segmento", "une", "lojas"])
         explicit_competitive = any(
             k in q for k in [
@@ -742,6 +1620,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             or explicit_business
             or explicit_competitive
             or tool_name in {"gerar_grafico_universal_v2", "pesquisar_precos_concorrentes"}
+            or (tool_name in local_critical_tools and confidence >= 0.55)
         )
 
     def _is_explicit_business_query(self, query: str) -> bool:
@@ -771,7 +1650,39 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return {"type": "text", "result": {"mensagem": f"Não consegui gerar o gráfico: {msg}"}}
 
         summary = tool_result.get("summary", {}) if isinstance(tool_result.get("summary"), dict) else {}
-        top3 = summary.get("top_3", []) if isinstance(summary.get("top_3"), list) else []
+        q = (user_query or "").lower()
+        low_performance_focus = any(
+            marker in q
+            for marker in (
+                "pontos críticos",
+                "pontos criticos",
+                "critico",
+                "crítico",
+                "criticos",
+                "críticos",
+                "menor",
+                "menores",
+                "piores",
+                "recomenda",
+                "ações",
+                "acoes",
+                "próximos passos",
+                "proximos passos",
+            )
+        )
+        ranked_rows = (
+            summary.get("bottom_10", []) if low_performance_focus and isinstance(summary.get("bottom_10"), list) else []
+        )
+        if not ranked_rows:
+            ranked_rows = (
+                summary.get("bottom_3", []) if low_performance_focus and isinstance(summary.get("bottom_3"), list) else []
+            )
+        if not ranked_rows:
+            ranked_rows = summary.get("top_10", []) if isinstance(summary.get("top_10"), list) else []
+        if not ranked_rows:
+            ranked_rows = summary.get("top_3", []) if isinstance(summary.get("top_3"), list) else []
+        dimension_label = str(summary.get("dimensao") or "Dimensão")
+        metric_label = str(summary.get("metrica") or "Valor")
         def _fmt_num(v: Any) -> str:
             try:
                 fv = float(v or 0)
@@ -779,42 +1690,51 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 return str(v)
             return f"{fv:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        top_rows = top3[:3] if top3 else []
-        filtros = (tool_params or {}).get("filtros", {}) if isinstance(tool_params, dict) else {}
-        recorte = []
-        if filtros:
-            friendly = []
-            key_alias = {
-                "UNE": "Loja (UNE)",
-                "NOMESEGMENTO": "Segmento",
-                "NOMEGRUPO": "Grupo",
-            }
-            for k, v in filtros.items():
-                friendly.append(f"{key_alias.get(str(k), str(k))}: {v}")
-            if friendly:
-                recorte.extend(friendly)
-        if (tool_params or {}).get("filtro_segmento"):
-            recorte.append(f"Segmento: {tool_params.get('filtro_segmento')}")
-        recorte_txt = "\n".join([f"- {r}" for r in recorte]) if recorte else "- Sem filtros adicionais"
+        top_rows = ranked_rows[:10] if ranked_rows else []
 
         resumo = str(summary.get("mensagem") or "Gráfico gerado com os dados solicitados.")
-        resumo = resumo.replace(",", "X").replace(".", ",").replace("X", ".")
 
-        tabela_top = "| UNE | Vendas (R$) |\n|---|---|\n"
+        tabela_top = f"| {dimension_label} | {metric_label} |\n|---|---|\n"
         if top_rows:
             for item in top_rows:
                 tabela_top += f"| {item.get('dimensao', '-')} | {_fmt_num(item.get('valor', 0))} |\n"
         else:
             tabela_top += "| - | - |\n"
 
+        if any(k in dimension_label.lower() for k in ["loja", "une"]):
+            if low_performance_focus:
+                action = (
+                    "- Priorize as UNEs da base do ranking com plano comercial e revisão de exposição ainda nesta semana.\n"
+                    "- Verifique ruptura, cobertura e preço nas lojas com menor venda antes de ampliar compra.\n"
+                    "- Reavalie o ranking no próximo ciclo semanal para medir recuperação."
+                )
+            else:
+                action = (
+                    "- Priorize as UNEs de menor venda com plano comercial em até 7 dias.\n"
+                    "- Revise estoque e cobertura dos itens líderes para reduzir perda de venda.\n"
+                    "- Reavalie o ranking no próximo ciclo semanal para medir ganho."
+                )
+        else:
+            if low_performance_focus:
+                action = (
+                    "- Ataque primeiro os recortes na base do ranking com ajuste de preço, mix e exposição.\n"
+                    "- Valide ruptura e cobertura dos itens com baixa tração antes de ampliar abastecimento.\n"
+                    "- Reavalie o desempenho no próximo ciclo semanal para confirmar recuperação."
+                )
+            else:
+                action = (
+                    "- Priorize os recortes de menor venda para ajuste de preço/sortimento.\n"
+                    "- Valide ruptura e disponibilidade dos itens de maior demanda.\n"
+                    "- Reavalie o desempenho no próximo ciclo semanal."
+                )
+
         msg = (
             "## Resumo executivo\n"
             + f"- {resumo}\n"
             + "\n\n## Tabela operacional\n"
             + tabela_top
-            + "\n\n## Ação recomendada\n"
-            + "Use o gráfico para priorizar UNEs com baixo desempenho e ajustar plano comercial/abastecimento."
-            + f"\n\n## Recorte e evidência\n{recorte_txt}"
+            + "\n\n## Próximas ações\n"
+            + action
         )
         return {
             "type": "text",
@@ -822,9 +1742,212 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "chart_data": tool_result.get("chart_data"),
         }
 
+    def _format_metric_value(self, value: Any) -> str:
+        try:
+            if value is None:
+                return "-"
+            if isinstance(value, (int, np.integer)):
+                return f"{int(value):,}".replace(",", ".")
+            if isinstance(value, (float, np.floating)):
+                numeric_value = float(value)
+                if abs(numeric_value) >= 1000:
+                    return f"{numeric_value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                return f"{numeric_value:.2f}".replace(".", ",")
+            return str(value)
+        except Exception:
+            return str(value)
+
+    def _format_governed_dashboard_result(
+        self,
+        user_query: str,
+        tool_result: Dict[str, Any],
+        tool_params: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if not isinstance(tool_result, dict):
+            return {
+                "type": "text",
+                "result": {"mensagem": "Não consegui montar o dashboard no momento."},
+            }
+
+        if tool_result.get("status") != "success":
+            error_msg = str(tool_result.get("message") or tool_result.get("error") or "falha desconhecida")
+            return {
+                "type": "text",
+                "result": {
+                    "mensagem": (
+                        "Não consegui montar o dashboard completo nesta rodada. "
+                        f"Motivo: {error_msg}."
+                    )
+                },
+            }
+
+        chart_data = tool_result.get("chart_data")
+        if isinstance(chart_data, str):
+            try:
+                chart_data = json.loads(chart_data)
+            except Exception:
+                chart_data = None
+
+        summary = tool_result.get("summary", {})
+        if not isinstance(summary, dict):
+            summary = {}
+
+        params = tool_params if isinstance(tool_params, dict) else {}
+        filters: Dict[str, Any] = {}
+        if params.get("segmento") or params.get("filtro_segmento"):
+            filters["segmento"] = params.get("segmento") or params.get("filtro_segmento")
+        if params.get("une") or params.get("filtro_une"):
+            filters["une"] = params.get("une") or params.get("filtro_une")
+        if params.get("periodo"):
+            filters["periodo"] = params.get("periodo")
+        if params.get("escopo"):
+            filters["escopo"] = params.get("escopo")
+
+        kpi_candidates = [
+            ("vendas_totais", "Vendas Totais (R$)"),
+            ("lucro_total", "Lucro Total (R$)"),
+            ("total_produtos", "Total de Produtos"),
+            ("estoque_total", "Estoque Total"),
+            ("total_grupos", "Total de Grupos"),
+            ("valor_estoque", "Valor do Estoque (R$)"),
+        ]
+
+        widgets: List[Dict[str, Any]] = []
+        for key, label in kpi_candidates:
+            if key in summary:
+                widgets.append(
+                    {
+                        "kind": "kpi",
+                        "id": key,
+                        "title": label,
+                        "value": self._format_metric_value(summary.get(key)),
+                    }
+                )
+
+        if chart_data:
+            widgets.append(
+                {
+                    "kind": "chart",
+                    "id": "visao_geral",
+                    "title": "Visao consolidada",
+                    "chart_spec": chart_data,
+                }
+            )
+
+        top_10 = summary.get("top_10", []) if isinstance(summary.get("top_10"), list) else []
+        if not top_10:
+            top_10 = summary.get("top_3", []) if isinstance(summary.get("top_3"), list) else []
+        dimension_label = str(summary.get("dimensao") or "Dimensão")
+        metric_label = str(summary.get("metrica") or "Valor")
+        if top_10:
+            top_rows = []
+            for item in top_10[:10]:
+                if not isinstance(item, dict):
+                    continue
+                top_rows.append(
+                    {
+                        dimension_label: str(item.get("dimensao") or "-"),
+                        metric_label: self._format_metric_value(item.get("valor")),
+                    }
+                )
+            if top_rows:
+                widgets.append(
+                    {
+                        "kind": "table",
+                        "id": "top_dimensoes",
+                        "title": f"Ranking Top 10 - {metric_label} por {dimension_label}",
+                        "rows": top_rows,
+                    }
+                )
+
+        table_rows = [
+            {"Indicador": label, "Valor": self._format_metric_value(summary.get(key))}
+            for key, label in kpi_candidates
+            if key in summary
+        ]
+        if table_rows:
+            widgets.append(
+                {
+                    "kind": "table",
+                    "id": "resumo_metricas",
+                    "title": "Resumo de metricas",
+                    "rows": table_rows,
+                }
+            )
+
+        if not widgets and chart_data:
+            # Fallback para cenário com apenas gráfico.
+            return self._format_governed_chart_result(user_query, tool_result, tool_params)
+
+        def _period_label(raw: Any) -> str:
+            import re
+            value = str(raw or "").strip().lower()
+            match = re.match(r"^(\d+)\s*([dwm])$", value)
+            if match:
+                qty = int(match.group(1))
+                unit = match.group(2)
+                if unit == "d":
+                    return f"Últimos {qty} dias"
+                if unit == "w":
+                    return f"Últimas {qty} semanas"
+                if unit == "m":
+                    return f"Últimos {qty} meses"
+            aliases = {
+                "mes_atual": "Mês atual",
+                "hoje": "Hoje",
+            }
+            return aliases.get(value, str(raw or ""))
+
+        subtitle_parts: List[str] = []
+        if filters.get("segmento"):
+            subtitle_parts.append(f"Segmento {filters.get('segmento')}")
+        if filters.get("une"):
+            subtitle_parts.append(f"UNE {filters.get('une')}")
+        if filters.get("periodo"):
+            human_period = _period_label(filters.get("periodo"))
+            subtitle_parts.append(human_period)
+            filters["periodo"] = human_period
+        if filters.get("escopo") == "rede":
+            subtitle_parts.append("Toda a rede")
+        subtitle = " • ".join([p for p in subtitle_parts if p]) if subtitle_parts else "Visão consolidada da rede"
+        dashboard_title = "Painel de Vendas Interativo"
+        if filters.get("segmento"):
+            dashboard_title = f"Painel de Vendas - {filters.get('segmento')}"
+        dashboard_spec = {
+            "title": dashboard_title,
+            "subtitle": subtitle,
+            "filters": filters,
+            "widgets": widgets,
+        }
+        message = (
+            "Dashboard interativo gerado com sucesso. "
+            "Use os widgets para navegar pelos indicadores principais."
+        )
+        return {
+            "type": "dashboard",
+            "result": {"mensagem": message},
+            "dashboard_spec": dashboard_spec,
+            "chart_data": chart_data,
+            "source": "deterministic_tool",
+            "confidence": 0.9,
+        }
+
     def _extract_segment_from_query(self, query: str) -> Optional[str]:
         from backend.app.core.utils.query_router import extract_segment_filter
         return extract_segment_filter(query)
+
+    def _extract_product_code_from_query(self, query: str) -> Optional[int]:
+        from backend.app.core.utils.query_router import extract_product_code
+
+        return extract_product_code(query)
+
+    def _extract_une_from_query(self, query: str) -> Optional[str]:
+        from backend.app.core.utils.query_router import extract_une_filter
+        return extract_une_filter(query)
+
+    def _extract_period_from_query(self, query: str) -> Optional[str]:
+        from backend.app.core.utils.query_router import extract_period_filter
+        return extract_period_filter(query)
 
     def _extract_state_from_query(self, query: str) -> Optional[str]:
         import re
@@ -876,6 +1999,14 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             if fallback_name == "gerar_grafico_universal_v2":
                 params.setdefault("descricao", user_query)
                 params.setdefault("tipo_grafico", "bar")
+                if params.get("segmento") and not params.get("filtro_segmento"):
+                    params["filtro_segmento"] = params.get("segmento")
+                if params.get("une") and not params.get("filtro_une"):
+                    params["filtro_une"] = str(params.get("une"))
+                if not params.get("quebra_por"):
+                    inferred_breakdown = self._infer_chart_breakdown(user_query)
+                    if inferred_breakdown:
+                        params["quebra_por"] = inferred_breakdown
             elif fallback_name == "consultar_dados_flexivel":
                 params.setdefault("colunas", ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"])
                 params.setdefault("limite", "50")
@@ -911,6 +2042,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 "americanas", "amigão", "amigao",
                 "bellart", "tid", "tubarão", "tubarao", "kalunga",
                 "casa&video", "casa e video",
+                "amazon", "shopee", "le biscuit", "lebiscuit",
+                "mercado livre", "mercadolivre", "meli",
             ]
         )
 
@@ -952,25 +2085,227 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 unique.append(n)
         return ",".join(unique)
 
+    def _extract_market_product_hint(self, query: str) -> Optional[str]:
+        import re
+
+        q = str(query or "").strip()
+        if not q:
+            return None
+
+        lowered = q.lower()
+        market_markers = (
+            "pesquisa de mercado",
+            "preço de mercado",
+            "preco de mercado",
+            "pesquisa de preço",
+            "pesquisa de preco",
+            "concorrente",
+            "concorrência",
+            "concorrencia",
+            "mercado livre",
+            "mercadolivre",
+            "meli",
+            "kalunga",
+            "americanas",
+            "amazon",
+            "shopee",
+            "le biscuit",
+            "lebiscuit",
+        )
+        if not any(marker in lowered for marker in market_markers):
+            return None
+
+        lowered = re.sub(r"^(faca|faça|faz|fazer)\s+(uma\s+)?", "", lowered)
+        lowered = re.sub(r"^(realize|realizar|realiza)\s+(uma\s+)?", "", lowered)
+        lowered = re.sub(r"^(pesquisa|pesquise|compare|comparar|benchmark)\s+", "", lowered)
+        lowered = re.sub(r"^(de\s+mercado|de\s+pre[çc]o)\s+", "", lowered)
+        lowered = re.sub(r"^(do|da|de|o|a)?\s*produto\s+", "", lowered)
+        lowered = re.sub(
+            r"\b(nos?\s+concorrentes?\s+.+)$",
+            "",
+            lowered,
+        )
+        lowered = re.sub(
+            r"\b(?:na|no|em)\s+(mercado livre|mercadolivre|meli|kalunga|americanas|amazon|shopee|le biscuit|lebiscuit|casa&video|casa e video|bellart|amig[aã]o|tubar[aã]o|tid'?s?)\b.*$",
+            "",
+            lowered,
+        )
+        lowered = re.sub(
+            r"\b(?:em|no estado)\s+(rj|rio de janeiro|mg|minas gerais|es|esp[ií]rito santo|espirito santo)\b.*$",
+            "",
+            lowered,
+        )
+        lowered = re.sub(r"\s+", " ", lowered).strip(" .,-")
+        return lowered or None
+
+    def _normalize_market_text(self, value: Any) -> str:
+        import re
+        import unicodedata
+
+        raw = unicodedata.normalize("NFKD", str(value or ""))
+        raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+        raw = raw.lower()
+        raw = re.sub(r"[^a-z0-9]+", " ", raw)
+        return re.sub(r"\s+", " ", raw).strip()
+
+    def _extract_market_query_tokens(self, query: str) -> List[str]:
+        import re
+
+        normalized = self._normalize_market_text(query)
+        if not normalized:
+            return []
+
+        stopwords = {
+            "fa", "faca", "uma", "um", "de", "do", "da", "dos", "das", "para", "no", "na", "nos", "nas",
+            "com", "e", "em", "por", "ou", "a", "o", "as", "os",
+            "pesquisa", "mercado", "preco", "precos", "precoo", "produto", "itens", "item", "fontes",
+            "publicas", "publica", "links", "link", "consulta", "comparar", "compare", "pesquise",
+            "concorrente", "concorrentes", "concorrencia", "benchmark",
+            "rj", "mg", "es", "rio", "janeiro",
+            "kalunga", "americanas", "amazon", "shopee", "mercado", "livre", "meli", "casa", "video",
+            "inexistente", "inexistentes",
+        }
+        raw_tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", normalized)
+        tokens: List[str] = []
+        for token in raw_tokens:
+            if token in stopwords:
+                continue
+            has_digit = any(ch.isdigit() for ch in token)
+            if len(token) < 3 and not has_digit:
+                continue
+            if token not in tokens:
+                tokens.append(token)
+        return tokens
+
+    def _filter_relevant_market_items(self, user_query: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        tokens = self._extract_market_query_tokens(user_query)
+        if not tokens:
+            return items
+
+        has_numeric_token = any(any(ch.isdigit() for ch in t) for t in tokens)
+        relevant: List[Dict[str, Any]] = []
+        for item in items:
+            haystack = self._normalize_market_text(
+                " ".join(
+                    [
+                        str(item.get("produto") or ""),
+                        str(item.get("concorrente") or ""),
+                        str(item.get("dominio") or ""),
+                        str(item.get("url") or ""),
+                    ]
+                )
+            )
+            if not haystack:
+                continue
+            matches = [t for t in tokens if t in haystack]
+            if not matches:
+                continue
+            match_ratio = len(matches) / float(max(1, len(tokens)))
+            min_ratio = 0.34 if len(tokens) >= 3 else 0.5
+            if match_ratio >= min_ratio or len(matches) >= 2:
+                relevant.append(item)
+
+        # Em consultas altamente específicas (SKU/medida), sem match = sem evidência.
+        if not relevant and has_numeric_token:
+            return []
+        return relevant if relevant else items
+
     def _resolve_query_with_history_context(self, user_query: str, chat_history: Optional[List[Dict[str, Any]]]) -> str:
         """
         Resolve follow-up curto/ambíguo com base na última pergunta do usuário.
         """
+        import re
+
         query = (user_query or "").strip()
         if not query or not chat_history:
             return query
 
         q_lower = query.lower()
+        # Follow-up estratégico/comercial deve manter a intenção da pergunta atual;
+        # mesclar com a query anterior reduz precisão e induz repetição de relatório.
+        if self._is_contextual_action_followup_query(q_lower, chat_history):
+            return query
+        expanded_followup_query = self._expand_business_followup_with_context(query, chat_history)
+        if expanded_followup_query != query:
+            logger.info(f"[CONTEXT] Follow-up ancorado. atual='{query}' expandido='{expanded_followup_query}'")
+            return expanded_followup_query
+        word_count = len([w for w in q_lower.split() if w.strip()])
         has_domain_scope = any(
-            k in q_lower for k in ["venda", "estoque", "segmento", "categoria", "grupo", "produto", "une", "loja", "grafico", "gráfico"]
+            k in q_lower
+            for k in [
+                "venda",
+                "estoque",
+                "segmento",
+                "categoria",
+                "grupo",
+                "produto",
+                "une",
+                "loja",
+                "grafico",
+                "gráfico",
+                "dashboard",
+                "eoq",
+                "sensibilidade",
+                "simulacao",
+                "simulação",
+                "pesquisa de mercado",
+                "concorrente",
+            ]
         )
         followup_marker = any(
-            k in q_lower for k in ["completa", "completo", "essas", "dessas", "delas", "agora", "continua", "continue", "detalhe"]
+            k in q_lower
+            for k in [
+                "completa",
+                "completo",
+                "essas",
+                "dessas",
+                "delas",
+                "agora",
+                "continua",
+                "continue",
+                "detalhe",
+                "refine",
+                "refinar",
+                "anterior",
+            ]
         )
-        if has_domain_scope and not followup_marker:
+        strong_standalone = any(
+            k in q_lower
+            for k in [
+                "calcule",
+                "calcular",
+                "gere",
+                "gerar",
+                "pesquise",
+                "pesquisa",
+                "me mostre",
+                "mostre",
+                "sql",
+                "python",
+                "parquet",
+            ]
+        )
+
+        # Sensibilidade sem premissas numéricas costuma depender da rodada anterior.
+        has_sensitivity = any(k in q_lower for k in ["sensibilidade", "simulação", "simulacao", "cenário", "cenario"])
+        has_calc_inputs = all(
+            [
+                bool(re.search(r"demanda\s+anual|unidades?\s+por\s+ano", q_lower)),
+                bool(re.search(r"custo\s+(?:do|de)\s+pedido", q_lower)),
+                bool(re.search(r"custo\s+unit[aá]rio|pre[çc]o\s+unit[aá]rio", q_lower)),
+            ]
+        ) or bool(re.search(r"(?:produto|sku|item)\s+\d+", q_lower))
+        needs_previous_context = has_sensitivity and not has_calc_inputs
+        if "dashboard" in q_lower and any(k in q_lower for k in ["refine", "refinar", "anterior", "compare", "comparar"]):
+            needs_previous_context = True
+
+        if not needs_previous_context and has_domain_scope and (strong_standalone or not followup_marker or word_count > 12):
             return query
 
-        wants_period_refine = any(k in q_lower for k in ["refine por periodo", "refinar por periodo", "por período", "por periodo"])
+        wants_period_refine = any(
+            k in q_lower for k in ["refine por periodo", "refinar por periodo", "por período", "por periodo", "periodo anterior", "período anterior"]
+        )
+        prefers_dashboard_context = "dashboard" in q_lower
 
         last_user_query = None
         candidate_queries: List[str] = []
@@ -981,12 +2316,17 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                     candidate_queries.append(content)
 
         if wants_period_refine:
-            # Prioriza última pergunta analítica (não gráfica) para refinamento temporal.
+            # Prioriza última pergunta compatível com o tipo da continuação.
             for c in candidate_queries:
                 c_low = c.lower()
-                if any(k in c_low for k in ["venda", "vendas", "segmento", "une", "loja"]) and not self._is_chart_request(c_low):
-                    last_user_query = c
-                    break
+                if prefers_dashboard_context:
+                    if "dashboard" in c_low or self._is_chart_request(c_low):
+                        last_user_query = c
+                        break
+                else:
+                    if any(k in c_low for k in ["venda", "vendas", "segmento", "une", "loja"]) and not self._is_chart_request(c_low):
+                        last_user_query = c
+                        break
 
         if not last_user_query:
             last_user_query = candidate_queries[0] if candidate_queries else None
@@ -994,15 +2334,1102 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         if not last_user_query:
             return query
 
-        merged = (
-            f"{last_user_query}. "
-            f"Continuação solicitada: {query}. "
-            "Mantenha o recorte anterior e amplie apenas o detalhamento pedido."
-        )
+        merged = f"{last_user_query}. {query}"
         logger.info(f"[CONTEXT] Follow-up resolvido. atual='{query}' base='{last_user_query}'")
         return merged
 
-    def _enrich_tool_selection_for_business(self, user_query: str, tool_selection: Any) -> None:
+    def _is_context_dependent_business_followup(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        q = (query or "").strip().lower()
+        if not q:
+            return False
+
+        followup_context = self._extract_followup_context(chat_history)
+        context_has_anchor = any(
+            followup_context.get(key) not in (None, "", [])
+            for key in ("product_code", "segment", "une", "response_breakdown", "last_user_query")
+        )
+        if not context_has_anchor:
+            return False
+
+        has_explicit_anchor = any(
+            [
+                self._extract_product_code_from_query(q),
+                self._extract_segment_from_query(q),
+                self._extract_une_from_query(q),
+                self._extract_period_from_query(q),
+            ]
+        )
+        if has_explicit_anchor:
+            return False
+
+        objective_markers = (
+            "vende",
+            "vendem",
+            "venda",
+            "vendas",
+            "estoque",
+            "ruptura",
+            "rupturas",
+            "líder",
+            "lider",
+            "menos",
+            "mais",
+            "top",
+            "ranking",
+            "giro",
+            "cobertura",
+        )
+        referential_markers = (
+            "e ",
+            "agora",
+            "dessas",
+            "delas",
+            "desse",
+            "dessa",
+            "nesse",
+            "nessa",
+            "nisso",
+            "anterior",
+            "última resposta",
+            "ultima resposta",
+        )
+        word_count = len([token for token in q.split() if token.strip()])
+        has_objective = any(marker in q for marker in objective_markers)
+        has_reference = q.startswith("e ") or any(marker in q for marker in referential_markers)
+        return has_objective and (has_reference or word_count <= 6)
+
+    def _is_underspecified_business_followup(self, query: str) -> bool:
+        q = (query or "").strip().lower()
+        if not q:
+            return False
+        if self._is_commercial_plan_query(q):
+            return False
+
+        has_explicit_anchor = any(
+            [
+                self._extract_product_code_from_query(q),
+                self._extract_segment_from_query(q),
+                self._extract_une_from_query(q),
+                self._extract_period_from_query(q),
+            ]
+        )
+        if has_explicit_anchor:
+            return False
+
+        objective_markers = (
+            "vende",
+            "vendem",
+            "venda",
+            "vendas",
+            "estoque",
+            "ruptura",
+            "rupturas",
+            "mais",
+            "menos",
+            "ranking",
+            "top",
+            "lider",
+            "líder",
+        )
+        referential_markers = (
+            "e ",
+            "agora",
+            "dessas",
+            "delas",
+            "desse",
+            "dessa",
+            "nisso",
+            "anterior",
+            "última resposta",
+            "ultima resposta",
+        )
+        has_reference = q.startswith("e ") or any(marker in q for marker in referential_markers)
+        return any(marker in q for marker in objective_markers) and has_reference
+
+    def _expand_business_followup_with_context(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        import re
+        from backend.app.core.utils.query_router import extract_top_limit
+
+        q = (query or "").strip()
+        if not q or not chat_history:
+            return q
+
+        if not self._is_context_dependent_business_followup(q, chat_history):
+            return q
+
+        followup_context = self._extract_followup_context(chat_history)
+        product_code = (
+            self._extract_product_code_from_query(q)
+            or followup_context.get("product_code")
+        )
+        segment = self._extract_segment_from_query(q) or followup_context.get("segment")
+        une = self._extract_une_from_query(q) or followup_context.get("une")
+        scope_all_stores = bool(followup_context.get("scope_all_stores"))
+
+        q_lower = q.lower()
+        normalized = re.sub(r"^(e|agora)\s+", "", q_lower).strip()
+
+        if product_code:
+            if "ruptur" in normalized or "sem estoque" in normalized or "falta de estoque" in normalized:
+                return f"quais lojas estão com rupturas do produto {product_code}"
+
+            limit = extract_top_limit(q_lower)
+            if "vende menos" in normalized or "vendem menos" in normalized:
+                if limit and limit > 1:
+                    return f"quais {limit} lojas menos vendem o produto {product_code}"
+                return f"qual loja vende menos o produto {product_code}"
+
+            if "vende mais" in normalized or "vendem mais" in normalized:
+                if limit and limit > 1:
+                    return f"quais {limit} lojas mais vendem o produto {product_code}"
+                return f"qual loja mais vende o produto {product_code}"
+
+            if re.fullmatch(r"(qual\s+o\s+)?estoque\??", normalized) or normalized == "o estoque?":
+                return f"qual o estoque do produto {product_code}"
+
+        additions: List[str] = []
+        if product_code and "produto" not in normalized and "sku" not in normalized and "item" not in normalized:
+            additions.append(f"do produto {product_code}")
+        if segment and "segmento" in q_lower and "segmento" not in normalized:
+            additions.append(f"do segmento {segment}")
+        if une and any(token in q_lower for token in ["loja", "une"]) and not self._extract_une_from_query(q):
+            additions.append(f"na UNE {une}")
+        if scope_all_stores and any(token in q_lower for token in ["loja", "lojas", "une", "unes"]) and not self._extract_une_from_query(q):
+            additions.append("em todas as lojas")
+
+        if additions:
+            return f"{q.rstrip(' ?')}" + " " + " ".join(additions)
+        return q
+
+    @staticmethod
+    def _is_commercial_plan_query(query: str) -> bool:
+        import re
+
+        q = (query or "").lower()
+        explicit_markers = (
+            "plano comercial",
+            "plano de ação",
+            "plano de acao",
+            "estratégia comercial",
+            "estrategia comercial",
+            "plano de 7 dias",
+            "ações para 7 dias",
+            "acoes para 7 dias",
+            "me dê um plano",
+            "me de um plano",
+            "me dê ações",
+            "me de acoes",
+            "recomende ações",
+            "recomende acoes",
+        )
+        if any(marker in q for marker in explicit_markers):
+            return True
+
+        if re.search(r"pr[oó]xim\w+\s+(a[çc][oõ]es|passos)", q):
+            return True
+        if re.search(r"o\s+que\s+fazer", q):
+            return True
+        if re.search(r"quais?\s+a[çc][oõ]es", q):
+            return True
+        if re.search(r"recomend\w+.*a[çc][oõ]es|a[çc][oõ]es.*recomend\w+", q):
+            return True
+        if re.search(r"como\s+(agir|melhorar|recuperar)", q):
+            return True
+
+        action_markers = (
+            "próximas ações",
+            "proximas acoes",
+            "próximos passos",
+            "proximos passos",
+            "o que fazer",
+            "quais ações",
+            "quais acoes",
+            "como agir",
+            "como melhorar",
+            "como recuperar",
+            "ações recomenda",
+            "acoes recomenda",
+        )
+        business_markers = (
+            "une",
+            "unes",
+            "loja",
+            "lojas",
+            "venda",
+            "vendas",
+            "segmento",
+            "segmentos",
+            "categoria",
+            "categorias",
+            "grupo",
+            "grupos",
+            "estoque",
+            "ruptura",
+            "desempenho",
+            "resultado",
+            "giro",
+            "demanda",
+            "ranking",
+        )
+        return any(marker in q for marker in action_markers) and any(
+            marker in q for marker in business_markers
+        )
+
+    def _is_contextual_action_followup_query(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        q = (query or "").lower()
+        if self._is_commercial_plan_query(q):
+            return True
+
+        followup_action_markers = (
+            "próximas ações",
+            "proximas acoes",
+            "próximos passos",
+            "proximos passos",
+            "o que fazer",
+            "quais ações",
+            "quais acoes",
+            "como agir",
+            "como melhorar",
+            "como recuperar",
+            "recomende ações",
+            "recomende acoes",
+            "me dê ações",
+            "me de acoes",
+            "me dê um plano",
+            "me de um plano",
+        )
+        if not any(marker in q for marker in followup_action_markers):
+            return False
+
+        if self._has_contextual_followup_markers(q):
+            return True
+
+        followup_context = self._extract_followup_context(chat_history)
+        if followup_context.get("response_breakdown") or followup_context.get("query_breakdown"):
+            return True
+
+        last_user_query = str(followup_context.get("last_user_query") or "").lower()
+        business_markers = (
+            "une",
+            "unes",
+            "loja",
+            "lojas",
+            "venda",
+            "vendas",
+            "segmento",
+            "segmentos",
+            "categoria",
+            "categorias",
+            "grupo",
+            "grupos",
+            "estoque",
+            "ruptura",
+            "desempenho",
+            "resultado",
+            "ranking",
+        )
+        return any(marker in last_user_query for marker in business_markers)
+
+    @staticmethod
+    def _extract_plan_days(query: str, default_days: int = 7) -> int:
+        import re
+
+        q = (query or "").lower()
+        match = re.search(r"\b(\d{1,2})\s*dias?\b", q)
+        if match:
+            try:
+                # Janela operacional útil: entre 3 e 30 dias.
+                return max(3, min(30, int(match.group(1))))
+            except ValueError:
+                return default_days
+        if "semana" in q or "semanal" in q:
+            return 7
+        return default_days
+
+    def _infer_breakdown_from_assistant_text(self, content: str) -> Optional[str]:
+        text = str(content or "")
+        if not text.strip():
+            return None
+
+        header_lines = [line.strip().lower() for line in text.splitlines() if line.strip().startswith("|")]
+        header = header_lines[0] if header_lines else text.lower()
+
+        if "loja (une)" in header or __import__("re").search(r"\|\s*une\s*\|", header):
+            return "LOJA"
+        if "segmento" in header:
+            return "SEGMENTO"
+        if "categoria" in header:
+            return "CATEGORIA"
+        if "grupo" in header:
+            return "GRUPO"
+        if "fabricante" in header or "marca" in header:
+            return "FABRICANTE"
+        if "produto" in header or "sku" in header or "item" in header:
+            return "PRODUTO"
+        return None
+
+    def _extract_followup_context(self, chat_history: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        context: Dict[str, Any] = {}
+        if not chat_history:
+            return context
+
+        last_user_query = None
+        last_assistant_msg: Optional[Dict[str, Any]] = None
+
+        for msg in reversed(chat_history):
+            role = str(msg.get("role", "")).lower()
+            if role == "assistant" and last_assistant_msg is None:
+                last_assistant_msg = msg
+            elif role == "user" and last_user_query is None:
+                content = str(msg.get("content", "")).strip()
+                if content:
+                    last_user_query = content
+            if last_user_query and last_assistant_msg is not None:
+                break
+
+        if last_user_query:
+            context["last_user_query"] = last_user_query
+
+        if isinstance(last_assistant_msg, dict):
+            assistant_content = str(last_assistant_msg.get("content", "")).strip()
+            if assistant_content:
+                context["last_assistant_content"] = assistant_content
+
+            metadata = last_assistant_msg.get("metadata")
+            if isinstance(metadata, dict):
+                meta_context = metadata.get("context")
+                if isinstance(meta_context, dict):
+                    for key in (
+                        "response_breakdown",
+                        "query_breakdown",
+                        "period",
+                        "scope_all_stores",
+                        "product_code",
+                        "segment",
+                        "une",
+                        "market_product_hint",
+                        "market_competitors",
+                        "response_type",
+                        "has_dashboard",
+                        "has_chart",
+                        "source",
+                        "dashboard_title",
+                        "dashboard_filters",
+                    ):
+                        if meta_context.get(key) not in (None, "", []):
+                            context[key] = meta_context.get(key)
+
+                for key in ("source", "confidence", "mode"):
+                    if metadata.get(key) not in (None, "", []):
+                        context[key] = metadata.get(key)
+
+            if not context.get("response_breakdown") and assistant_content:
+                inferred = self._infer_breakdown_from_assistant_text(assistant_content)
+                if inferred:
+                    context["response_breakdown"] = inferred
+
+        return context
+
+    def _is_dashboard_context_followup_query(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        q = (query or "").lower()
+        followup_context = self._extract_followup_context(chat_history)
+        has_dashboard_context = bool(
+            followup_context.get("has_dashboard")
+            or str(followup_context.get("response_type") or "").lower() == "dashboard"
+            or "dashboard" in str(followup_context.get("last_user_query") or "").lower()
+        )
+        if not has_dashboard_context:
+            return False
+
+        detail_markers = (
+            "detalhe",
+            "aprofunde",
+            "pontos críticos",
+            "pontos criticos",
+            "critico",
+            "crítico",
+            "criticos",
+            "críticos",
+            "o que você recomenda",
+            "o que voce recomenda",
+            "quais ações",
+            "quais acoes",
+            "próximas ações",
+            "proximas acoes",
+            "próximos passos",
+            "proximos passos",
+        )
+        return any(marker in q for marker in detail_markers) and (
+            self._has_contextual_followup_markers(q) or "dashboard" in q
+        )
+
+    def _is_dashboard_followup_nonvisual_query(self, query: str) -> bool:
+        q = (query or "").lower()
+        if "dashboard" not in q:
+            return False
+        markers = (
+            "detalhe",
+            "aprofunde",
+            "pontos críticos",
+            "pontos criticos",
+            "o que você recomenda",
+            "o que voce recomenda",
+            "quais ações",
+            "quais acoes",
+            "próximas ações",
+            "proximas acoes",
+            "próximos passos",
+            "proximos passos",
+        )
+        return any(marker in q for marker in markers)
+
+    def _is_market_research_followup_query(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        q = (query or "").lower()
+        followup_context = self._extract_followup_context(chat_history)
+        source = str(followup_context.get("source") or "").lower()
+        last_assistant = str(followup_context.get("last_assistant_content") or "").lower()
+        has_market_context = (
+            "pesquisar_precos_concorrentes" in source
+            or "pesquisar_mercado_web" in source
+            or "pesquisa de mercado" in last_assistant
+            or "pesquisa concorrencial" in last_assistant
+        )
+        if not has_market_context:
+            return False
+
+        markers = (
+            "negociação",
+            "negociacao",
+            "negociar",
+            "o que você recomenda",
+            "o que voce recomenda",
+            "quais ações",
+            "quais acoes",
+            "próximos passos",
+            "proximos passos",
+            "estratégia de compra",
+            "estrategia de compra",
+        )
+        return any(marker in q for marker in markers) and (
+            self._has_contextual_followup_markers(q) or "pesquisa" in q
+        )
+
+    def _build_market_research_followup_response(
+        self,
+        user_query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not self._is_market_research_followup_query(user_query, chat_history):
+            return None
+
+        import re
+        import unicodedata
+
+        followup_context = self._extract_followup_context(chat_history)
+        assistant_text = str(followup_context.get("last_assistant_content") or "")
+        if not assistant_text.strip():
+            return None
+
+        normalized_text = (
+            unicodedata.normalize("NFKD", assistant_text)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+            .lower()
+        )
+
+        avg_match = re.search(
+            r"preco medio de (?:mercado|referencia):\s*r\$\s*([\d\.,]+)",
+            normalized_text,
+            re.IGNORECASE,
+        )
+        range_match = re.search(
+            r"faixa(?: de preco encontrada)?:\s*r\$\s*([\d\.,]+)\s*(?:ate|a)\s*r\$\s*([\d\.,]+)",
+            normalized_text,
+            re.IGNORECASE,
+        )
+        competitors_match = re.search(
+            r"concorrentes com pre[çc]o identificado:\s*(.+)",
+            assistant_text,
+            re.IGNORECASE,
+        )
+        product_match = re.search(r"para\s+\*\*(.+?)\*\*", assistant_text, re.IGNORECASE)
+
+        avg_price = avg_match.group(1) if avg_match else None
+        range_min = range_match.group(1) if range_match else None
+        range_max = range_match.group(2) if range_match else None
+        competitors = competitors_match.group(1).strip(" .") if competitors_match else "evidência pública disponível"
+        product = product_match.group(1).strip() if product_match else None
+        if not product:
+            last_user_query = str(followup_context.get("last_user_query") or "")
+            product = re.sub(
+                r"(?i)(fa[çc]a\s+uma?\s+)?pesquisa\s+de\s+mercado\s+(do\s+produto\s+|de\s+|para\s+)?",
+                "",
+                last_user_query,
+            ).strip(" .") or "item pesquisado"
+
+        price_reference = (
+            f"- Referência de preço: média pública em R$ {avg_price} e faixa entre R$ {range_min} e R$ {range_max}.\n"
+            if avg_price and range_min and range_max
+            else ""
+        )
+        negotiation_anchor = (
+            f"- Abra a negociação usando a faixa observada como âncora e tente iniciar próximo ao piso público (R$ {range_min}) quando frete e prazo forem equivalentes.\n"
+            if range_min
+            else "- Abra a negociação usando a média pública como referência inicial e ajuste pela condição comercial real.\n"
+        )
+        avg_cap = (
+            f"- Use R$ {avg_price} como teto de referência para compras spot; acima disso, só avance se prazo, marca ou pacote forem claramente superiores.\n"
+            if avg_price
+            else "- Valide o preço ofertado contra a média da pesquisa antes de fechar o pedido.\n"
+        )
+
+        msg = (
+            "## Resumo executivo\n"
+            f"- Recomendação de negociação estruturada com base na última pesquisa de mercado para {product}.\n"
+            f"- Concorrentes com evidência pública: {competitors}.\n"
+            + price_reference
+            + "\n## Próximas ações\n"
+            + negotiation_anchor
+            + avg_cap
+            + "- Confirme frete, prazo, quantidade mínima e disponibilidade antes de fechar.\n"
+            + "- Se a cobertura estiver concentrada em poucos marketplaces, valide 2-3 cotações adicionais para reduzir risco de preço fora do mercado."
+        )
+        return {
+            "type": "text",
+            "result": {"mensagem": msg},
+            "source": "context.market_research_followup",
+            "confidence": 0.82,
+            "mode": "deterministic_contextual_followup",
+        }
+
+    def _is_market_competitor_followup_query(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        q = (query or "").lower()
+        followup_context = self._extract_followup_context(chat_history)
+        source = str(followup_context.get("source") or "").lower()
+        last_assistant = str(followup_context.get("last_assistant_content") or "").lower()
+        has_market_context = (
+            "pesquisar_precos_concorrentes" in source
+            or "pesquisar_mercado_web" in source
+            or "context.market_research_followup" in source
+            or "pesquisa de mercado" in last_assistant
+            or "pesquisa concorrencial" in last_assistant
+        )
+        if not has_market_context:
+            return False
+
+        mentions_competitor = bool(self._extract_competitors_from_query(q))
+        mentions_marketplace = any(alias in q for alias in ("mercado livre", "mercadolivre", "meli"))
+        if not (mentions_competitor or mentions_marketplace):
+            return False
+
+        short_followup = len([word for word in q.split() if word.strip()]) <= 8
+        return short_followup or self._has_contextual_followup_markers(q) or q.startswith(("e ", "na ", "no "))
+
+    def _build_market_competitor_followup_query(
+        self,
+        user_query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        if not self._is_market_competitor_followup_query(user_query, chat_history):
+            return None
+
+        followup_context = self._extract_followup_context(chat_history)
+        base_query = str(followup_context.get("last_user_query") or "")
+        market_product = (
+            str(followup_context.get("market_product_hint") or "").strip()
+            or str(self._extract_market_product_hint(base_query) or "").strip()
+        )
+        if not market_product:
+            return None
+
+        q = (user_query or "").lower()
+        competitors = self._extract_competitors_from_query(q)
+        state = self._extract_state_from_query(user_query) or self._extract_state_from_query(base_query)
+
+        if any(alias in q for alias in ("mercado livre", "mercadolivre", "meli")) and not competitors.replace("mercado livre", "").strip(", "):
+            resolved = f"pesquisa de mercado de {market_product} no mercado livre"
+        elif competitors:
+            resolved = f"pesquisa de mercado de {market_product} nos concorrentes {competitors.replace(',', ', ')}"
+        else:
+            resolved = f"pesquisa de mercado de {market_product}"
+
+        if state:
+            resolved += f" em {state}"
+        return resolved
+
+    def _configure_market_followup_tool_selection(
+        self,
+        user_query: str,
+        tool_selection: Any,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        resolved_market_query = self._build_market_competitor_followup_query(user_query, chat_history)
+        if not resolved_market_query:
+            return False
+
+        q = resolved_market_query.lower()
+        segment = self._extract_segment_from_query(resolved_market_query)
+        state = self._extract_state_from_query(resolved_market_query) or "RJ"
+        competitors = self._extract_competitors_from_query(q)
+        mentions_ml = any(alias in q for alias in ("mercado livre", "mercadolivre", "meli"))
+        mentions_other_competitor = any(name in competitors for name in ("amazon", "kalunga", "americanas", "shopee", "le biscuit", "bellart", "amigao", "tid's", "tubarao", "casa&video"))
+
+        if mentions_ml and not mentions_other_competitor:
+            tool_selection.tool_name = "pesquisar_mercado_web"
+            tool_selection.tool_params = {
+                "termo_pesquisa": self._extract_market_product_hint(resolved_market_query) or resolved_market_query,
+                "limite": "15",
+            }
+            tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.94)
+            return True
+
+        tool_selection.tool_name = "pesquisar_precos_concorrentes"
+        tool_selection.tool_params = {
+            "descricao_produto": resolved_market_query,
+            "segmento": segment or "",
+            "estado": state,
+            "cidade": "",
+            "limite": "15",
+            "concorrentes": competitors,
+        }
+        tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.94)
+        return True
+
+    def _build_contextual_followup_response(
+        self,
+        user_query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        market_response = self._build_market_research_followup_response(user_query, chat_history)
+        if market_response is not None:
+            return market_response
+        return None
+
+    def _build_dashboard_followup_chart_query(
+        self,
+        user_query: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        followup_context = self._extract_followup_context(chat_history)
+        breakdown = str(
+            followup_context.get("response_breakdown")
+            or followup_context.get("query_breakdown")
+            or "LOJA"
+        ).upper()
+        dimension_label = {
+            "LOJA": "UNE",
+            "SEGMENTO": "segmento",
+            "CATEGORIA": "categoria",
+            "GRUPO": "grupo",
+            "FABRICANTE": "fabricante",
+            "PRODUTO": "produto",
+        }.get(breakdown, "UNE")
+        filters = followup_context.get("dashboard_filters")
+        if not isinstance(filters, dict):
+            filters = {}
+
+        scope_parts: List[str] = [f"vendas por {dimension_label}"]
+        segment = filters.get("segmento") or followup_context.get("segment")
+        if segment:
+            scope_parts.append(f"do segmento {segment}")
+        une = filters.get("une") or followup_context.get("une")
+        if une and dimension_label.lower() != "une":
+            scope_parts.append(f"na UNE {une}")
+        period = followup_context.get("period")
+        if period:
+            scope_parts.append(f"no período {period}")
+
+        focus = "com foco nos pontos críticos e menores vendas"
+        q = (user_query or "").lower()
+        if any(token in q for token in ["recomenda", "ações", "acoes", "passos"]):
+            focus = "com foco nas menores vendas para orientar ações recomendadas"
+
+        return "gere um gráfico de " + " ".join(scope_parts) + f" {focus}"
+
+    def _configure_dashboard_followup_tool_selection(
+        self,
+        user_query: str,
+        tool_selection: Any,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        if not self._is_dashboard_context_followup_query(user_query, chat_history):
+            return False
+
+        followup_context = self._extract_followup_context(chat_history)
+        breakdown = str(
+            followup_context.get("response_breakdown")
+            or followup_context.get("query_breakdown")
+            or "LOJA"
+        ).upper()
+        chart_query = self._build_dashboard_followup_chart_query(user_query, chat_history)
+        filters = followup_context.get("dashboard_filters")
+        if not isinstance(filters, dict):
+            filters = {}
+
+        params: Dict[str, Any] = {
+            "descricao": chart_query,
+            "tipo_grafico": "bar",
+            "quebra_por": breakdown,
+            "limite": 20,
+        }
+
+        segment = filters.get("segmento") or followup_context.get("segment")
+        if segment:
+            params["filtro_segmento"] = segment
+
+        une = filters.get("une") or followup_context.get("une")
+        if une and breakdown != "LOJA":
+            params["filtro_une"] = str(une)
+
+        if followup_context.get("scope_all_stores"):
+            params["limite"] = 50
+
+        tool_selection.tool_name = "gerar_grafico_universal_v2"
+        tool_selection.tool_params = params
+        tool_selection.confidence = max(float(getattr(tool_selection, "confidence", 0) or 0), 0.9)
+        return True
+
+    @staticmethod
+    def _has_contextual_followup_markers(query: str) -> bool:
+        q = (query or "").lower()
+        markers = (
+            "com base",
+            "continue",
+            "continuar",
+            "continua",
+            "detalhe",
+            "agora",
+            "última resposta",
+            "ultima resposta",
+            "anterior",
+            "próximas ações",
+            "proximas acoes",
+            "nisso",
+        )
+        return any(marker in q for marker in markers)
+
+    def _should_use_reference_examples(
+        self,
+        query: str,
+        tool_selection: Optional[Any] = None,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        q = (query or "").lower().strip()
+        if not q:
+            return False
+
+        if self._is_contextual_action_followup_query(q, chat_history):
+            return False
+
+        if self._has_contextual_followup_markers(q):
+            return False
+
+        if chat_history:
+            followup_context = self._extract_followup_context(chat_history)
+            if followup_context.get("response_breakdown") or followup_context.get("last_assistant_content"):
+                if self._is_chart_request(q) or self._is_dashboard_request(q) or self._is_explicit_business_query(q):
+                    return False
+
+        confidence = 0.0
+        if tool_selection is not None:
+            try:
+                confidence = float(getattr(tool_selection, "confidence", 0) or 0)
+            except Exception:
+                confidence = 0.0
+
+        if confidence >= 0.75 and (
+            self._is_chart_request(q)
+            or self._is_dashboard_request(q)
+            or self._is_explicit_business_query(q)
+        ):
+            return False
+
+        return True
+
+    def _should_attempt_routed_tool_rescue(
+        self,
+        user_query: str,
+        llm_text: str,
+        tool_selection: Optional[Any],
+        successful_tool_calls: int,
+    ) -> bool:
+        if successful_tool_calls > 0 or tool_selection is None:
+            return False
+
+        tool_name = str(getattr(tool_selection, "tool_name", "") or "").strip()
+        if not tool_name or self._find_tool_by_name(tool_name) is None:
+            return False
+
+        q = (user_query or "").lower()
+        strategic_followup = self._has_contextual_followup_markers(q) and any(
+            marker in q
+            for marker in (
+                "próximas ações",
+                "proximas acoes",
+                "próximos passos",
+                "proximos passos",
+                "o que fazer",
+                "quais ações",
+                "quais acoes",
+                "como agir",
+                "como melhorar",
+                "como recuperar",
+                "recomende ações",
+                "recomende acoes",
+            )
+        )
+        explicit_data_need = (
+            self._is_chart_request(q)
+            or self._is_dashboard_request(q)
+            or self._is_commercial_plan_query(q)
+            or self._is_explicit_business_query(q)
+            or strategic_followup
+        )
+        if not explicit_data_need:
+            return False
+
+        try:
+            confidence = float(getattr(tool_selection, "confidence", 0) or 0)
+        except Exception:
+            confidence = 0.0
+
+        if confidence < 0.70 and not (self._is_chart_request(q) or self._is_dashboard_request(q)):
+            return False
+
+        text = str(llm_text or "").lower().strip()
+        if not text:
+            return True
+
+        clarification_markers = (
+            "confirme",
+            "me informe",
+            "qual período",
+            "qual periodo",
+            "quer que eu",
+            "posso detalhar",
+            "não encontrei dados",
+            "nao encontrei dados",
+            "preciso de mais",
+        )
+        if any(marker in text for marker in clarification_markers):
+            return False
+
+        return True
+
+    async def _attempt_routed_tool_rescue(
+        self,
+        user_query: str,
+        tool_selection: Any,
+        on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        tool_name = str(getattr(tool_selection, "tool_name", "") or "").strip()
+        if not tool_name:
+            return None
+
+        tool_to_run = self._find_tool_by_name(tool_name)
+        if tool_to_run is None:
+            return None
+
+        tool_params = dict(getattr(tool_selection, "tool_params", {}) or {})
+        await self._emit_progress(on_progress, tool_name, "executing")
+
+        primary_error: Optional[Exception] = None
+        try:
+            tool_result = await asyncio.to_thread(
+                self._execute_tool_with_recovery,
+                tool_to_run,
+                tool_name,
+                tool_params,
+            )
+        except Exception as error:
+            primary_error = error
+            logger.warning(f"[TOOL-RECOVERY] Ferramenta primária {tool_name} falhou com exceção: {error}")
+            tool_result = {"status": "error", "error": str(error)}
+        active_tool_name = tool_name
+        active_tool_params = tool_params
+        active_tool_result = tool_result
+
+        if self._should_attempt_semantic_recovery(
+            user_query=user_query,
+            tool_name=tool_name,
+            tool_result=tool_result,
+            tool_error=primary_error,
+        ):
+            recovered = await self._execute_semantic_tool_fallback(
+                user_query=user_query,
+                primary_tool_name=tool_name,
+                primary_tool_params=tool_params,
+                fallback_tools=getattr(tool_selection, "fallback_tools", []),
+                on_progress=on_progress,
+            )
+            if recovered:
+                active_tool_name = str(recovered["tool_name"])
+                active_tool_params = dict(recovered["tool_params"])
+                active_tool_result = recovered["tool_result"]
+            elif primary_error is not None:
+                return None
+
+        return self._format_tool_result_for_path(
+            user_query,
+            active_tool_name,
+            active_tool_result,
+            active_tool_params,
+        )
+
+    def _attempt_routed_tool_rescue_sync(
+        self,
+        user_query: str,
+        tool_selection: Any,
+    ) -> Optional[Dict[str, Any]]:
+        tool_name = str(getattr(tool_selection, "tool_name", "") or "").strip()
+        if not tool_name:
+            return None
+
+        tool_to_run = self._find_tool_by_name(tool_name)
+        if tool_to_run is None:
+            return None
+
+        tool_params = dict(getattr(tool_selection, "tool_params", {}) or {})
+        primary_error: Optional[Exception] = None
+        try:
+            tool_result = self._execute_tool_with_recovery(
+                tool_to_run,
+                tool_name,
+                tool_params,
+            )
+        except Exception as error:
+            primary_error = error
+            logger.warning(f"[TOOL-RECOVERY][SYNC] Ferramenta primária {tool_name} falhou com exceção: {error}")
+            tool_result = {"status": "error", "error": str(error)}
+        active_tool_name = tool_name
+        active_tool_params = tool_params
+        active_tool_result = tool_result
+
+        if self._should_attempt_semantic_recovery(
+            user_query=user_query,
+            tool_name=tool_name,
+            tool_result=tool_result,
+            tool_error=primary_error,
+        ):
+            recovered = self._execute_semantic_tool_fallback_sync(
+                user_query=user_query,
+                primary_tool_name=tool_name,
+                primary_tool_params=tool_params,
+                fallback_tools=getattr(tool_selection, "fallback_tools", []),
+            )
+            if recovered:
+                active_tool_name = str(recovered["tool_name"])
+                active_tool_params = dict(recovered["tool_params"])
+                active_tool_result = recovered["tool_result"]
+            elif primary_error is not None:
+                return None
+
+        return self._format_tool_result_for_path(
+            user_query,
+            active_tool_name,
+            active_tool_result,
+            active_tool_params,
+        )
+
+    def _configure_commercial_plan_tool_selection(
+        self,
+        user_query: str,
+        tool_selection: Any,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> bool:
+        if not self._is_contextual_action_followup_query(user_query, chat_history):
+            return False
+
+        q = (user_query or "").lower()
+        followup_context = self._extract_followup_context(chat_history)
+        base_query = str(followup_context.get("last_user_query") or "")
+
+        breakdown_map = {
+            "LOJA": ["UNE"],
+            "SEGMENTO": ["NOMESEGMENTO"],
+            "CATEGORIA": ["NOMECATEGORIA"],
+            "GRUPO": ["NOMEGRUPO"],
+            "FABRICANTE": ["NOMEFABRICANTE"],
+            "PRODUTO": ["PRODUTO", "NOME"],
+        }
+
+        if any(token in q for token in ["une", "unes", "loja", "lojas"]):
+            breakdown = "LOJA"
+        elif any(token in q for token in ["segmento", "segmentos"]):
+            breakdown = "SEGMENTO"
+        elif any(token in q for token in ["categoria", "categorias"]):
+            breakdown = "CATEGORIA"
+        elif any(token in q for token in ["grupo", "grupos"]):
+            breakdown = "GRUPO"
+        elif any(token in q for token in ["produto", "produtos", "sku", "item", "itens"]):
+            breakdown = "PRODUTO"
+        else:
+            breakdown = str(followup_context.get("response_breakdown") or followup_context.get("query_breakdown") or "LOJA").upper()
+
+        produto = (
+            self._extract_product_code_from_query(user_query)
+            or self._extract_product_code_from_query(base_query)
+            or followup_context.get("product_code")
+        )
+        segmento = self._extract_segment_from_query(user_query) or self._extract_segment_from_query(base_query) or followup_context.get("segment")
+        une = self._extract_une_from_query(user_query) or self._extract_une_from_query(base_query) or followup_context.get("une")
+
+        is_high_performer_focus = any(token in q for token in ["maior", "maiores", "melhores", "top", "lideres", "líderes"])
+        scope_all_stores = self._is_all_stores_request(user_query) or self._is_all_stores_request(base_query) or bool(
+            followup_context.get("scope_all_stores")
+        )
+
+        filtros: Dict[str, Any] = {}
+        if produto:
+            filtros["PRODUTO"] = int(produto)
+        if segmento and breakdown != "SEGMENTO":
+            filtros["NOMESEGMENTO"] = segmento
+        if une and breakdown != "LOJA":
+            filtros["UNE"] = int(une) if str(une).isdigit() else une
+
+        tool_selection.tool_name = "consultar_dados_flexivel"
+        tool_selection.tool_params = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": breakdown_map.get(breakdown, ["UNE"]),
+            "ordenar_por": "valor",
+            "ordem_desc": is_high_performer_focus,
+            "limite": 200 if scope_all_stores and breakdown == "LOJA" else 50,
+            "filtros": filtros,
+        }
+        tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.93)
+        return True
+
+    def _enrich_tool_selection_for_business(
+        self,
+        user_query: str,
+        tool_selection: Any,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         """
         Ajusta roteamento/parâmetros para perguntas comerciais comuns, mantendo dados reais.
         """
@@ -1017,7 +3444,18 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         mentions_other_competitor = any(name in q for name in other_competitors)
         is_all_stores = self._is_all_stores_request(user_query)
         segment = self._extract_segment_from_query(user_query)
+        une = self._extract_une_from_query(user_query)
+        period = self._extract_period_from_query(user_query)
         state = self._extract_state_from_query(user_query) or "RJ"
+
+        if self._configure_commercial_plan_tool_selection(user_query, tool_selection, chat_history=chat_history):
+            return
+
+        if self._configure_dashboard_followup_tool_selection(user_query, tool_selection, chat_history=chat_history):
+            return
+
+        if self._configure_market_followup_tool_selection(user_query, tool_selection, chat_history=chat_history):
+            return
 
         if self._is_specific_competitor_query(user_query):
             # Mercado Livre explícito sem outro concorrente: usar pesquisa aberta.
@@ -1063,16 +3501,41 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.92)
             return
 
-        # Pedido explícito de gráfico: direciona para ferramenta de visualização.
-        if self._is_chart_request(user_query):
+        # Dashboard com filtros executivos: prioriza ferramenta universal para suportar recortes por segmento/UNE.
+        if self._is_dashboard_request(user_query):
+            breakdown = self._infer_chart_breakdown(user_query)
             tool_selection.tool_name = "gerar_grafico_universal_v2"
             tool_selection.tool_params = {
                 "descricao": user_query,
-                "quebra_por": "LOJA",
+                "tipo_grafico": "bar",
+                "limite": 200 if is_all_stores else 50,
+            }
+            if segment:
+                tool_selection.tool_params["filtro_segmento"] = segment
+            if une:
+                tool_selection.tool_params["filtro_une"] = une
+            if breakdown:
+                tool_selection.tool_params["quebra_por"] = breakdown
+            # Preserva contexto temporal para o formatter de dashboard.
+            if period:
+                tool_selection.tool_params["periodo"] = period
+            if is_all_stores:
+                tool_selection.tool_params["escopo"] = "rede"
+            tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.93)
+            return
+
+        # Pedido explícito de gráfico: direciona para ferramenta de visualização.
+        if self._is_chart_request(user_query):
+            breakdown = self._infer_chart_breakdown(user_query)
+            tool_selection.tool_name = "gerar_grafico_universal_v2"
+            tool_selection.tool_params = {
+                "descricao": user_query,
                 "tipo_grafico": "bar",
                 "limite": 200 if is_all_stores else 50,
                 "filtro_segmento": segment,
             }
+            if breakdown:
+                tool_selection.tool_params["quebra_por"] = breakdown
             tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.90)
             return
 
@@ -1129,8 +3592,14 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         """
         # Para consultas de dados comerciais, priorizamos decisão da LLM
         # (tool selection + síntese contextual), evitando respostas engessadas.
-        deterministic_tools = {"encontrar_rupturas_criticas"}
-        return tool_name in deterministic_tools and confidence >= 0.80
+        deterministic_tools = {
+            "encontrar_rupturas_criticas",
+            "consultar_dados_flexivel",
+            "analisar_historico_vendas",
+            "pesquisar_precos_concorrentes",
+            "pesquisar_mercado_web",
+        }
+        return tool_name in deterministic_tools and confidence >= 0.78
 
     def _format_deterministic_result(
         self,
@@ -1155,6 +3624,136 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             }
 
         query_lower = user_query.lower()
+
+        if tool_name == "analisar_produto_todas_lojas":
+            from backend.app.core.utils.query_router import (
+                is_product_rupture_query,
+                is_product_store_leader_query,
+            )
+
+            produto = tool_result.get("produto") or (tool_params or {}).get("produto_codigo") or "-"
+            nome = str(tool_result.get("nome") or "Produto").strip()
+            mensagem = str(tool_result.get("mensagem") or "").strip()
+            if not bool(tool_result.get("success", False)):
+                detalhe = mensagem or f"Não encontrei dados do produto {produto} na base consultada."
+                sugestao = str(tool_result.get("sugestao") or "Confirme o código e tente novamente.").strip()
+                return {
+                    "type": "text",
+                    "result": {
+                        "mensagem": (
+                            "## Resumo executivo\n"
+                            f"- {detalhe}\n\n"
+                            "## Tabela operacional\n"
+                            "- Sem dados tabulares adicionais para exibir nesta resposta.\n\n"
+                            "## Próximas ações\n"
+                            f"- {sugestao}"
+                        )
+                    },
+                }
+
+            resumo = tool_result.get("resumo", {}) if isinstance(tool_result.get("resumo"), dict) else {}
+            total_lojas = int(resumo.get("total_lojas_com_produto", 0) or 0)
+            lojas_com_estoque = int(resumo.get("lojas_com_estoque", 0) or 0)
+            lojas_em_ruptura = int(resumo.get("lojas_em_ruptura", 0) or 0)
+            total_vendas = resumo.get("total_vendas_30d", 0) or 0
+            total_estoque = resumo.get("total_estoque_lojas", 0) or 0
+            estoque_cd = resumo.get("estoque_cd", 0) or 0
+            top_lojas = tool_result.get("top_5_lojas_vendas", []) if isinstance(tool_result.get("top_5_lojas_vendas"), list) else []
+            rupturas = tool_result.get("lojas_em_ruptura", []) if isinstance(tool_result.get("lojas_em_ruptura"), list) else []
+
+            def _fmt_money(v: Any) -> str:
+                try:
+                    return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return str(v or "-")
+
+            def _table(rows: List[Dict[str, Any]]) -> str:
+                header = "| Loja (UNE) | Sigla | Venda 30 dias (R$) | Estoque |\n|---|---|---|---|\n"
+                body = []
+                for row in rows[:5]:
+                    body.append(
+                        "| "
+                        + " | ".join(
+                            [
+                                str(row.get("une") or "-"),
+                                str(row.get("nome") or "-"),
+                                _fmt_money(row.get("vendas_30d")),
+                                _fmt_money(row.get("estoque")),
+                            ]
+                        )
+                        + " |"
+                    )
+                return header + ("\n".join(body) if body else "| - | - | - | - |")
+
+            if is_product_rupture_query(user_query):
+                if not rupturas:
+                    msg = (
+                        "## Resumo executivo\n"
+                        f"- Não identifiquei lojas em ruptura do produto {produto} ({nome}) no recorte atual.\n"
+                        f"- Cobertura analisada: {total_lojas} lojas com o produto.\n\n"
+                        "## Tabela operacional\n"
+                        "- Sem lojas em ruptura para este produto.\n\n"
+                        "## Próximas ações\n"
+                        "- Se quiser, eu listo as lojas com menor cobertura de estoque para antecipar risco de ruptura.\n"
+                        "- Também posso comparar o estoque atual com a linha verde por UNE."
+                    )
+                    return {"type": "text", "result": {"mensagem": msg}}
+
+                msg = (
+                    "## Resumo executivo\n"
+                    f"- Identifiquei {len(rupturas)} loja(s) em ruptura do produto {produto} ({nome}).\n"
+                    f"- Cobertura analisada: {total_lojas} lojas com o produto.\n"
+                    f"- Estoque CD disponível: {_fmt_money(estoque_cd)}.\n\n"
+                    "## Tabela operacional\n"
+                    + _table(rupturas)
+                    + "\n\n## Próximas ações\n"
+                    "- Priorize reposição imediata nas lojas em ruptura com venda recente para reduzir perda de venda.\n"
+                    "- Avalie transferência entre UNEs ou uso do estoque CD antes de ampliar compra.\n"
+                    "- Se quiser, eu também listo as lojas com menor cobertura para prevenção de novas rupturas."
+                )
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            if is_product_store_leader_query(user_query):
+                lider = top_lojas[0] if top_lojas else {}
+                une_lider = str(lider.get("une") or "-")
+                sigla_lider = str(lider.get("nome") or "-")
+                venda_lider = _fmt_money(lider.get("vendas_30d"))
+                estoque_lider = _fmt_money(lider.get("estoque"))
+                msg = (
+                    "## Resumo executivo\n"
+                    f"- A loja que mais vende o produto {produto} ({nome}) é a UNE {une_lider} ({sigla_lider}).\n"
+                    f"- Venda 30 dias da loja líder: R$ {venda_lider}. Estoque atual: {estoque_lider}.\n"
+                    f"- Cobertura analisada: {total_lojas} lojas com o produto.\n\n"
+                    "## Tabela operacional\n"
+                    + _table(top_lojas)
+                    + "\n\n## Próximas ações\n"
+                    "- Replique preço, exposição e disponibilidade da loja líder nas demais UNEs com potencial.\n"
+                    "- Valide ruptura e cobertura das lojas abaixo do top 5 antes de redistribuir estoque.\n"
+                    "- Se quiser, eu comparo a loja líder com a UNE de menor venda desse produto."
+                )
+                return {"type": "text", "result": {"mensagem": msg}}
+
+            table_md = _table(top_lojas)
+            if rupturas:
+                table_md += (
+                    "\n\n**Rupturas críticas**\n"
+                    + _table(rupturas)
+                )
+
+            msg = (
+                "## Resumo executivo\n"
+                f"- Produto {produto} ({nome}) encontrado em {total_lojas} lojas.\n"
+                f"- Vendas nos últimos 30 dias: R$ {_fmt_money(total_vendas)}. "
+                f"Estoque total nas lojas: {_fmt_money(total_estoque)}. Estoque CD: {_fmt_money(estoque_cd)}.\n"
+                f"- Lojas com estoque: {lojas_com_estoque}. Lojas em ruptura: {lojas_em_ruptura}.\n\n"
+                "## Tabela operacional\n"
+                + table_md
+                + "\n\n## Próximas ações\n"
+                "- Priorize reposição imediata nas lojas em ruptura com venda recente para reduzir perda de venda.\n"
+                "- Replique preço, exposição e sortimento das lojas líderes nas unidades abaixo da média.\n"
+                "- Valide transferência ou reabastecimento a partir do estoque CD antes de ampliar compra."
+            )
+            return {"type": "text", "result": {"mensagem": msg}}
 
         if tool_name == "encontrar_rupturas_criticas":
             total = int(tool_result.get("total_criticos", 0) or 0)
@@ -1181,37 +3780,91 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return {"type": "text", "result": {"mensagem": msg}}
 
         if tool_name in ("pesquisar_precos_concorrentes", "pesquisar_mercado_web"):
-            itens = tool_result.get("itens", []) or []
-            total_itens = int(tool_result.get("total_itens", len(itens)) or len(itens))
+            raw_items = tool_result.get("itens", []) or []
+            itens = [item for item in raw_items if isinstance(item, dict)]
+            itens = self._filter_relevant_market_items(user_query, itens)
+            low_relevance_detected = bool(raw_items and not itens)
+            total_itens = len(itens)
             fontes = tool_result.get("fontes_consultadas", []) or []
             escopo = tool_result.get("escopo", {}) if isinstance(tool_result.get("escopo"), dict) else {}
             fallback_benchmark = bool(tool_result.get("fallback_benchmark_aplicado", False))
 
+            source = str(tool_result.get("source") or f"tool.{tool_name}")
+            mode = str(
+                tool_result.get("mode")
+                or ("deterministic_fallback" if fallback_benchmark else "deterministic_tool")
+            )
+            confidence_raw = tool_result.get("confidence")
+            try:
+                confidence = float(confidence_raw) if confidence_raw is not None else None
+            except Exception:
+                confidence = None
+
+            if confidence is None:
+                confidence = 0.35
+                confidence += min(0.30, total_itens * 0.04)
+                confidence += min(0.20, len(fontes) * 0.05 if isinstance(fontes, list) else 0.0)
+                if fallback_benchmark:
+                    confidence -= 0.12
+                confidence = round(max(0.05, min(confidence, 0.98)), 2)
+
+            citations = tool_result.get("citations")
+            if not isinstance(citations, list):
+                citations = []
+            if not citations and isinstance(fontes, list):
+                derived: List[Dict[str, Any]] = []
+                for src in fontes[:8]:
+                    if not isinstance(src, dict):
+                        continue
+                    derived.append(
+                        {
+                            "source": str(src.get("fonte") or "fonte_publica"),
+                            "domain": str(src.get("dominio") or "n/a"),
+                            "url": str(src.get("url") or "").strip(),
+                            "competitor": str(src.get("concorrente") or "n/a"),
+                        }
+                    )
+                citations = derived
+
             if total_itens <= 0:
-                scope_lines: List[str] = []
+                scope_parts: List[str] = []
                 if escopo.get("estado"):
-                    scope_lines.append(f"- Estado: {escopo.get('estado')}")
+                    scope_parts.append(f"Estado {escopo.get('estado')}")
                 if escopo.get("cidade"):
-                    scope_lines.append(f"- Cidade: {escopo.get('cidade')}")
+                    scope_parts.append(f"Cidade {escopo.get('cidade')}")
                 if escopo.get("segmento"):
-                    scope_lines.append(f"- Segmento: {escopo.get('segmento')}")
-                if not scope_lines:
-                    scope_lines.append("- Recorte: mercado nacional")
+                    scope_parts.append(f"Segmento {escopo.get('segmento')}")
+                if not scope_parts:
+                    scope_parts.append("Mercado nacional")
+                scope_txt = ", ".join(scope_parts)
 
                 msg = (
                     "## Resumo executivo\n"
-                    "- A busca de mercado foi concluída, porém sem preço público confiável para este item nesta rodada.\n\n"
-                    "## Ação recomendada\n"
-                    "- Use esta resposta como alerta de baixa evidência e solicite 2-3 cotações diretas para fechar a negociação.\n\n"
-                    "## Recorte e evidência\n"
-                    + "\n".join(scope_lines)
-                    + "\n- Status: sem evidência pública suficiente no momento.\n\n"
-                    "## Como melhorar a próxima pesquisa\n"
-                    "- Informe marca/modelo ou SKU.\n"
-                    "- Informe especificação exata (medida, gramatura, cor, unidade).\n"
-                    "- Defina cidade e concorrentes-alvo para aumentar precisão."
+                    "- A busca de mercado foi concluída, porém sem preço público confiável para este item nesta rodada.\n"
+                    f"- Escopo analisado: {scope_txt}.\n"
+                    + (
+                        "- Resultados públicos foram descartados por baixa aderência ao item solicitado.\n"
+                        if low_relevance_detected
+                        else ""
+                    )
+                    + "\n## Tabela operacional\n"
+                    "| Indicador | Valor |\n"
+                    "|---|---|\n"
+                    "| Evidência pública válida | Não encontrada |\n"
+                    f"| Escopo consultado | {scope_txt} |\n\n"
+                    "## Próximas ações\n"
+                    "- Solicite 2-3 cotações diretas para fechar a negociação imediata.\n"
+                    "- Refaça a pesquisa com marca/modelo ou SKU.\n"
+                    "- Informe especificação exata (medida, gramatura, cor e embalagem)."
                 )
-                return {"type": "text", "result": {"mensagem": msg}}
+                return {
+                    "type": "text",
+                    "result": {"mensagem": msg},
+                    "source": source,
+                    "confidence": confidence,
+                    "mode": mode if mode else "deterministic_no_evidence",
+                    "citations": citations,
+                }
 
             def _fmt_money(v: Any) -> str:
                 try:
@@ -1277,17 +3930,17 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 if comp not in competitors_found:
                     competitors_found.append(comp)
 
-            scope_lines: List[str] = []
+            scope_parts: List[str] = []
             if escopo.get("estado"):
-                scope_lines.append(f"- Estado: {escopo.get('estado')}")
+                scope_parts.append(f"Estado {escopo.get('estado')}")
             if escopo.get("cidade"):
-                scope_lines.append(f"- Cidade: {escopo.get('cidade')}")
+                scope_parts.append(f"Cidade {escopo.get('cidade')}")
             if escopo.get("segmento"):
-                scope_lines.append(f"- Segmento: {escopo.get('segmento')}")
-            scope_lines.append(
-                f"- Cobertura: {len(competitors_found)} concorrente(s) com preço identificado."
+                scope_parts.append(f"Segmento {escopo.get('segmento')}")
+            scope_parts.append(
+                f"Cobertura {len(competitors_found)} concorrente(s) com preço identificado"
             )
-            scope_txt = "\n".join(scope_lines)
+            scope_txt = "; ".join(scope_parts)
 
             fontes_lines = []
             for f in fontes[:5]:
@@ -1324,23 +3977,73 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             msg = (
                 "## Resumo executivo\n"
                 f"- Pesquisa concorrencial concluída com {total_itens} referências.\n"
+                f"- Escopo analisado: {scope_txt}.\n"
                 f"- Faixa de preço encontrada: {faixa_txt}.\n"
                 f"- Preço médio de referência: R$ {preco_medio_txt}.\n"
                 + fallback_note
                 + "\n## Tabela operacional\n"
                 + table_md
-                + "\n\n## Ação recomendada\n"
-                + action_txt
-                + "\n\n## Recorte e evidência\n"
-                + scope_txt
-                + "\n"
-                + "## Fontes\n"
+                + "\n\n## Próximas ações\n"
+                + f"- {action_txt}\n"
+                + "\n## Fontes consultadas\n"
                 + fontes_txt
                 + refinement_section
             )
-            return {"type": "text", "result": {"mensagem": msg}}
+            return {
+                "type": "text",
+                "result": {"mensagem": msg},
+                "source": source,
+                "confidence": confidence,
+                "mode": mode,
+                "citations": citations,
+            }
+
+        if tool_name == "calcular_eoq":
+            if tool_result.get("error"):
+                return {
+                    "type": "text",
+                    "result": {"mensagem": f"Não consegui concluir o cálculo de EOQ: {tool_result.get('error')}"},
+                }
+
+            eoq = tool_result.get("eoq_ajustado") or tool_result.get("eoq")
+            pedidos = tool_result.get("orders_per_year") or tool_result.get("pedidos_por_ano")
+            custo_total = tool_result.get("custo_total_anual") or tool_result.get("total_cost")
+            produto = tool_result.get("produto") or (tool_params or {}).get("produto_id")
+            nome = tool_result.get("nome")
+
+            def _fmt_money(v: Any) -> str:
+                try:
+                    return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return str(v or "-")
+
+            msg = (
+                "## Resumo executivo\n"
+                f"- EOQ calculado para produto {produto or '-'}"
+                + (f" ({nome})" if nome else "")
+                + ".\n"
+                f"- Quantidade recomendada por pedido: {eoq or '-'} unidades.\n"
+                f"- Pedidos estimados por ano: {pedidos or '-'}.\n"
+                f"- Custo total anual estimado: R$ {_fmt_money(custo_total)}.\n\n"
+                "## Próximas ações\n"
+                "- Use este EOQ como baseline e ajuste por lead-time, orçamento e giro real da loja.\n"
+                "- Rode sensibilidade de demanda (+/-20%) antes de fixar o lote operacional."
+            )
+            return {
+                "type": "text",
+                "result": {"mensagem": msg},
+                "source": "tool.calcular_eoq",
+                "confidence": 0.84,
+                "mode": "deterministic_tool",
+                "citations": [{"source": "admmat.parquet", "domain": "internal_data", "url": "", "competitor": "n/a"}],
+            }
 
         if tool_name == "consultar_dados_flexivel":
+            from backend.app.core.utils.query_router import (
+                extract_product_code,
+                extract_product_store_ranking_request,
+            )
+
             resultados = tool_result.get("resultados", []) or []
             if not resultados:
                 msg = tool_result.get("mensagem") or "Não encontrei dados para este recorte."
@@ -1358,13 +4061,19 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                     if abs(fv - round(fv)) < 1e-9:
                         return str(int(round(fv)))
                     return f"{fv:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                return str(v)
+                text = str(v).strip()
+                return text or "-"
+
+            def _clean_dimension_value(v: Any) -> str:
+                text = str(v or "").strip()
+                return text or "N/A"
 
             def _table(rows: List[Dict[str, Any]], cols: List[str], max_rows: int = 10) -> str:
                 display_map = {
                     "UNE": "Loja (UNE)",
                     "valor": "Venda (R$)",
                     "TOTAL_VENDAS": "Venda (R$)",
+                    "GAP_MEDIA": "Gap para média (R$)",
                     "VENDA_30DD": "Venda 30 dias (R$)",
                     "VENDA_30DD_TOTAL": "Venda 30 dias (R$)",
                     "ESTOQUE_UNE": "Estoque na loja",
@@ -1412,15 +4121,199 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         "result": {"mensagem": "Não encontrei grupos com vendas negativas no recorte atual."},
                     }
 
-                linhas = [f"{idx+1}. {g}: {v:,.2f}" for idx, (g, v) in enumerate(top_neg)]
+                linhas_md = [
+                    f"| {idx + 1} | {g} | {_fmt(v)} |"
+                    for idx, (g, v) in enumerate(top_neg)
+                ]
                 msg = (
-                    "Diagnóstico: identifiquei grupos com vendas negativas no recorte atual.\n"
-                    "Top grupos críticos:\n"
-                    + "\n".join(linhas)
-                    + "\nAção recomendada: revisar preço/mix/ruptura desses grupos e validar se houve devoluções ou ajustes contábeis no período."
-                    + f"\nEvidência: métrica=SUM(VENDA_30DD), grupos_analisados={len(group_totals)}, grupos_negativos={len(negativos)}."
+                    "## Resumo executivo\n"
+                    f"- Identifiquei {len(negativos)} grupo(s) com venda negativa no recorte atual.\n"
+                    "- Os 10 grupos mais críticos estão na tabela abaixo.\n\n"
+                    "## Tabela operacional\n"
+                    "| Ranking | Grupo | Venda (R$) |\n"
+                    "|---|---|---|\n"
+                    + "\n".join(linhas_md)
+                    + "\n\n## Próximas ações\n"
+                    "- Revisar preço, mix e ruptura dos grupos críticos.\n"
+                    "- Validar devoluções e ajustes contábeis no período."
                 )
                 return {"type": "text", "result": {"mensagem": msg}}
+
+            # Caso especial: resultado agregado com métrica "valor" por dimensão (segmento, UNE, categoria etc.).
+            first_row = resultados[0] if resultados and isinstance(resultados[0], dict) else {}
+            if isinstance(first_row, dict) and "valor" in first_row:
+                dim_candidates = [
+                    ("UNE", "Loja (UNE)"),
+                    ("NOMESEGMENTO", "Segmento"),
+                    ("NOMECATEGORIA", "Categoria"),
+                    ("NOMEGRUPO", "Grupo"),
+                    ("NOMEFABRICANTE", "Fabricante"),
+                    ("NOME", "Produto"),
+                ]
+                dim_col = None
+                dim_label = "Dimensão"
+                for candidate, label in dim_candidates:
+                    if candidate in first_row:
+                        dim_col = candidate
+                        dim_label = label
+                        break
+
+                if dim_col:
+                    rows = []
+                    total_valor = 0.0
+                    for r in resultados:
+                        if not isinstance(r, dict):
+                            continue
+                        try:
+                            valor = float(r.get("valor", 0) or 0)
+                        except (TypeError, ValueError):
+                            valor = 0.0
+                        total_valor += valor
+                        rows.append({dim_col: _clean_dimension_value(r.get(dim_col)), "TOTAL_VENDAS": valor})
+                    ranking_request = extract_product_store_ranking_request(user_query) if dim_col == "UNE" else None
+                    reverse_sort = True
+                    if isinstance(ranking_request, dict):
+                        reverse_sort = bool(ranking_request.get("ordem_desc", True))
+                    rows.sort(key=lambda x: float(x.get("TOTAL_VENDAS", 0) or 0), reverse=reverse_sort)
+                    top_rows = rows[:10]
+                    lider = top_rows[0].get(dim_col) if top_rows else "N/A"
+                    if self._is_commercial_plan_query(query_lower):
+                        plan_days = self._extract_plan_days(query_lower, default_days=7)
+                        avg_venda = (total_valor / len(rows)) if rows else 0.0
+                        high_performer_focus = any(
+                            token in query_lower for token in ["maior", "maiores", "melhores", "top", "lideres", "líderes"]
+                        )
+                        candidate_rows = [
+                            row for row in rows
+                            if str(row.get(dim_col) or "").strip().upper() != "N/A"
+                        ] or rows
+                        low_rows = sorted(
+                            candidate_rows,
+                            key=lambda x: float(x.get("TOTAL_VENDAS", 0) or 0),
+                            reverse=high_performer_focus,
+                        )[:5]
+                        prioritized_labels = [
+                            str(r.get(dim_col))
+                            for r in low_rows[:3]
+                            if str(r.get(dim_col) or "").strip()
+                            and str(r.get(dim_col)).strip().upper() != "N/A"
+                        ]
+                        plan_rows = []
+                        for item in low_rows:
+                            venda = float(item.get("TOTAL_VENDAS", 0) or 0)
+                            plan_rows.append(
+                                {
+                                    dim_col: item.get(dim_col),
+                                    "TOTAL_VENDAS": venda,
+                                    "GAP_MEDIA": max(0.0, avg_venda - venda),
+                                }
+                            )
+                        focus_label = dim_label.lower()
+                        focus_descriptor = "maior desempenho" if high_performer_focus else "menor venda"
+                        focuses = ", ".join(prioritized_labels) if prioritized_labels else f"{dim_label}s prioritários"
+                        if dim_col == "UNE":
+                            next_actions = (
+                                "- Dia 1: validar estoque, exposição e preço nas UNEs prioritárias.\n"
+                                "- Dia 2: ajustar ponto extra e comunicação de oferta local.\n"
+                                "- Dia 3: ativar ação comercial de giro rápido com meta diária por UNE.\n"
+                                "- Dia 4: reforçar reposição dos SKUs de maior conversão e retirar itens de baixo giro.\n"
+                                "- Dia 5: revisar execução com equipe de loja e corrigir ruptura/excesso.\n"
+                                "- Dia 6: replicar prática das UNEs líderes nas unidades abaixo da média.\n"
+                                "- Dia 7: fechar resultado D+7 por UNE e recalibrar meta para o próximo ciclo."
+                            )
+                        else:
+                            next_actions = (
+                                f"- Dia 1: revisar mix, preço e ruptura dos {focus_label}s priorizados.\n"
+                                f"- Dia 2: ajustar exposição e comunicação comercial dos {focus_label}s de baixa conversão.\n"
+                                f"- Dia 3: ativar oferta tática e meta diária para recuperar giro.\n"
+                                f"- Dia 4: reforçar disponibilidade dos itens líderes dentro de cada {focus_label}.\n"
+                                f"- Dia 5: medir adesão e cortar itens com baixa resposta comercial.\n"
+                                f"- Dia 6: replicar práticas dos {focus_label}s acima da média.\n"
+                                f"- Dia 7: fechar resultado D+7 e recalibrar sortimento/preço."
+                            )
+                        msg = (
+                            "## Resumo executivo\n"
+                            f"- Plano comercial de {plan_days} dias estruturado para {focus_label} com foco em {focus_descriptor}.\n"
+                            f"- Prioridades imediatas: {focuses}.\n"
+                            f"- Referência de desempenho: média de {_fmt(avg_venda)} por {focus_label} no recorte atual.\n\n"
+                            "## Tabela operacional\n"
+                            + _table(plan_rows, [dim_col, "TOTAL_VENDAS", "GAP_MEDIA"], max_rows=5)
+                            + "\n\n## Próximas ações\n"
+                            + next_actions
+                        )
+                        return {"type": "text", "result": {"mensagem": msg}}
+                    if dim_col == "UNE" and isinstance(ranking_request, dict):
+                        requested_limit = max(1, int(ranking_request.get("limite", 1) or 1))
+                        ranking_rows = rows[:requested_limit]
+                        product_code = extract_product_code(user_query)
+                        singular = requested_limit == 1 and "lojas" not in query_lower
+                        if ranking_request.get("ordem_desc", True):
+                            if singular:
+                                top_store = ranking_rows[0] if ranking_rows else {"UNE": "N/A", "TOTAL_VENDAS": 0.0}
+                                msg = (
+                                    "## Resumo executivo\n"
+                                    f"- A loja que mais vende o produto {product_code or '-'} é a UNE {top_store.get('UNE', 'N/A')}.\n"
+                                    f"- Venda 30 dias da loja líder: R$ {_fmt(top_store.get('TOTAL_VENDAS'))}.\n"
+                                    f"- Cobertura analisada: {len(rows)} lojas com vendas do produto no recorte atual.\n\n"
+                                    "## Tabela operacional\n"
+                                    + _table(ranking_rows, [dim_col, "TOTAL_VENDAS"], max_rows=requested_limit)
+                                    + "\n\n## Próximas ações\n"
+                                    "- Replique preço, exposição e disponibilidade da UNE líder nas demais lojas com potencial.\n"
+                                    "- Se quiser, eu comparo a UNE líder com as lojas abaixo da média desse produto."
+                                )
+                            else:
+                                msg = (
+                                    "## Resumo executivo\n"
+                                    f"- Top {requested_limit} lojas por venda do produto {product_code or '-'} calculado com sucesso.\n"
+                                    f"- UNE líder: {ranking_rows[0].get('UNE', 'N/A')} com R$ {_fmt(ranking_rows[0].get('TOTAL_VENDAS'))}.\n"
+                                    f"- Cobertura analisada: {len(rows)} lojas com vendas do produto no recorte atual.\n\n"
+                                    "## Tabela operacional\n"
+                                    + _table(ranking_rows, [dim_col, "TOTAL_VENDAS"], max_rows=requested_limit)
+                                    + "\n\n## Próximas ações\n"
+                                    "- Replique preço, exposição e disponibilidade das lojas líderes nas demais UNEs com potencial.\n"
+                                    "- Valide ruptura e cobertura das lojas fora do top ranking antes de redistribuir estoque."
+                                )
+                        else:
+                            if singular:
+                                bottom_store = ranking_rows[0] if ranking_rows else {"UNE": "N/A", "TOTAL_VENDAS": 0.0}
+                                msg = (
+                                    "## Resumo executivo\n"
+                                    f"- A loja que menos vende o produto {product_code or '-'} é a UNE {bottom_store.get('UNE', 'N/A')}.\n"
+                                    f"- Venda 30 dias da loja com menor giro: R$ {_fmt(bottom_store.get('TOTAL_VENDAS'))}.\n"
+                                    f"- Cobertura analisada: {len(rows)} lojas com vendas do produto no recorte atual.\n\n"
+                                    "## Tabela operacional\n"
+                                    + _table(ranking_rows, [dim_col, "TOTAL_VENDAS"], max_rows=requested_limit)
+                                    + "\n\n## Próximas ações\n"
+                                    "- Revise preço, exposição, ruptura e sortimento da UNE com menor giro.\n"
+                                    "- Se quiser, eu comparo a UNE de menor giro com a loja líder desse produto."
+                                )
+                            else:
+                                msg = (
+                                    "## Resumo executivo\n"
+                                    f"- Top {requested_limit} lojas de menor venda do produto {product_code or '-'} calculado com sucesso.\n"
+                                    f"- UNE com menor giro: {ranking_rows[0].get('UNE', 'N/A')} com R$ {_fmt(ranking_rows[0].get('TOTAL_VENDAS'))}.\n"
+                                    f"- Cobertura analisada: {len(rows)} lojas com vendas do produto no recorte atual.\n\n"
+                                    "## Tabela operacional\n"
+                                    + _table(ranking_rows, [dim_col, "TOTAL_VENDAS"], max_rows=requested_limit)
+                                    + "\n\n## Próximas ações\n"
+                                    "- Atue primeiro nas UNEs de menor giro com revisão de preço, exposição e abastecimento.\n"
+                                    "- Compare o bottom ranking com as lojas líderes para identificar lacunas operacionais."
+                                )
+                        return {"type": "text", "result": {"mensagem": msg}}
+                    msg = (
+                        "## Resumo executivo\n"
+                        f"- Consolidado de vendas por {dim_label.lower()} concluído. "
+                        f"Itens analisados: {len(rows)}. Destaque: {lider}. Total: {_fmt(total_valor)}.\n\n"
+                        "## Tabela operacional\n"
+                        + _table(top_rows, [dim_col, "TOTAL_VENDAS"], max_rows=10)
+                        + "\n\n## Próximas ações\n"
+                        + (
+                            "- Atue primeiro nas UNEs com menor venda e ajuste plano comercial/abastecimento em 7 dias."
+                            if dim_col == "UNE"
+                            else f"- Priorize os {dim_label.lower()} com menor venda e ajuste sortimento/preço na próxima semana."
+                        )
+                    )
+                    return {"type": "text", "result": {"mensagem": msg}}
 
             # Caso especial: resultado agregado por UNE (colunas UNE + valor).
             if all(isinstance(r, dict) and "UNE" in r and "valor" in r for r in resultados[:1]):
@@ -1454,22 +4347,26 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         filtros_txt = "; ".join(parts)
                 top_une = rows[0]["UNE"] if rows else "N/A"
                 msg = (
-                    "## Resumo\n"
+                    "## Resumo executivo\n"
                     f"Total de vendas por UNE consolidado com sucesso. "
-                    f"UNEs analisadas: {len(rows)}. UNE líder: {top_une}. Total geral: {_fmt(total)}."
+                    f"UNEs analisadas: {len(rows)}. UNE líder: {top_une}. Total geral: {_fmt(total)}.\n"
+                    f"- Filtros aplicados: {filtros_txt}."
                     "\n\n## Tabela operacional\n"
                     + _table(rows, ["UNE", "TOTAL_VENDAS"], max_rows=50)
-                    + "\n\n## Ação recomendada\n"
+                    + "\n\n## Próximas ações\n"
                     "Priorizar plano comercial nas UNEs com menor venda total e revisar sortimento/campanha local."
-                    + "\n\n## Recorte e evidência\n"
-                    + f"- {filtros_txt}\n- Métrica: soma de vendas por UNE."
                 )
                 return {"type": "text", "result": {"mensagem": msg}}
 
             # Resposta executiva para perguntas de vendas em todas as lojas/UNEs.
             if (
-                any(k in query_lower for k in ["venda", "vendas"])
-                and any(k in query_lower for k in ["todas as lojas", "todas as unes", "todas as unes", "todas lojas"])
+                (
+                    (
+                        any(k in query_lower for k in ["venda", "vendas"])
+                        and any(k in query_lower for k in ["todas as lojas", "todas as unes", "todas as unes", "todas lojas"])
+                    )
+                    or self._is_commercial_plan_query(query_lower)
+                )
                 and all("UNE" in r for r in resultados[:1])
                 and all("VENDA_30DD" in r for r in resultados[:1])
             ):
@@ -1508,6 +4405,39 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 top_une = rows[0]["UNE"] if rows else "N/A"
                 filtros = (tool_params or {}).get("filtros", {}) if isinstance(tool_params, dict) else {}
 
+                if self._is_commercial_plan_query(query_lower):
+                    plan_days = self._extract_plan_days(query_lower, default_days=7)
+                    avg_venda = (total_venda / len(rows)) if rows else 0.0
+                    low_rows = sorted(rows, key=lambda x: float(x.get("VENDA_30DD_TOTAL", 0) or 0))[:5]
+                    focused_unes = [str(r.get("UNE")) for r in low_rows[:3] if r.get("UNE") is not None]
+                    plan_rows = []
+                    for item in low_rows:
+                        venda = float(item.get("VENDA_30DD_TOTAL", 0) or 0)
+                        plan_rows.append(
+                            {
+                                "UNE": item.get("UNE"),
+                                "TOTAL_VENDAS": venda,
+                                "GAP_MEDIA": max(0.0, avg_venda - venda),
+                            }
+                        )
+                    msg = (
+                        "## Resumo executivo\n"
+                        f"- Plano comercial de {plan_days} dias estruturado para as UNEs de menor venda.\n"
+                        f"- UNEs prioritárias: {', '.join(focused_unes) if focused_unes else 'definir após validação operacional'}.\n"
+                        f"- Referência: média de {_fmt(avg_venda)} por UNE no recorte atual.\n\n"
+                        "## Tabela operacional\n"
+                        + _table(plan_rows, ["UNE", "TOTAL_VENDAS", "GAP_MEDIA"], max_rows=5)
+                        + "\n\n## Próximas ações\n"
+                        "- Dia 1: validar ruptura, preço e exposição nas UNEs abaixo da média.\n"
+                        "- Dia 2: ajustar sortimento e ativar comunicação comercial local.\n"
+                        "- Dia 3: definir meta diária de recuperação por UNE.\n"
+                        "- Dia 4: reforçar reposição dos itens com maior conversão.\n"
+                        "- Dia 5: revisar execução e corrigir desvios de abastecimento.\n"
+                        "- Dia 6: replicar práticas das UNEs líderes.\n"
+                        "- Dia 7: medir ganho, fechar D+7 e recalibrar meta."
+                    )
+                    return {"type": "text", "result": {"mensagem": msg}}
+
                 segment_hint = ""
                 if "segmento" in query_lower and not any(
                     k.upper() in {"NOMESEGMENTO", "SEGMENTO", "NOME_SEGMENTO"} for k in filtros.keys()
@@ -1518,12 +4448,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                     )
 
                 msg = (
-                    "## Resumo\n"
+                    "## Resumo executivo\n"
                     f"Consolidei vendas e estoque por UNE no recorte consultado. "
                     f"UNE líder: {top_une}. Venda total: {_fmt(total_venda)}. Estoque total: {_fmt(total_estoque)}."
                     "\n\n## Tabela operacional\n"
                     + _table(rows, ["UNE", "VENDA_30DD_TOTAL", "ESTOQUE_UNE_TOTAL", "ITENS"], max_rows=12)
-                    + "\n\n## Ação recomendada\n"
+                    + "\n\n## Próximas ações\n"
                     "Priorizar as UNEs com menor venda total e estoque elevado para plano comercial/abastecimento dirigido."
                     + segment_hint
                 )
@@ -1533,12 +4463,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             first = resultados[0] if resultados else {}
             cols = list(first.keys())[:6] if isinstance(first, dict) else []
             msg = (
-                "## Resumo\n"
+                "## Resumo executivo\n"
                 f"Consulta executada com sucesso. Registros retornados: {len(resultados)}."
                 "\n\n## Tabela operacional\n"
                 + (_table(resultados, cols, max_rows=8) if cols else "Sem colunas para exibir.")
-                + "\n\n## Ação recomendada\n"
-                "Se quiser, eu refino por período, UNE, segmento ou grupo para entregar uma leitura executiva."
+                + "\n\n## Próximas ações\n"
+                "- Informe período, UNE ou segmento alvo para eu retornar ranking Top 10 e comparação com período anterior."
             )
             return {
                 "type": "text",
@@ -1550,11 +4480,52 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "result": {"mensagem": "Consulta executada com sucesso."},
         }
 
-    def _build_clarification_if_needed(self, user_query: str, tool_name: str, confidence: float) -> Optional[Dict[str, Any]]:
+    def _build_clarification_if_needed(
+        self,
+        user_query: str,
+        tool_name: str,
+        confidence: float,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         Detecta consultas comerciais vagas e retorna pergunta de desambiguação.
         """
         q = (user_query or "").lower().strip()
+        chart_related_tools = {
+            "consultar_dados_flexivel",
+            "gerar_grafico_universal_v2",
+            "gerar_dashboard_executivo",
+        }
+        market_related_tools = {
+            "pesquisar_precos_concorrentes",
+            "pesquisar_mercado_web",
+        }
+
+        if self._is_underspecified_business_followup(q):
+            return {
+                "type": "text",
+                "result": {
+                    "mensagem": (
+                        "Para responder com precisão, confirme o contexto principal da continuação.\n"
+                        "Exemplos: 'qual loja vende menos o produto 369947' ou "
+                        "'quais lojas estão com rupturas do produto 369947'."
+                    )
+                },
+            }
+
+        if self._is_context_dependent_business_followup(q, chat_history):
+            expanded_query = self._expand_business_followup_with_context(q, chat_history)
+            if expanded_query == q:
+                return {
+                    "type": "text",
+                    "result": {
+                        "mensagem": (
+                            "Para responder essa continuação com precisão, confirme o contexto principal.\n"
+                            "Exemplos: 'qual loja vende menos o produto 369947' ou "
+                            "'quais lojas estão com rupturas do produto 369947'."
+                        )
+                    },
+                }
 
         # Refinamento por período sem período explícito: pedir confirmação antes de executar.
         wants_period_refine = any(k in q for k in ["refine por periodo", "refinar por periodo", "por período", "por periodo"])
@@ -1571,6 +4542,33 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                     )
                 },
             }
+
+        wants_chart_or_dashboard = self._is_chart_request(q) or self._is_dashboard_request(q)
+        if wants_chart_or_dashboard and tool_name in chart_related_tools:
+            if self._is_dashboard_request(q):
+                return None
+            has_breakdown = bool(self._infer_chart_breakdown(q))
+            has_metric = self._has_business_metric_hint(q)
+            if not has_breakdown or not has_metric:
+                missing_parts = []
+                if not has_metric:
+                    missing_parts.append("a métrica principal (ex.: vendas, estoque, margem)")
+                if not has_breakdown:
+                    missing_parts.append("o recorte do gráfico (ex.: por UNE, segmento, grupo ou produto)")
+                msg = (
+                    "Para montar a visualização correta, confirme "
+                    + " e ".join(missing_parts)
+                    + ".\n"
+                    + "Exemplo: 'gere um gráfico de vendas por segmento nos últimos 30 dias'."
+                )
+                return {"type": "text", "result": {"mensagem": msg}}
+
+        if self._is_competitive_query(q) and tool_name in market_related_tools and not self._has_market_subject_hint(q):
+            msg = (
+                "Para fazer a pesquisa de mercado corretamente, informe o produto ou SKU que você quer pesquisar.\n"
+                "Você também pode complementar com cidade, estado ou concorrente-alvo."
+            )
+            return {"type": "text", "result": {"mensagem": msg}}
 
         if confidence < 0.70:
             return None
@@ -1630,6 +4628,14 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             logger.info("[SMALLTALK] Resposta direta sem uso de ferramentas.")
             return self._small_talk_response(resolved_query)
 
+        contextual_followup_response = self._build_contextual_followup_response(
+            resolved_query,
+            chat_history,
+        )
+        if contextual_followup_response is not None:
+            logger.info("[CONTEXT] Follow-up contextual resolvido sem nova rodada analítica.")
+            return contextual_followup_response
+
         # ========================================================================
         # CAMADA 1: INTENT CLASSIFICATION (NEW 2026-01-24)
         # ========================================================================
@@ -1659,7 +4665,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         logger.info(f"[ROUTER] Reasoning: {tool_selection.reasoning}")
 
         # Ajustes comerciais de alto valor (gráfico explícito, toda rede, segmento).
-        self._enrich_tool_selection_for_business(resolved_query, tool_selection)
+        self._enrich_tool_selection_for_business(resolved_query, tool_selection, chat_history=chat_history)
         # Garante compatibilidade com escopo de tools por role e dependências carregadas.
         self._ensure_tool_selection_available(resolved_query, tool_selection)
         logger.info(
@@ -1671,10 +4677,35 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             resolved_query,
             tool_selection.tool_name,
             tool_selection.confidence,
+            chat_history=chat_history,
         )
         if clarification is not None:
             logger.info("[CLARIFICATION] Consulta vaga detectada. Retornando pergunta guiada.")
             return clarification
+
+        llm_task_type = self._resolve_llm_task_type(
+            intent_result.intent,
+            tool_selection.tool_name,
+            resolved_query,
+        )
+
+        # ========================================================================
+        # CAMADA 2.3: SANDBOX DE CÁLCULO (FIRST-CLASS)
+        # Consulta matemática complexa/sensibilidade pode ser resolvida sem rodada LLM.
+        # ========================================================================
+        if self._should_use_calculation_sandbox(intent_result.intent, tool_selection.tool_name, resolved_query):
+            try:
+                await self._emit_progress(on_progress, "calculation_sandbox", "executing")
+                sandbox_result = await asyncio.to_thread(
+                    self._execute_calculation_sandbox,
+                    resolved_query,
+                    tool_selection,
+                )
+                if sandbox_result:
+                    logger.info("[SANDBOX] Resposta de cálculo retornada com sucesso.")
+                    return sandbox_result
+            except Exception as sandbox_error:
+                logger.warning(f"[SANDBOX] Falha no cálculo sandbox: {sandbox_error}. Seguindo fluxo padrão.")
 
         # ========================================================================
         # CAMADA 2.4: GOVERNED TOOL EXECUTION (PRODUÇÃO)
@@ -1686,23 +4717,101 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 try:
                     await self._emit_progress(on_progress, tool_selection.tool_name, "executing")
 
-                    tool_result = await asyncio.to_thread(
-                        self._execute_tool_with_recovery,
-                        tool_to_run,
-                        tool_selection.tool_name,
-                        tool_selection.tool_params,
-                    )
-
-                    if tool_selection.tool_name == "gerar_grafico_universal_v2":
-                        return self._format_governed_chart_result(resolved_query, tool_result, tool_selection.tool_params)
-
-                    if tool_selection.tool_name in {"consultar_dados_flexivel", "pesquisar_precos_concorrentes"}:
-                        return self._format_deterministic_result(
-                            resolved_query,
+                    primary_error: Optional[Exception] = None
+                    try:
+                        tool_result = await asyncio.to_thread(
+                            self._execute_tool_with_recovery,
+                            tool_to_run,
                             tool_selection.tool_name,
-                            tool_result,
                             tool_selection.tool_params,
                         )
+                    except Exception as error:
+                        primary_error = error
+                        logger.warning(
+                            f"[TOOL-RECOVERY] Ferramenta primária {tool_selection.tool_name} falhou "
+                            f"com exceção: {error}"
+                        )
+                        tool_result = {"status": "error", "error": str(error)}
+
+                    active_tool_name = tool_selection.tool_name
+                    active_tool_params = tool_selection.tool_params
+                    active_tool_result = tool_result
+
+                    if self._should_attempt_semantic_recovery(
+                        user_query=resolved_query,
+                        tool_name=tool_selection.tool_name,
+                        tool_result=tool_result,
+                        tool_error=primary_error,
+                    ):
+                        recovered = await self._execute_semantic_tool_fallback(
+                            user_query=resolved_query,
+                            primary_tool_name=tool_selection.tool_name,
+                            primary_tool_params=tool_selection.tool_params,
+                            fallback_tools=getattr(tool_selection, "fallback_tools", []),
+                            on_progress=on_progress,
+                        )
+                        if recovered:
+                            active_tool_name = str(recovered["tool_name"])
+                            active_tool_params = dict(recovered["tool_params"])
+                            active_tool_result = recovered["tool_result"]
+                        elif primary_error is not None:
+                            raise primary_error
+                        else:
+                            logger.warning(
+                                f"[TOOL-RECOVERY] Sem fallback semântico válido para {tool_selection.tool_name}."
+                            )
+
+                    if active_tool_name == "gerar_grafico_universal_v2":
+                        return self._format_tool_result_for_path(
+                            resolved_query,
+                            active_tool_name,
+                            active_tool_result,
+                            active_tool_params,
+                        )
+
+                    if active_tool_name == "gerar_dashboard_executivo":
+                        dashboard_response = self._format_governed_dashboard_result(
+                            resolved_query,
+                            active_tool_result,
+                            active_tool_params,
+                        )
+                        if dashboard_response.get("type") != "dashboard":
+                            fallback_chart_tool = self._find_tool_by_name("gerar_grafico_universal_v2")
+                            if fallback_chart_tool is not None:
+                                fallback_segment = self._extract_segment_from_query(resolved_query)
+                                fallback_une = self._extract_une_from_query(resolved_query)
+                                fallback_breakdown = self._infer_chart_breakdown(resolved_query)
+                                fallback_chart_params = {
+                                    "descricao": resolved_query,
+                                    "tipo_grafico": "bar",
+                                    "limite": 20,
+                                }
+                                if fallback_segment:
+                                    fallback_chart_params["filtro_segmento"] = fallback_segment
+                                if fallback_une:
+                                    fallback_chart_params["filtro_une"] = fallback_une
+                                if fallback_breakdown:
+                                    fallback_chart_params["quebra_por"] = fallback_breakdown
+                                fallback_result = await asyncio.to_thread(
+                                    self._execute_tool_with_recovery,
+                                    fallback_chart_tool,
+                                    "gerar_grafico_universal_v2",
+                                    fallback_chart_params,
+                                )
+                                return self._format_tool_result_for_path(
+                                    resolved_query,
+                                    "gerar_grafico_universal_v2",
+                                    fallback_result,
+                                    fallback_chart_params,
+                                )
+                        return dashboard_response
+
+                    return self._format_tool_result_for_path(
+                        resolved_query,
+                        active_tool_name,
+                        active_tool_result,
+                        active_tool_params,
+                    )
                 except Exception as e:
                     logger.warning(f"[GOVERNED] Falha na execução governada ({tool_selection.tool_name}): {e}. Fallback para fluxo LLM.")
 
@@ -1727,7 +4836,24 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         tool_selection.tool_name,
                         tool_selection.tool_params,
                     )
-                    return self._format_deterministic_result(
+
+                    if self._is_tool_failure_result(tool_result):
+                        recovered = await self._execute_semantic_tool_fallback(
+                            user_query=resolved_query,
+                            primary_tool_name=tool_selection.tool_name,
+                            primary_tool_params=tool_selection.tool_params,
+                            fallback_tools=getattr(tool_selection, "fallback_tools", []),
+                            on_progress=on_progress,
+                        )
+                        if recovered:
+                            return self._format_tool_result_for_path(
+                                resolved_query,
+                                str(recovered["tool_name"]),
+                                recovered["tool_result"],
+                                dict(recovered["tool_params"]),
+                            )
+
+                    return self._format_tool_result_for_path(
                         resolved_query,
                         tool_selection.tool_name,
                         tool_result,
@@ -1754,18 +4880,22 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         # [OK] FIX RAG: Context Fencing Injection com TIMEOUT
         # Em vez de adicionar mensagens fake, adicionamos um bloco de contexto na mensagem do usuário
-        try:
-            # [OK] FIX: Timeout de 500ms para não bloquear (continua sem RAG se demorar)
-            rag_context_str = await asyncio.wait_for(
-                self._get_rag_examples(resolved_query, top_k=1),  # [OK] Reduzido de 2 para 1 exemplo
-                timeout=0.5  # 500ms timeout
-            )
-        except asyncio.TimeoutError:
-            logger.warning("[RAG] Timeout de 500ms excedido. Continuando sem RAG.")
-            rag_context_str = ""
-        except Exception as e:
-            logger.error(f"[RAG] Erro ao recuperar contexto: {e}")
-            rag_context_str = ""
+        rag_context_str = ""
+        if self._should_use_reference_examples(resolved_query, tool_selection=tool_selection, chat_history=chat_history):
+            try:
+                # [OK] FIX: Timeout de 500ms para não bloquear (continua sem RAG se demorar)
+                rag_context_str = await asyncio.wait_for(
+                    self._get_rag_examples(resolved_query, top_k=1),  # [OK] Reduzido de 2 para 1 exemplo
+                    timeout=0.5  # 500ms timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning("[RAG] Timeout de 500ms excedido. Continuando sem RAG.")
+                rag_context_str = ""
+            except Exception as e:
+                logger.error(f"[RAG] Erro ao recuperar contexto: {e}")
+                rag_context_str = ""
+        else:
+            logger.info("[RAG] Referência histórica pulada para evitar viés em contexto forte da sessão.")
         
         # Combinar query do usuário com o contexto RAG (se houver)
         # BEST PRACTICE: Contexto ANTES da Query (Recency Bias)
@@ -1847,9 +4977,10 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 # Call LLM with tools (Blocking call wrapped in thread)
                 # self.llm is GeminiLLMAdapter which is synchronous
                 response = await asyncio.to_thread(
-                    self.llm.get_completion,
+                    self._llm_get_completion,
                     messages,
-                    tools=tools_to_use
+                    tools_to_use,
+                    llm_task_type,
                 )
 
                 if "error" in response:
@@ -1864,8 +4995,24 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 # MODERN CHECK: Trust the LLM. If it returns text, it's text.
                 # No more forcing graph generation based on keywords.
                 if response_type == "text" and successful_tool_calls == 0:
-                     # Log context for debugging but don't force fallback
-                     pass
+                     content_preview = str(response.get("content", "") or "")
+                     if self._should_attempt_routed_tool_rescue(
+                         resolved_query,
+                         content_preview,
+                         tool_selection,
+                         successful_tool_calls,
+                     ):
+                         logger.warning(
+                             "[ASYNC] LLM retornou texto sem tool call para query analítica. "
+                             f"Executando resgate pela tool roteada: {tool_selection.tool_name}"
+                         )
+                         rescued_response = await self._attempt_routed_tool_rescue(
+                             resolved_query,
+                             tool_selection,
+                             on_progress=on_progress,
+                         )
+                         if rescued_response is not None:
+                             return rescued_response
 
                 # Check for tool calls
                 if "tool_calls" in response:
@@ -1898,6 +5045,21 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                                     func_name,
                                     func_args,
                                 )
+
+                                if self._is_tool_failure_result(tool_output):
+                                    recovered = await self._execute_semantic_tool_fallback(
+                                        user_query=resolved_query,
+                                        primary_tool_name=func_name,
+                                        primary_tool_params=func_args,
+                                        fallback_tools=[],
+                                        on_progress=on_progress,
+                                    )
+                                    if recovered:
+                                        tool_output = recovered["tool_result"]
+                                        if isinstance(tool_output, dict):
+                                            tool_output.setdefault("_recovery", {})
+                                            tool_output["_recovery"]["fallback_tool"] = recovered["tool_name"]
+                                            tool_output["_recovery"]["mode"] = "semantic_fallback"
                                 
                                 # Convert MapComposite
                                 def convert_mapcomposite(obj):
@@ -1936,7 +5098,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         # OPTIMIZATION 2025: Success detection and early exit for charts
                         if isinstance(tool_result, dict):
                             is_chart = "chart_data" in tool_result or "chart_spec" in tool_result
-                            is_success = tool_result.get("status") == "success" or len(tool_result.get("resultados", [])) > 0
+                            is_success = self._is_tool_success_result(tool_result)
                             
                             if is_chart and is_success:
                                 logger.info(f"[ASYNC] SUCESSO: Grafico gerado por {func_name}. Forcando saida antecipada.")
@@ -2143,6 +5305,201 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             logger.info("[SMALLTALK] Resposta direta sem uso de ferramentas (sync).")
             return self._small_talk_response(user_query)
 
+        resolved_query = self._resolve_query_with_history_context(user_query, chat_history)
+        contextual_followup_response = self._build_contextual_followup_response(
+            resolved_query,
+            chat_history,
+        )
+        if contextual_followup_response is not None:
+            logger.info("[CONTEXT][SYNC] Follow-up contextual resolvido sem nova rodada analítica.")
+            return contextual_followup_response
+        try:
+            from backend.app.core.utils.intent_classifier import classify_intent
+            from backend.app.core.utils.query_router import route_query
+
+            sync_intent = classify_intent(resolved_query)
+            tool_selection = route_query(
+                intent=sync_intent.intent,
+                query=resolved_query,
+                confidence=sync_intent.confidence,
+            )
+        except Exception:
+            sync_intent = None
+            tool_selection = None
+
+        if tool_selection is not None:
+            self._enrich_tool_selection_for_business(
+                resolved_query,
+                tool_selection,
+                chat_history=chat_history,
+            )
+            self._ensure_tool_selection_available(resolved_query, tool_selection)
+            clarification = self._build_clarification_if_needed(
+                resolved_query,
+                tool_selection.tool_name,
+                tool_selection.confidence,
+                chat_history=chat_history,
+            )
+            if clarification is not None:
+                logger.info("[CLARIFICATION][SYNC] Consulta vaga detectada. Retornando pergunta guiada.")
+                return clarification
+
+        llm_task_type = self._resolve_llm_task_type(
+            getattr(sync_intent, "intent", None),
+            getattr(tool_selection, "tool_name", ""),
+            resolved_query,
+        )
+
+        if tool_selection is not None and self._should_use_calculation_sandbox(
+            getattr(sync_intent, "intent", None),
+            tool_selection.tool_name,
+            resolved_query,
+        ):
+            try:
+                sandbox_result = self._execute_calculation_sandbox(
+                    resolved_query,
+                    tool_selection,
+                )
+                if sandbox_result:
+                    logger.info("[SANDBOX][SYNC] Resposta de cálculo retornada com sucesso.")
+                    return sandbox_result
+            except Exception as sandbox_error:
+                logger.warning(
+                    f"[SANDBOX][SYNC] Falha no cálculo sandbox: {sandbox_error}. Seguindo fluxo padrão."
+                )
+
+        if tool_selection is not None and self._requires_governed_path(
+            getattr(sync_intent, "intent", None),
+            tool_selection.tool_name,
+            tool_selection.confidence,
+            resolved_query,
+        ):
+            tool_to_run = self._find_tool_by_name(tool_selection.tool_name)
+            if tool_to_run is not None:
+                try:
+                    primary_error: Optional[Exception] = None
+                    try:
+                        tool_result = self._execute_tool_with_recovery(
+                            tool_to_run,
+                            tool_selection.tool_name,
+                            tool_selection.tool_params,
+                        )
+                    except Exception as error:
+                        primary_error = error
+                        logger.warning(
+                            f"[TOOL-RECOVERY][SYNC] Ferramenta primária {tool_selection.tool_name} falhou "
+                            f"com exceção: {error}"
+                        )
+                        tool_result = {"status": "error", "error": str(error)}
+
+                    active_tool_name = tool_selection.tool_name
+                    active_tool_params = dict(tool_selection.tool_params or {})
+                    active_tool_result = tool_result
+
+                    if self._should_attempt_semantic_recovery(
+                        user_query=resolved_query,
+                        tool_name=tool_selection.tool_name,
+                        tool_result=tool_result,
+                        tool_error=primary_error,
+                    ):
+                        recovered = self._execute_semantic_tool_fallback_sync(
+                            user_query=resolved_query,
+                            primary_tool_name=tool_selection.tool_name,
+                            primary_tool_params=tool_selection.tool_params,
+                            fallback_tools=getattr(tool_selection, "fallback_tools", []),
+                        )
+                        if recovered:
+                            active_tool_name = str(recovered["tool_name"])
+                            active_tool_params = dict(recovered["tool_params"])
+                            active_tool_result = recovered["tool_result"]
+                        elif primary_error is not None:
+                            raise primary_error
+                        else:
+                            logger.warning(
+                                f"[GOVERNED][SYNC] Sem fallback semântico válido para {tool_selection.tool_name}."
+                            )
+
+                    if active_tool_name == "gerar_dashboard_executivo":
+                        dashboard_response = self._format_governed_dashboard_result(
+                            resolved_query,
+                            active_tool_result,
+                            active_tool_params,
+                        )
+                        if dashboard_response.get("type") == "dashboard":
+                            return dashboard_response
+
+                    return self._format_tool_result_for_path(
+                        resolved_query,
+                        active_tool_name,
+                        active_tool_result,
+                        active_tool_params,
+                    )
+                except Exception as error:
+                    logger.warning(
+                        f"[GOVERNED][SYNC] Falha na execução governada ({tool_selection.tool_name}): {error}. "
+                        "Fallback para fluxo LLM."
+                    )
+
+        if tool_selection is not None and self._should_use_deterministic_path(
+            tool_selection.tool_name,
+            tool_selection.confidence,
+        ):
+            tool_to_run = self._find_tool_by_name(tool_selection.tool_name)
+            if tool_to_run is not None:
+                try:
+                    primary_error: Optional[Exception] = None
+                    try:
+                        tool_result = self._execute_tool_with_recovery(
+                            tool_to_run,
+                            tool_selection.tool_name,
+                            tool_selection.tool_params,
+                        )
+                    except Exception as error:
+                        primary_error = error
+                        logger.warning(
+                            f"[TOOL-RECOVERY][SYNC] Ferramenta primária {tool_selection.tool_name} falhou "
+                            f"com exceção: {error}"
+                        )
+                        tool_result = {"status": "error", "error": str(error)}
+                    active_tool_name = tool_selection.tool_name
+                    active_tool_params = dict(tool_selection.tool_params or {})
+                    active_tool_result = tool_result
+
+                    if self._should_attempt_semantic_recovery(
+                        user_query=resolved_query,
+                        tool_name=tool_selection.tool_name,
+                        tool_result=tool_result,
+                        tool_error=primary_error,
+                    ):
+                        recovered = self._execute_semantic_tool_fallback_sync(
+                            user_query=resolved_query,
+                            primary_tool_name=tool_selection.tool_name,
+                            primary_tool_params=tool_selection.tool_params,
+                            fallback_tools=getattr(tool_selection, "fallback_tools", []),
+                        )
+                        if recovered:
+                            active_tool_name = str(recovered["tool_name"])
+                            active_tool_params = dict(recovered["tool_params"])
+                            active_tool_result = recovered["tool_result"]
+                        elif primary_error is not None:
+                            raise primary_error
+                        else:
+                            logger.warning(
+                                f"[DETERMINISTIC][SYNC] Sem fallback semântico válido para {tool_selection.tool_name}."
+                            )
+
+                    return self._format_tool_result_for_path(
+                        resolved_query,
+                        active_tool_name,
+                        active_tool_result,
+                        active_tool_params,
+                    )
+                except Exception as error:
+                    logger.warning(
+                        f"[DETERMINISTIC][SYNC] Falha na execução determinística ({tool_selection.tool_name}): {error}. "
+                        "Fallback para fluxo LLM."
+                    )
+
         # [OK] CRITICAL FIX: NÃO incluir system como mensagem
         # System instruction já está configurada no GeminiLLMAdapter via system_instruction parameter
         # Gemini NÃO aceita role="system" no array de mensagens - deve usar system_instruction no modelo
@@ -2167,10 +5524,19 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # RAG: Retrieve similar examples before processing query
         # NOTE: run() is sync, so we skip RAG warming and use sync retrieve
         rag_context_str = ""
-        if self.enable_rag and self.retriever and self.retriever._initialized:
+        if (
+            self.enable_rag
+            and self.retriever
+            and self.retriever._initialized
+            and self._should_use_reference_examples(
+                resolved_query,
+                tool_selection=tool_selection,
+                chat_history=chat_history,
+            )
+        ):
             try:
                 # Reutilizar lógica de formatação do _get_rag_examples mas de forma síncrona
-                similar_docs = self.retriever.retrieve(user_query, top_k=2, method='hybrid')
+                similar_docs = self.retriever.retrieve(resolved_query, top_k=2, method='hybrid')
                 if similar_docs:
                     rag_context_str = "\n\n<reference_context>\n"
                     rag_context_str += "[WARNING] EXEMPLOS DE INTERAÇÕES PASSADAS (PARA APRENDER A LÓGICA):\n"
@@ -2193,9 +5559,9 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         # Add current user query (with context PREPENDED)
         if rag_context_str:
-            full_prompt_content = rag_context_str + "\n\n" + "PERGUNTA DO USUÁRIO AGORA:\n" + user_query
+            full_prompt_content = rag_context_str + "\n\n" + "PERGUNTA DO USUÁRIO AGORA:\n" + resolved_query
         else:
-            full_prompt_content = user_query
+            full_prompt_content = resolved_query
             
         messages.append({"role": "user", "content": full_prompt_content})
 
@@ -2214,7 +5580,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             try:
                 # Call LLM with tools
                 # Note: self.llm is GeminiLLMAdapter
-                response = self.llm.get_completion(messages, tools=tools_to_use)
+                response = self._llm_get_completion(messages, tools_to_use, llm_task_type)
 
                 if "error" in response:
                     logger.error(f"LLM Error: {response['error']}")
@@ -2224,31 +5590,22 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 response_type = "tool_call" if "tool_calls" in response else "text"
                 logger.info(f"LLM Response Type: {response_type}")
 
-                # FIX 2026-02-04: Definir is_graph_request que estava faltando (NameError)
-                graph_keywords = ["gráfico", "grafico", "chart", "visualização", "visualizacao", "plote", "plot", "ranking", "top"]
-                is_graph_request = any(keyword in user_query.lower() for keyword in graph_keywords)
-
-                # ALERTA se pediu gráfico mas LLM respondeu só com texto
-                if response_type == "text" and is_graph_request and successful_tool_calls == 0:
-                    logger.error(f"WARNING: LLM IGNOROU PEDIDO DE GRAFICO!")
-                    logger.error(f"WARNING - User Query: {user_query}")
-                    logger.error(f"WARNING - LLM Text Response: {response.get('content', '')[:300]}")
-                    logger.error(f"WARNING - Total messages in context: {len(messages)}")
-
-                    # FALLBACK AUTOMÁTICO: Se LLM ignorou, forçar chamada da ferramenta manualmente
-                    logger.warning(f"FALLBACK: Forcando chamada manual de gerar_grafico_universal_v2")
-                    # Criar tool call sintético
-                    synthetic_tool_call = {
-                        "id": "call_fallback_graph",
-                        "type": "function",
-                        "function": {
-                            "name": "gerar_grafico_universal_v2",
-                            "arguments": json.dumps({"descricao": user_query})
-                        }
-                    }
-                    # Injetar tool call sintético na resposta
-                    response["tool_calls"] = [synthetic_tool_call]
-                    logger.warning(f"FALLBACK APLICADO: Tool call sintetico criado")
+                if response_type == "text" and self._should_attempt_routed_tool_rescue(
+                    resolved_query,
+                    str(response.get("content", "") or ""),
+                    tool_selection,
+                    successful_tool_calls,
+                ):
+                    logger.warning(
+                        "[SYNC] LLM retornou texto sem tool call para query analítica. "
+                        f"Executando resgate pela tool roteada: {getattr(tool_selection, 'tool_name', '')}"
+                    )
+                    rescued_response = self._attempt_routed_tool_rescue_sync(
+                        resolved_query,
+                        tool_selection,
+                    )
+                    if rescued_response is not None:
+                        return rescued_response
 
                 # Check for tool calls
                 if "tool_calls" in response:
@@ -2280,10 +5637,24 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                                     func_args,
                                 )
 
+                                if self._is_tool_failure_result(tool_output):
+                                    recovered = self._execute_semantic_tool_fallback_sync(
+                                        user_query=resolved_query,
+                                        primary_tool_name=func_name,
+                                        primary_tool_params=func_args,
+                                        fallback_tools=[],
+                                    )
+                                    if recovered:
+                                        tool_output = recovered["tool_result"]
+                                        if isinstance(tool_output, dict):
+                                            tool_output.setdefault("_recovery", {})
+                                            tool_output["_recovery"]["fallback_tool"] = recovered["tool_name"]
+                                            tool_output["_recovery"]["mode"] = "semantic_fallback"
+
                                 # CRITICAL FIX: Detectar se gerou gráfico com sucesso
                                 if isinstance(tool_output, dict):
                                     is_chart = "chart_data" in tool_output or "chart_spec" in tool_output
-                                    is_success = tool_output.get("status") == "success" or len(tool_output.get("resultados", [])) > 0
+                                    is_success = self._is_tool_success_result(tool_output)
                                     
                                     if is_chart and is_success:
                                         logger.info(f"SUCESSO: Grafico gerado por {func_name}. Forcando saida antecipada.")

@@ -8,6 +8,7 @@ Date: 2026-01-24
 
 import re
 import logging
+from difflib import SequenceMatcher
 from enum import Enum
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
@@ -87,6 +88,16 @@ INTENT_PATTERNS = {
         (r"lote\s+econ[oô]mico", 0.95),
         (r"quanto\s+comprar", 0.90),
         (r"quantidade\s+(ideal|[oó]tima)\s+de\s+compra", 0.92),
+        (r"cesta\s+de\s+compras", 0.94),
+        (r"carrinho\s+(comercial|de\s+compras)?", 0.93),
+        (r"margem\s+real", 0.96),
+        (r"margem\s+l[ií]quida", 0.95),
+        (r"rentabilidade\s+da\s+cesta", 0.95),
+        (r"impacto\s+d[eo]\s+desconto", 0.95),
+        (r"impacto\s+d[ea]\s+promo", 0.94),
+        (r"simul(e|ar)\s+(uma\s+)?promo", 0.93),
+        (r"simul(e|ar)\s+(um\s+)?desconto", 0.93),
+        (r"desconto\s+na\s+cesta", 0.93),
         (r"margem\s+de\s+contribui[çc][aã]o", 0.95),
         (r"\bmc\s+do\s+produto", 0.93),
         (r"qual\s+(a\s+)?margem", 0.90),  # Novo padrão
@@ -121,6 +132,18 @@ INTENT_PATTERNS = {
     ],
     
     IntentType.ANALYSIS: [
+        # Continuação estratégica/comercial
+        (r"plano\s+comercial", 0.92),
+        (r"plano\s+de\s+a[çc][aã]o", 0.90),
+        (r"estrat[eé]gia\s+comercial", 0.88),
+        (r"pr[oó]xim[oa]s?\s+(a[çc][oõ]es|passos)", 0.88),
+        (r"o\s+que\s+fazer", 0.86),
+        (r"quais?\s+a[çc][oõ]es", 0.86),
+        (r"me\s+d[eê]\s+um\s+plano", 0.87),
+        (r"me\s+d[eê]\s+a[çc][oõ]es", 0.86),
+        (r"recomend[ea]\s+a[çc][oõ]es", 0.86),
+        (r"como\s+(agir|melhorar|recuperar)", 0.84),
+
         # Padrões de negócio comercial (alta prioridade prática)
         (r"ruptur\w*", 0.92),
         (r"falta\s+de\s+estoque", 0.90),
@@ -136,6 +159,7 @@ INTENT_PATTERNS = {
         (r"diagn[oó]stico", 0.82),
         (r"avalia[çc][aã]o\s+de", 0.80),
         (r"relat[oó]rio\s+(de|sobre)", 0.83),
+        (r"\brelat\w*", 0.80),
         (r"panorama", 0.78),
         (r"vis[aã]o\s+geral", 0.77),
         (r"promoc?i?o?nal", 0.85),
@@ -143,6 +167,12 @@ INTENT_PATTERNS = {
         (r"campanha", 0.82),
         (r"estrategia", 0.80),
         (r"ajud[ae]", 0.80),
+        (r"vendem\s+juntos", 0.93),
+        (r"saem\s+juntos", 0.93),
+        (r"comprados?\s+juntos", 0.93),
+        (r"market\s+basket", 0.95),
+        (r"itens?\s+associados", 0.91),
+        (r"cross[-\s]?sell", 0.91),
         (r"problema", 0.78),
         (r"conselho", 0.80),
         (r"opini[aã]o", 0.78),
@@ -151,6 +181,9 @@ INTENT_PATTERNS = {
     
     IntentType.DATA_QUERY: [
         # Padrões de consulta simples
+        (r"^qual\s+loja\b", 0.88),
+        (r"^em\s+qual\s+loja\b", 0.88),
+        (r"^quais\s+lojas\b", 0.86),
         (r"^quanto\s+", 0.85),
         (r"^qual\s+(o|a|os|as)", 0.83),
         (r"^quais\s+", 0.83),
@@ -185,6 +218,8 @@ def classify_intent(query: str) -> IntentClassification:
         IntentClassification com intent, confidence e matched patterns
     """
     query_lower = query.lower().strip()
+    # Normalização leve para capturar variações com acentos/apóstrofos quebrados.
+    query_normalized = re.sub(r"[`´'’]", "", query_lower)
     
     # Acumulador de scores por intent
     intent_scores = {intent: 0.0 for intent in IntentType}
@@ -193,7 +228,7 @@ def classify_intent(query: str) -> IntentClassification:
     # Testar todos os padrões
     for intent_type, patterns in INTENT_PATTERNS.items():
         for pattern, base_confidence in patterns:
-            match = re.search(pattern, query_lower, re.IGNORECASE)
+            match = re.search(pattern, query_normalized, re.IGNORECASE)
             if match:
                 # Score = base_confidence × (1 + bonus por match no início)
                 position_bonus = 0.1 if match.start() < 10 else 0.0
@@ -208,6 +243,13 @@ def classify_intent(query: str) -> IntentClassification:
                 matched_patterns_by_intent[intent_type].append(pattern)
                 
                 logger.debug(f"[INTENT] Matched pattern '{pattern}' for {intent_type.value} (score: {score:.2f})")
+
+    # Heurística de robustez para typos comuns em "relatório"
+    # Exemplo real observado: "rela´rptio".
+    tokens = re.findall(r"[a-z0-9]+", query_normalized)
+    if any(SequenceMatcher(None, token, "relatorio").ratio() >= 0.72 for token in tokens):
+        intent_scores[IntentType.ANALYSIS] = max(intent_scores[IntentType.ANALYSIS], 0.80)
+        matched_patterns_by_intent[IntentType.ANALYSIS].append("<fuzzy_relatorio>")
     
     # Normalizar scores (cap em 1.0)
     for intent in intent_scores:
