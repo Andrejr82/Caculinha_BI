@@ -29,6 +29,7 @@ from backend.app.api.v1.endpoints import (
     code_chat,  # Code Chat RAG
     dashboard,   # Dashboard endpoints (Forecasting, Executive, Suppliers)
     catalog,
+    basket_analysis,
     ingest,
     memory,
     competitive,
@@ -43,6 +44,7 @@ api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(auth_alt.router_alt) # Backup auth
 api_router.include_router(analytics.router)
+api_router.include_router(basket_analysis.router)
 api_router.include_router(reports.router)
 api_router.include_router(admin.router)
 api_router.include_router(admin_dashboard.router)
@@ -69,7 +71,7 @@ api_router.include_router(dashboard.router)
 
 # Special non-prefixed or differently-prefixed routers
 api_router.include_router(catalog.router, prefix="/catalog", tags=["Catalog"])
-api_router.include_router(ingest.router, prefix="/ingest", tags=["Ingest"])
-api_router.include_router(memory.router, prefix="/memory", tags=["Memory"])
+api_router.include_router(ingest.router)
+api_router.include_router(memory.router)
 api_router.include_router(competitive.router)
 api_router.include_router(legacy_feedback.router, tags=["Feedback"])

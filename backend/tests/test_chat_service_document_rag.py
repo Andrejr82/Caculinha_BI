@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -94,6 +95,76 @@ async def test_retrieve_document_context_prioritizes_same_session_attachments():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_document_context_does_not_pull_session_attachment_for_unrelated_query():
+    session_manager = Mock(spec=SessionManager)
+    service = ChatServiceV3(session_manager=session_manager)
+    service.vectorization_agent = None
+    service.vector_memory_repository = Mock()
+    service.vector_memory_repository.hybrid_document_search = AsyncMock(return_value=[])
+    service.vector_memory_repository.list_recent_documents = AsyncMock(
+        return_value=[
+            {
+                "document_id": "doc-session",
+                "content": "Arquivo anexado com basket e vendas por loja.",
+                "metadata": {
+                    "filename": "csv_basket_realista_baseado_no_parquet_12000_linhas.csv",
+                    "session_id": "sess-current",
+                    "uploaded_by": "user-1",
+                },
+                "score": 0.0,
+            }
+        ]
+    )
+
+    results = await service._retrieve_document_context(
+        query=(
+            "me gere um gráfico de vendas do produto 369947 em todas as lojas\n\n"
+            "Considere os anexos desta sessão: csv_basket_realista_baseado_no_parquet_12000_linhas.csv."
+        ),
+        user_id="user-1",
+        session_id="sess-current",
+        tenant_id="default",
+    )
+
+    assert results == []
+    service.vector_memory_repository.list_recent_documents.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retrieve_document_context_filters_attachment_from_hybrid_results_for_unrelated_query():
+    session_manager = Mock(spec=SessionManager)
+    service = ChatServiceV3(session_manager=session_manager)
+    service.vectorization_agent = None
+    service.vector_memory_repository = Mock()
+    service.vector_memory_repository.hybrid_document_search = AsyncMock(
+        return_value=[
+            {
+                "document_id": "doc-session",
+                "content": "Arquivo anexado com basket e vendas por loja.",
+                "metadata": {
+                    "filename": "csv_basket_realista_baseado_no_parquet_12000_linhas.csv",
+                    "session_id": "sess-current",
+                    "uploaded_by": "user-1",
+                    "uploaded_via": "chat_attachment",
+                },
+                "score": 0.93,
+            }
+        ]
+    )
+    service.vector_memory_repository.list_recent_documents = AsyncMock(return_value=[])
+
+    results = await service._retrieve_document_context(
+        query="me gere um gráfico de vendas do produto 369947 em todas as lojas",
+        user_id="user-1",
+        session_id="sess-current",
+        tenant_id="default",
+    )
+
+    assert results == []
+    service.vector_memory_repository.list_recent_documents.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_process_message_uses_attachment_pipeline_for_basket_margin_without_calling_agent():
     session_manager = Mock(spec=SessionManager)
     session_manager.get_history.return_value = []
@@ -174,3 +245,270 @@ async def test_process_message_uses_attachment_pipeline_for_market_basket_on_gen
     assert response["mode"] == "attachment_basket_pipeline"
     assert response["tool_calls"][0]["name"] == "minerar_cestas_frequentes"
     assert response["table_data"]
+
+
+@pytest.mark.asyncio
+async def test_process_message_ignores_attachment_filename_csv_for_automation_and_runs_basket_pipeline():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(
+        return_value=[
+            {
+                "document_id": "doc-market",
+                "content": "pedido,produto\n1001,fralda\n1001,cerveja\n1002,fralda\n1002,lenco\n",
+                "metadata": {"filename": "csv_basket_realista_baseado_no_parquet_12000_linhas.csv"},
+                "score": 0.98,
+            }
+        ]
+    )
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(return_value={"response": "fallback"})
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query=(
+            "Quais produtos costumam ser comprados juntos?\n\n"
+            "Considere os anexos desta sessão: csv_basket_realista_baseado_no_parquet_12000_linhas.csv."
+        ),
+        session_id="sess-current",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    agent.run_async.assert_not_awaited()
+    assert response["source"] == "tool.minerar_cestas_frequentes"
+    assert response["mode"] == "attachment_basket_pipeline"
+    assert response["tool_calls"][0]["name"] == "minerar_cestas_frequentes"
+
+
+@pytest.mark.asyncio
+async def test_process_message_does_not_route_graph_query_to_basket_pipeline_due_to_attachment_filename():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(
+        return_value=[
+            {
+                "document_id": "doc-market",
+                "content": "transaction_id,produto,valor_unitario\n500001,ZIPER,9.99\n500001,FITA CETIM,49.90\n",
+                "metadata": {"filename": "csv_basket_realista_baseado_no_parquet_12000_linhas.csv"},
+                "score": 0.98,
+            }
+        ]
+    )
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(return_value={"response": "fallback-grafico"})
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query=(
+            "me gere um gráfico de vendas do produto 369947 em todas as lojas\n\n"
+            "Considere os anexos desta sessão: csv_basket_realista_baseado_no_parquet_12000_linhas.csv."
+        ),
+        session_id="sess-current",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    agent.run_async.assert_awaited_once()
+    assert response["source"] == "rag.internal_documents"
+    assert response.get("mode") is None
+    assert response["result"]["mensagem"].startswith("## Resumo executivo")
+    assert "fallback-grafico" in response["result"]["mensagem"]
+
+
+@pytest.mark.asyncio
+async def test_process_message_recovers_visualization_when_agent_returns_plain_text(monkeypatch):
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    monkeypatch.setattr(
+        "backend.app.core.utils.intent_classifier.classify_intent",
+        lambda query: SimpleNamespace(intent=SimpleNamespace(value="visualization"), confidence=0.95, matched_patterns=[]),
+    )
+    monkeypatch.setattr(
+        "backend.app.core.utils.query_router.route_query",
+        lambda intent, query, confidence: SimpleNamespace(
+            tool_name="gerar_grafico_universal_v2",
+            tool_params={"descricao": query, "tipo_grafico": "bar", "limite": 50},
+            confidence=0.95,
+            fallback_tools=[],
+            reasoning="visualization recovery",
+        ),
+    )
+
+    agent = Mock()
+    agent.run_async = AsyncMock(return_value={"response": "Posso analisar isso para você."})
+    agent._resolve_query_with_history_context = Mock(side_effect=lambda query, history: query)
+    agent._enrich_tool_selection_for_business = Mock()
+    agent._ensure_tool_selection_available = Mock()
+    agent._build_clarification_if_needed = Mock(return_value=None)
+    agent._attempt_routed_tool_rescue = AsyncMock(
+        return_value={
+            "response": "Gráfico gerado com sucesso.",
+            "source": "tool.gerar_grafico_universal_v2",
+            "chart_data": {"type": "bar", "labels": ["64", "2475"], "datasets": [{"data": [12, 8]}]},
+            "tool_calls": [{"function": {"name": "gerar_grafico_universal_v2"}}],
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="gere um gráfico de vendas do produto 369947 em todas as lojas",
+        session_id="sess-chart",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    agent.run_async.assert_awaited_once()
+    agent._attempt_routed_tool_rescue.assert_awaited_once()
+    assert response["source"] == "tool.gerar_grafico_universal_v2"
+    assert response.get("chart_data")
+
+
+@pytest.mark.asyncio
+async def test_process_message_strips_automatic_attachment_suffix_before_calling_agent():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(return_value={"response": "ok"})
+    service._agents_by_role["analyst"] = agent
+
+    await service.process_message(
+        query=(
+            "me gere um gráfico de vendas do produto 369947 em todas as lojas\n\n"
+            "Considere os anexos desta sessão: csv_basket_realista_baseado_no_parquet_12000_linhas.csv."
+        ),
+        session_id="sess-strip",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    called_query = agent.run_async.await_args.args[0]
+    assert called_query == "me gere um gráfico de vendas do produto 369947 em todas as lojas"
+
+
+@pytest.mark.asyncio
+async def test_same_chat_can_answer_attachment_basket_then_graph_and_operational_queries():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+    service.vectorization_agent = None
+    service.vector_memory_repository = Mock()
+    service.vector_memory_repository.hybrid_document_search = AsyncMock(return_value=[])
+    service.vector_memory_repository.list_recent_documents = AsyncMock(
+        return_value=[
+            {
+                "document_id": "doc-attachment",
+                "content": (
+                    "transaction_id,produto,valor_unitario\n"
+                    "500001,CADERNO UNIVERSITARIO,12.90\n"
+                    "500001,CANETA AZUL,12.90\n"
+                    "500002,TINTA GUACHE,7.50\n"
+                    "500002,PINCEL CHATO,5.90\n"
+                ),
+                "metadata": {
+                    "filename": "csv_basket_realista_baseado_no_parquet_12000_linhas.csv",
+                    "session_id": "sess-multi-turn",
+                    "uploaded_by": "12345678-1234-1234-1234-123456789012",
+                    "uploaded_via": "chat_attachment",
+                },
+                "score": 0.99,
+            }
+        ]
+    )
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        side_effect=[
+            {
+                "response": "Gráfico gerado com sucesso.",
+                "source": "tool.gerar_grafico_universal_v2",
+                "chart_data": {
+                    "type": "bar",
+                    "labels": ["64", "2475"],
+                    "datasets": [{"data": [12, 8]}],
+                },
+                "tool_calls": [{"function": {"name": "gerar_grafico_universal_v2"}}],
+            },
+            {
+                "response": "A UNE 64 lidera as vendas do produto 369947 e a UNE 2475 está abaixo da média.",
+                "source": "tool.analisar_produto_todas_lojas",
+                "tool_calls": [{"function": {"name": "analisar_produto_todas_lojas"}}],
+            },
+        ]
+    )
+    service._agents_by_role["analyst"] = agent
+
+    basket_response = await service.process_message(
+        query="quais produtos costumam ser comprados juntos neste anexo?",
+        session_id="sess-multi-turn",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+    chart_response = await service.process_message(
+        query=(
+            "me gere um gráfico de vendas do produto 369947 em todas as lojas\n\n"
+            "Considere os anexos desta sessão: csv_basket_realista_baseado_no_parquet_12000_linhas.csv."
+        ),
+        session_id="sess-multi-turn",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+    operational_response = await service.process_message(
+        query="agora me diga quais lojas vendem melhor o produto 369947",
+        session_id="sess-multi-turn",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert basket_response["source"] == "tool.minerar_cestas_frequentes"
+    assert basket_response["mode"] == "attachment_basket_pipeline"
+    assert basket_response["citations"][0]["source"] == "csv_basket_realista_baseado_no_parquet_12000_linhas.csv"
+
+    assert chart_response["source"] == "tool.gerar_grafico_universal_v2"
+    assert chart_response.get("chart_data")
+    assert chart_response.get("citations") in (None, [])
+
+    assert operational_response["source"] == "tool.analisar_produto_todas_lojas"
+    assert operational_response.get("citations") in (None, [])
+
+    assert agent.run_async.await_count == 2
+    chart_query = agent.run_async.await_args_list[0].args[0]
+    operational_query = agent.run_async.await_args_list[1].args[0]
+    assert chart_query == "me gere um gráfico de vendas do produto 369947 em todas as lojas"
+    assert operational_query == "agora me diga quais lojas vendem melhor o produto 369947"
+    assert service.vector_memory_repository.list_recent_documents.await_count == 1
