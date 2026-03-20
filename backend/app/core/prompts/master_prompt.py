@@ -29,13 +29,19 @@ def _load_business_context() -> str:
 def _load_few_shot_examples() -> list:
     """Carrega exemplos few-shot do arquivo JSON"""
     try:
-        examples_path = Path(__file__).parent.parent.parent.parent / "prompts" / "few_shot_examples.json"
-        if examples_path.exists():
-            data = json.loads(examples_path.read_text(encoding="utf-8"))
-            return data.get("examples", [])
-        else:
-            logger.warning(f"Arquivo de exemplos não encontrado: {examples_path}")
-            return []
+        from backend.app.core.learning.unified_dataset_builder import get_unified_few_shot_path
+
+        candidate_paths = [
+            get_unified_few_shot_path(),
+            Path(__file__).parent.parent.parent.parent / "prompts" / "few_shot_examples.json",
+        ]
+        for examples_path in candidate_paths:
+            if examples_path.exists():
+                data = json.loads(examples_path.read_text(encoding="utf-8"))
+                return data.get("examples", [])
+
+        logger.warning(f"Arquivo de exemplos não encontrado: {candidate_paths[-1]}")
+        return []
     except Exception as e:
         logger.error(f"Erro ao carregar few-shot examples: {e}")
         return []
@@ -77,6 +83,9 @@ Use estas ferramentas para decisões OPERACIONAIS:
 *   **`calcular_eoq`**: Para compras ("quanto comprar?", "lote ideal").
 *   **`alocar_estoque_lojas`**: Para logística ("como distribuir?", "transferência").
 *   **`encontrar_rupturas_criticas`**: Para urgências ("o que está faltando?").
+*   **`analisar_cesta_compras`**: Para carrinho, margem real, rentabilidade e impacto de frete/impostos por item.
+*   **`simular_promocao_cesta`**: Para desconto, promoção, leve x pague y e volume adicional necessário para empatar a margem.
+*   **`minerar_cestas_frequentes`**: Para descobrir itens que saem juntos, cross-sell e afinidade real de compra.
 
 ### 4. 🔎 Exploração de Dados
 Use estas ferramentas quando precisar de DADOS BRUTOS ou investigar:
@@ -103,6 +112,7 @@ Diante de uma pergunta, pense passo-a-passo:
 2.  **Planejar:** Preciso de dados? De um gráfico? Ou só do meu conhecimento?
 3.  **Executar:** Chame a(s) ferramenta(s) necessária(s).
     *   *Pode chamar múltiplas ferramentas em sequência se precisar.*
+    *   *Para dinheiro, margem, cesta, desconto e promoção, prefira sempre ferramentas determinísticas. Não estime matemática financeira no texto.*
 4.  **Sintetizar:** Responda ao usuário com uma narrativa natural, usando os dados como evidência.
 
 ---
@@ -126,8 +136,7 @@ Diante de uma pergunta, pense passo-a-passo:
 Para perguntas analíticas/comerciais, responda sempre neste formato:
 1. **Resumo executivo:** conclusão objetiva em linguagem de negócio.
 2. **Tabela operacional:** números-chave em tabela Markdown legível.
-3. **Ação recomendada:** próximo passo prático (quem faz/o que fazer).
-4. **Recorte e evidência:** informe filtros aplicados, período e base usada.
+3. **Próximas ações:** passos práticos, objetivos e mensuráveis.
 
 Regras de qualidade:
 *   **Sem jargão técnico de backend:** não expor nomes internos de colunas/funções.
