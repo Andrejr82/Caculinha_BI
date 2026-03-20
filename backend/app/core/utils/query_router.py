@@ -8,6 +8,7 @@ Date: 2026-01-24
 
 import re
 import logging
+from difflib import SequenceMatcher
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -37,6 +38,27 @@ INTENT_TO_TOOL_MAP = {
     IntentType.DATA_QUERY: "consultar_dados_flexivel",
     IntentType.METADATA: "consultar_dicionario_dados",
 }
+
+
+def _normalize_query_for_extraction(query: str) -> str:
+    """Normaliza typos recorrentes de palavras-chave de roteamento."""
+    if not query:
+        return query
+
+    def normalize_segment_token(match: re.Match[str]) -> str:
+        token = match.group(0)
+        lower = token.lower()
+        for candidate in ("segmento", "segmentos"):
+            if SequenceMatcher(None, lower, candidate).ratio() >= 0.78:
+                return candidate
+        return token
+
+    return re.sub(
+        r"\b[\wÀ-ÿ-]{6,12}\b",
+        normalize_segment_token,
+        query,
+        flags=re.IGNORECASE,
+    )
 
 
 def extract_une_filter(query: str) -> Optional[str]:
@@ -85,9 +107,11 @@ def extract_segment_filter(query: str) -> Optional[str]:
     if not query:
         return None
 
+    normalized_query = _normalize_query_for_extraction(query)
+
     # Captura segmento multi-palavra e remove sufixos de escopo (ex.: "de todas as unes").
     patterns = [
-        r"(?:d[oa]|de)?\s*segmento\s+([a-zA-ZÀ-ÿ0-9 _-]+?)(?:\s+em\s+|\s+na\s+|\s+no\s+|$)",
+        r"(?:d[oa]|de)?\s*segmento\s+([a-zA-ZÀ-ÿ0-9 _-]+?)(?:\s+em\s+|\s+na\s+|\s+no\s+|\s+nos?\s+|\s+nas?\s+|\s+por\s+|\s+com\s+|\s+para\s+|$)",
         r"\bsegmento\s+([a-zA-ZÀ-ÿ0-9 _-]+)$",
     ]
     trailing_scope_patterns = [
@@ -95,10 +119,15 @@ def extract_segment_filter(query: str) -> Optional[str]:
         r"\s+t[oó]d?as?\s+as?\s+(?:unes?|lojas?)\b.*$",
         r"\s+toda\s+a\s+rede\b.*$",
         r"\s+(?:na|no|une|loja)\s+\d{3,4}\b.*$",
+        r"\s+por\s+(?:une|unes|loja|lojas|unidade)\b.*$",
+        r"\s+de\s+cada\s+(?:une|unes|loja|lojas|unidade)\b.*$",
+        r"\s+com\s+kpis?\b.*$",
+        r"\s+(?:para\s+os?|nos?|das?|dos?)\s+[uú]ltim[oa]s?\s+\d+\s+(?:dias|semanas?|meses?)\b.*$",
+        r"\s+(?:neste|nesta|no|na|do|da)\s+(?:m[eê]s|dia)\s+atual\b.*$",
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, query, re.IGNORECASE)
+        match = re.search(pattern, normalized_query, re.IGNORECASE)
         if not match:
             continue
 
@@ -142,6 +171,9 @@ def extract_top_limit(query: str) -> Optional[int]:
         r"(\d+)\s+maiores",
         r"(\d+)\s+menores",
         r"(\d+)\s+principais",
+        r"quais?\s+(\d+)\s+lojas?\b",
+        r"(\d+)\s+lojas?\s+mais\s+v\w+",
+        r"(\d+)\s+lojas?\s+menos\s+v\w+",
     ]
     
     for pattern in patterns:
@@ -177,18 +209,204 @@ def extract_days_param(query: str) -> Optional[int]:
     return None
 
 
+def extract_percentage_param(query: str) -> Optional[float]:
+    """Extrai percentual da query."""
+    patterns = [
+        r"(\d+(?:[.,]\d+)?)\s*%",
+        r"desconto\s+de\s+(\d+(?:[.,]\d+)?)",
+        r"promo[çc][aã]o\s+de\s+(\d+(?:[.,]\d+)?)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            return float(match.group(1).replace(",", "."))
+
+    return None
+
+
+def is_market_basket_query(query: str) -> bool:
+    """Detecta perguntas sobre itens que saem juntos / market basket."""
+    q = (query or "").lower()
+    markers = [
+        "vendem juntos",
+        "saem juntos",
+        "comprados juntos",
+        "itens associados",
+        "market basket",
+        "cross-sell",
+        "cross sell",
+        "afinidade entre produtos",
+    ]
+    return any(marker in q for marker in markers)
+
+
+def extract_period_filter(query: str) -> Optional[str]:
+    """Extrai recorte temporal para dashboards/visualizações."""
+    if not query:
+        return None
+
+    q = query.lower()
+    patterns: List[Tuple[str, str]] = [
+        (r"[uú]ltimos?\s+(\d+)\s+dias", "d"),
+        (r"[uú]ltimas?\s+(\d+)\s+semanas?", "w"),
+        (r"[uú]ltimos?\s+(\d+)\s+meses?", "m"),
+    ]
+
+    for pattern, suffix in patterns:
+        match = re.search(pattern, q, re.IGNORECASE)
+        if match:
+            return f"{int(match.group(1))}{suffix}"
+
+    if re.search(r"\b(m[eê]s atual|este m[eê]s)\b", q):
+        return "mes_atual"
+
+    if re.search(r"\b(hoje|dia atual)\b", q):
+        return "hoje"
+
+    return None
+
+
+def is_product_store_leader_query(query: str) -> bool:
+    """Detecta perguntas do tipo 'qual loja mais vende o produto X?'."""
+    if not query:
+        return False
+
+    q = _normalize_query_for_extraction(query).lower()
+    if extract_product_code(query) is None:
+        return False
+    explicit_limit = extract_top_limit(query)
+    if (explicit_limit and explicit_limit > 1) or "quais lojas" in q or "ranking" in q or "top " in q:
+        return False
+
+    comparative_store_patterns = [
+        r"\bqual(?:\s+é|\s+e)?\s+(?:a\s+)?loja\s+mais\s+v(?:end|ed)\w*",
+        r"\bem\s+qual\s+loja\b.*\bv(?:end|ed)\w*",
+        r"\bloja\s+l[íi]der\b",
+        r"\bmais\s+v(?:end|ed)\w*\s+o\s+produto\b",
+    ]
+
+    return any(re.search(pattern, q, re.IGNORECASE) for pattern in comparative_store_patterns)
+
+
+def extract_product_store_ranking_request(query: str) -> Optional[Dict[str, Any]]:
+    """Extrai intenção de ranking de lojas para um produto específico."""
+    if not query:
+        return None
+
+    q = _normalize_query_for_extraction(query).lower()
+    if extract_product_code(query) is None:
+        return None
+
+    highest_patterns = [
+        r"\bquais?\s+\d+\s+lojas?\s+mais\s+v(?:end|ed)\w*",
+        r"\bquais?\s+lojas?\s+mais\s+v(?:end|ed)\w*",
+        r"\btop\s+\d+\s+lojas\b",
+        r"\branking\s+das?\s+lojas\b",
+        r"\blojas?\s+com\s+maior(?:es)?\s+vendas?\b",
+        r"\bmais\s+v(?:end|ed)\w*\s+o\s+produto\b",
+    ]
+    lowest_patterns = [
+        r"\bqual(?:\s+é|\s+e)?\s+(?:a\s+)?loja\s+menos\s+v\w*",
+        r"\bquais?\s+\d+\s+lojas?\s+menos\s+v\w*",
+        r"\bquais?\s+lojas?\s+menos\s+v\w*",
+        r"\blojas?\s+com\s+menor(?:es)?\s+vendas?\b",
+        r"\bvende\s+menos\s+o\s+produto\b",
+        r"\bmenos\s+v\w*\s+o\s+produto\b",
+    ]
+
+    if any(re.search(pattern, q, re.IGNORECASE) for pattern in lowest_patterns):
+        return {"ordem_desc": False, "limite": extract_top_limit(query) or 1}
+
+    if any(re.search(pattern, q, re.IGNORECASE) for pattern in highest_patterns):
+        return {"ordem_desc": True, "limite": extract_top_limit(query) or 5}
+
+    return None
+
+
+def is_product_rupture_query(query: str) -> bool:
+    """Detecta perguntas sobre ruptura/falta de estoque para um produto específico."""
+    if not query:
+        return False
+
+    q = _normalize_query_for_extraction(query).lower()
+    if extract_product_code(query) is None:
+        return False
+
+    rupture_markers = [
+        r"ruptur\w*",
+        r"falta\s+de\s+estoque",
+        r"sem\s+estoque",
+        r"em\s+ruptura",
+    ]
+    return any(re.search(pattern, q, re.IGNORECASE) for pattern in rupture_markers)
+
+
+def extract_chart_breakdown(query: str) -> Optional[str]:
+    """Infere dimensão principal do gráfico a partir da pergunta."""
+    if not query:
+        return None
+    q = _normalize_query_for_extraction(query).lower()
+
+    explicit_store_breakdown_patterns = [
+        r"\b(?:tabela|ranking|gr[aá]fico|grafico)\s+por\s+(?:une|loja|unidade)\b",
+        r"\bpor\s+(?:une|loja|unidade)\b",
+        r"\bcada\s+(?:une|loja|unidade)\b",
+        r"\branking\s+d[aeo]s?\s+(?:unes?|lojas?)\b",
+        r"\b(?:unes?|lojas?)\s+de\s+(?:menor|maior)\s+venda\b",
+        r"\bcompar(?:e|ar|ação|acao)?\s+(?:entre\s+)?(?:unes?|lojas?)\b",
+    ]
+    if is_product_store_leader_query(query) or any(
+        re.search(pattern, q, re.IGNORECASE) for pattern in explicit_store_breakdown_patterns
+    ):
+        return "LOJA"
+
+    # "em todas as UNEs/lojas" define escopo, não eixo do gráfico.
+    if re.search(r"\bsegmentos?\b", q, re.IGNORECASE):
+        return "SEGMENTO"
+    if re.search(r"\bcategorias?\b", q, re.IGNORECASE):
+        return "CATEGORIA"
+    if re.search(r"\bgrupos?\b", q, re.IGNORECASE):
+        return "GRUPO"
+    if re.search(r"\b(?:produto|produtos|sku|item|itens)\b", q, re.IGNORECASE):
+        return "PRODUTO"
+    if re.search(r"\b(?:fabricante|marca)\b", q, re.IGNORECASE):
+        return "FABRICANTE"
+
+    # Fallback: só assume loja quando a consulta fala de UNE/loja como objeto principal,
+    # não como filtro de escopo ("na UNE 520", "em todas as UNEs", etc.).
+    if re.search(r"\b(?:vendas?|estoque|ranking|desempenho)\s+das?\s+(?:unes?|lojas?)\b", q, re.IGNORECASE):
+        return "LOJA"
+    if re.search(r"\b(?:unes?|lojas?)\b", q, re.IGNORECASE) and not is_all_stores_scope(query):
+        return "LOJA"
+    return None
+
+
 def route_visualization(query: str, confidence: float) -> ToolSelection:
     """Roteamento específico para visualizações."""
     query_lower = query.lower()
     
     # Sub-classificação
     if "dashboard" in query_lower:
+        params: Dict[str, Any] = {}
+        segment = extract_segment_filter(query)
+        une = extract_une_filter(query)
+        period = extract_period_filter(query)
+        if segment:
+            params["segmento"] = segment
+        if une:
+            params["une"] = une
+        if period:
+            params["periodo"] = period
+        if is_all_stores_scope(query):
+            params["escopo"] = "rede"
+
         return ToolSelection(
             tool_name="gerar_dashboard_executivo",
-            tool_params={},
+            tool_params=params,
             confidence=confidence * 0.95,
-            fallback_tools=["gerar_grafico_universal_v2"],
-            reasoning="Dashboard executivo detectado"
+            fallback_tools=["gerar_grafico_universal_v2", "consultar_dados_flexivel"],
+            reasoning=f"Dashboard executivo detectado com filtros: {list(params.keys())}"
         )
     
     # Default: gerar_grafico_universal_v2 (ferramenta universal)
@@ -196,6 +414,9 @@ def route_visualization(query: str, confidence: float) -> ToolSelection:
         "descricao": query,
         "tipo_grafico": "auto"
     }
+    breakdown = extract_chart_breakdown(query)
+    if breakdown:
+        params["quebra_por"] = breakdown
     
     # Extrair filtros
     une = extract_une_filter(query)
@@ -277,22 +498,52 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
     
     product = extract_product_code(query)
     une = extract_une_filter(query)
-    
+    desconto_pct = extract_percentage_param(query)
+    cart_context = any(
+        marker in query_lower
+        for marker in ["cesta", "carrinho", "pedido", "combo", "basket"]
+    )
+    promotion_context = any(
+        marker in query_lower
+        for marker in ["promo", "desconto", "oferta", "campanha"]
+    )
+    margin_context = any(
+        marker in query_lower
+        for marker in ["margem", "rentabilidade", "lucro"]
+    )
+
     # Sub-classificação de cálculo
-    if "eoq" in query_lower or "lote econômico" in query_lower or "quanto comprar" in query_lower:
+    if is_market_basket_query(query):
+        tool_name = "minerar_cestas_frequentes"
+        params = {}
+        reasoning = "Pergunta sobre itens que saem juntos deve usar market basket dedicado"
+    elif cart_context and promotion_context:
+        params = {}
+        if desconto_pct is not None:
+            params["desconto_pct"] = desconto_pct
+        tool_name = "simular_promocao_cesta"
+        reasoning = "Simulação de impacto promocional em cesta/carrinho"
+    elif cart_context and margin_context:
+        tool_name = "analisar_cesta_compras"
+        params = {}
+        reasoning = "Cálculo determinístico de margem real da cesta"
+    elif cart_context:
+        tool_name = "analisar_cesta_compras"
+        params = {}
+        reasoning = "Análise completa de cesta/carrinho"
+    elif "eoq" in query_lower or "lote econômico" in query_lower or "quanto comprar" in query_lower:
         tool_name = "calcular_eoq"
         params = {"produto_id": str(product)} if product else {}
         if product:
             params["produto_id"] = str(product)
         reasoning = "Cálculo de EOQ (lote econômico)"
         
-    elif "margem" in query_lower or "mc" in query_lower:
+    elif "media comum" in query_lower or "média comum" in query_lower or "mc de estoque" in query_lower:
         if product and une:
             tool_name = "calcular_mc_produto"
             params = {"produto_id": int(product), "une_id": int(une)}
-            reasoning = "Cálculo de margem de contribuição"
+            reasoning = "Cálculo de média comum para estoque"
         else:
-            # Tool exige produto e UNE; fallback para consulta guiada.
             tool_name = "consultar_dados_flexivel"
             params = {"colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"], "limite": "50"}
             filtros = {}
@@ -302,7 +553,21 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
                 filtros["UNE"] = int(une)
             if filtros:
                 params["filtros"] = filtros
-            reasoning = "Margem solicitada sem parâmetros mínimos para cálculo direto; fallback para dados base"
+            reasoning = "Média comum solicitada sem parâmetros mínimos; fallback para dados base"
+    elif "margem" in query_lower or "mc" in query_lower:
+        tool_name = "consultar_dados_flexivel"
+        params = {
+            "colunas": ["PRODUTO", "NOME", "UNE", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD", "VENDA_30DD"],
+            "limite": "50",
+        }
+        filtros = {}
+        if product:
+            filtros["PRODUTO"] = product
+        if une:
+            filtros["UNE"] = int(une)
+        if filtros:
+            params["filtros"] = filtros
+        reasoning = "Margem solicitada sem semântica de cesta; retorno dos dados de preço e custo para análise correta"
         
     elif "preço final" in query_lower or "preco final" in query_lower:
         # Tool calcular_preco_final_une exige parâmetros comerciais não inferíveis da query livre.
@@ -411,6 +676,51 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
 
     product = extract_product_code(query)
     une = extract_une_filter(query)
+    store_ranking = extract_product_store_ranking_request(query)
+    product_rupture = is_product_rupture_query(query)
+
+    if is_market_basket_query(query):
+        return ToolSelection(
+            tool_name="minerar_cestas_frequentes",
+            tool_params={},
+            confidence=max(confidence, 0.90),
+            fallback_tools=["analise_correlacao_produtos"],
+            reasoning="Pergunta sobre itens que saem juntos deve usar market basket dedicado",
+        )
+
+    if product and product_rupture:
+        return ToolSelection(
+            tool_name="analisar_produto_todas_lojas",
+            tool_params={"produto_codigo": product},
+            confidence=max(confidence, 0.91),
+            fallback_tools=["consultar_dados_flexivel"],
+            reasoning="Ruptura de produto específico deve usar análise multi-loja com lista de lojas em ruptura",
+        )
+
+    if product and is_product_store_leader_query(query):
+        return ToolSelection(
+            tool_name="analisar_produto_todas_lojas",
+            tool_params={"produto_codigo": product},
+            confidence=max(confidence, 0.88),
+            fallback_tools=["consultar_dados_flexivel"],
+            reasoning="Pergunta comparativa por loja para produto específico; usando análise multi-loja",
+        )
+    if product and store_ranking:
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params={
+                "agregacao": "SUM",
+                "coluna_agregacao": "VENDA_30DD",
+                "agrupar_por": ["UNE"],
+                "ordenar_por": "valor",
+                "ordem_desc": bool(store_ranking["ordem_desc"]),
+                "limite": int(store_ranking["limite"]),
+                "filtros": {"PRODUTO": product},
+            },
+            confidence=max(confidence, 0.89),
+            fallback_tools=["consultar_dados_gerais"],
+            reasoning="Ranking de lojas para produto específico com agregação por UNE",
+        )
 
     # Casos de negócio comercial: ruptura deve priorizar ferramenta especializada.
     if re.search(r"ruptur\w*|falta\s+de\s+estoque|sem\s+estoque", query_lower):
@@ -530,6 +840,16 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
 def route_data_query(query: str, confidence: float) -> ToolSelection:
     """Roteamento específico para consultas de dados."""
     query_lower = query.lower()
+    product = extract_product_code(query)
+    if product and is_product_rupture_query(query):
+        return ToolSelection(
+            tool_name="analisar_produto_todas_lojas",
+            tool_params={"produto_codigo": product},
+            confidence=max(confidence, 0.91),
+            fallback_tools=["consultar_dados_flexivel"],
+            reasoning="Consulta de ruptura para produto específico redirecionada para análise multi-loja",
+        )
+
     if re.search(r"ruptur\w*|falta\s+de\s+estoque|sem\s+estoque", query_lower):
         return ToolSelection(
             tool_name="encontrar_rupturas_criticas",
@@ -555,9 +875,34 @@ def route_data_query(query: str, confidence: float) -> ToolSelection:
             reasoning="Consulta de performance negativa redirecionada para análise de dados"
         )
 
-    product = extract_product_code(query)
     une = extract_une_filter(query)
     segment = extract_segment_filter(query)
+    store_ranking = extract_product_store_ranking_request(query)
+
+    if product and is_product_store_leader_query(query):
+        return ToolSelection(
+            tool_name="analisar_produto_todas_lojas",
+            tool_params={"produto_codigo": product},
+            confidence=max(confidence, 0.88),
+            fallback_tools=["consultar_dados_flexivel"],
+            reasoning="Consulta de loja líder para produto específico redirecionada para análise multi-loja",
+        )
+    if product and store_ranking:
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params={
+                "agregacao": "SUM",
+                "coluna_agregacao": "VENDA_30DD",
+                "agrupar_por": ["UNE"],
+                "ordenar_por": "valor",
+                "ordem_desc": bool(store_ranking["ordem_desc"]),
+                "limite": int(store_ranking["limite"]),
+                "filtros": {"PRODUTO": product},
+            },
+            confidence=max(confidence, 0.89),
+            fallback_tools=["consultar_dados_gerais"],
+            reasoning="Consulta de ranking de lojas para produto específico com agregação por UNE",
+        )
     
     params = {
         "colunas": ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"],
