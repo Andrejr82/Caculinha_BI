@@ -87,7 +87,11 @@ def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def _load_data(filters: Dict[str, Any] = None, columns: List[str] = None) -> pd.DataFrame:
+def _load_data(
+    filters: Dict[str, Any] = None,
+    columns: List[str] = None,
+    limit: Optional[int] = 100,
+) -> pd.DataFrame:
     """
     Carrega dados usando duckdb_adapter (Parquet) de forma otimizada.
 
@@ -139,9 +143,11 @@ def _load_data(filters: Dict[str, Any] = None, columns: List[str] = None) -> pd.
         adapter = get_duckdb_adapter()
         logger.info(f"[DUCKDB] Load: Cols={len(parquet_cols_to_load) if parquet_cols_to_load else 'All'}, Filters={list(duckdb_filters.keys())}")
         
+        adapter_limit = int(limit) if limit is not None else 10000
         df = adapter.load_data(
             columns=parquet_cols_to_load,
-            filters=duckdb_filters
+            filters=duckdb_filters,
+            limit=adapter_limit,
         )
         
         logger.info(f"[OK] DuckDB carregou {len(df)} registros")
@@ -1594,7 +1600,7 @@ def analisar_produto_todas_lojas(produto_codigo: int) -> Dict[str, Any]:
         logger.info(f"[SEARCH] Analisando produto {produto_codigo} em todas as lojas...")
 
         # Carregar dados do produto em todas as UNEs
-        df = _load_data(filters={"codigo": produto_codigo})
+        df = _load_data(filters={"codigo": produto_codigo}, limit=10000)
 
         if df.empty:
             return {

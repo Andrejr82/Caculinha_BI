@@ -5,10 +5,14 @@ Autor: Backend Specialist Agent
 Data: 2026-02-07
 """
 
-from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query
+from typing import Annotated, Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 import structlog
+
+from backend.app.api.dependencies import get_current_active_user
+from backend.app.core.chat_capabilities import require_chat_capability
+from backend.app.infrastructure.database.models import User
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/memory", tags=["Memory"])
@@ -57,15 +61,28 @@ def get_memory_agent():
     return _memory_agent
 
 
+def _can_access_conversation(current_user: User, conversation_user_id: str) -> bool:
+    role = str(getattr(current_user, "role", "") or "").strip().lower()
+    if role == "admin":
+        return True
+    return str(getattr(current_user, "id", "")) == str(conversation_user_id)
+
+
 @router.get("/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(conversation_id: str):
+async def get_conversation(
+    conversation_id: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
     """
     Recupera conversa com todas as mensagens.
     """
+    require_chat_capability(current_user, "memory")
     agent = get_memory_agent()
     
     conv = await agent.get_conversation(conversation_id)
     if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if not _can_access_conversation(current_user, conv.user_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
     
     messages = await agent.memory.get_all_messages(conversation_id)
@@ -89,11 +106,18 @@ async def get_conversation(conversation_id: str):
 
 
 @router.delete("/{conversation_id}")
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(
+    conversation_id: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
     """
     Deleta conversa e todas as mensagens.
     """
+    require_chat_capability(current_user, "memory")
     agent = get_memory_agent()
+    conv = await agent.get_conversation(conversation_id)
+    if not conv or not _can_access_conversation(current_user, conv.user_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     deleted = await agent.delete_conversation(conversation_id)
     if not deleted:
@@ -105,7 +129,8 @@ async def delete_conversation(conversation_id: str):
 
 @router.get("", response_model=List[ConversationListItem])
 async def list_conversations(
-    tenant_id: str = Query(...),
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    tenant_id: str = Query("default"),
     user_id: Optional[str] = None,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -113,11 +138,17 @@ async def list_conversations(
     """
     Lista conversas de um tenant/usuário.
     """
+    require_chat_capability(current_user, "memory")
     agent = get_memory_agent()
+    effective_user_id = user_id
+    if str(getattr(current_user, "role", "") or "").strip().lower() != "admin":
+        effective_user_id = str(getattr(current_user, "id", ""))
+    elif effective_user_id is None:
+        effective_user_id = str(getattr(current_user, "id", ""))
     
     convs = await agent.memory.list_conversations(
         tenant_id=tenant_id,
-        user_id=user_id,
+        user_id=effective_user_id,
         limit=limit,
         offset=offset,
     )

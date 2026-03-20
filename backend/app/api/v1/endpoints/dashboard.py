@@ -15,8 +15,6 @@ from backend.app.api.dependencies import get_current_active_user
 from backend.app.core.context import set_current_user_context
 from backend.app.infrastructure.database.models import User
 
-print("DEBUG: LOADING DASHBOARD MODULE (WITH EXPORT ENDPOINT)!!!")
-
 # [OK] FIX: Removed direct import to break circular dependency
 # from app.core.tools.purchasing_tools import calcular_eoq, prever_demanda_sazonal
 # Tools will be imported lazily inside functions

@@ -25,7 +25,7 @@ def mock_settings():
         yield mock_settings_instance
 
 def test_agent_graph_cache_init(temp_agent_graph_cache_dir, mock_settings):
-    cache = AgentGraphCache(cache_dir=str(temp_agent_graph_cache_dir))
+    cache = AgentGraphCache(cache_dir=str(temp_agent_graph_cache_dir), ttl_minutes=1)
     assert os.path.exists(temp_agent_graph_cache_dir)
     assert cache.ttl == timedelta(minutes=1)
     assert cache.in_memory_cache == {} # Should be empty initially as no files were loaded
@@ -78,18 +78,24 @@ def test_get_cache_miss_version_mismatch(temp_agent_graph_cache_dir):
     graph_data = {"nodes": ["V1", "Graph"]}
 
     # Create cache with V1 settings
-    with patch('backend.app.core.cache.settings', mock_settings_v1):
-        cache_v1 = AgentGraphCache(cache_dir=str(temp_agent_graph_cache_dir))
-        cache_v1.set(key, graph_data)
-        assert cache_v1.get(key) == graph_data
+    cache_v1 = AgentGraphCache(
+        cache_dir=str(temp_agent_graph_cache_dir),
+        ttl_minutes=60,
+        settings_obj=mock_settings_v1,
+    )
+    cache_v1.set(key, graph_data)
+    assert cache_v1.get(key) == graph_data
 
     # Now try to retrieve with V2 settings
-    with patch('backend.app.core.cache.settings', mock_settings_v2):
-        cache_v2 = AgentGraphCache(cache_dir=str(temp_agent_graph_cache_dir))
-        retrieved_data = cache_v2.get(key)
-        assert retrieved_data is None # Should miss due to version mismatch
-        assert key not in cache_v2.in_memory_cache
-        assert not os.path.exists(cache_v2._get_cache_file_path(key)) # Old version should be removed
+    cache_v2 = AgentGraphCache(
+        cache_dir=str(temp_agent_graph_cache_dir),
+        ttl_minutes=60,
+        settings_obj=mock_settings_v2,
+    )
+    retrieved_data = cache_v2.get(key)
+    assert retrieved_data is None # Should miss due to version mismatch
+    assert key not in cache_v2.in_memory_cache
+    assert not os.path.exists(cache_v2._get_cache_file_path(key)) # Old version should be removed
 
 def test_clear_specific_key(temp_agent_graph_cache_dir, mock_settings):
     cache = AgentGraphCache(cache_dir=str(temp_agent_graph_cache_dir))

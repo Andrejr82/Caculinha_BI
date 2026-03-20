@@ -3,9 +3,6 @@ from __future__ import annotations
 import re
 from typing import Dict, List
 
-from backend.app.core.utils.report_templates import select_official_report_template
-
-
 _BUSINESS_KEYWORDS = (
     "venda",
     "estoque",
@@ -68,8 +65,7 @@ def _first_sentence(text: str) -> str:
 
 def ensure_executive_output(query: str, message: str) -> str:
     """
-    Garante saida no padrao executivo da Fase 3:
-    Resumo, Tabela, SQL/Python, Acao e Recorte/Evidencia.
+    Garante saída executiva em linguagem de negócio (sem blocos técnicos).
     """
     text = str(message or "").strip()
     if not text:
@@ -78,13 +74,12 @@ def ensure_executive_output(query: str, message: str) -> str:
     if not is_business_query(query) and "## resumo" not in text.lower():
         return text
 
-    template = select_official_report_template(query)
-
     summary = _extract_section(text, ["## resumo executivo", "## resumo"])
     table = _extract_section(text, ["## tabela operacional", "## tabela"])
-    sql_python = _extract_section(text, ["## sql/python", "## sql", "## python"])
-    action = _extract_section(text, ["## ação recomendada", "## acao recomendada"])
-    evidence = _extract_section(text, ["## recorte e evidência", "## recorte e evidencia", "## evidência", "## evidencia"])
+    action = _extract_section(
+        text,
+        ["## próximas ações", "## proximas acoes", "## ação recomendada", "## acao recomendada"],
+    )
 
     if not summary:
         summary = f"- {_first_sentence(text)}"
@@ -92,54 +87,21 @@ def ensure_executive_output(query: str, message: str) -> str:
         summary = f"- {summary.strip()}"
 
     if not table:
-        table = (
-            "| Indicador | Valor |\n"
-            "|---|---|\n"
-            "| Status | Dados retornados sem tabela estruturada nesta rodada |"
-        )
-
-    if not sql_python:
-        wants_technical = any(k in (query or "").lower() for k in ("sql", "python", "script", "query"))
-        if wants_technical:
-            sql_python = (
-                "```sql\n"
-                "-- Ajuste filtros de periodo/UNE/segmento conforme necessario\n"
-                "SELECT *\n"
-                "FROM admmat\n"
-                "LIMIT 50;\n"
-                "```\n\n"
-                "```python\n"
-                "# Use este bloco como base para validacao rapida\n"
-                "df.head(50)\n"
-                "```"
-            )
-        else:
-            sql_python = "- Nao aplicavel para esta pergunta (resposta executiva direta)."
+        table = "- Sem dados tabulares adicionais para exibir nesta resposta."
 
     if not action:
-        action = "- Priorizar validacao com o time responsavel e executar o proximo passo operacional."
+        action = _default_action_for_query(query)
     elif not action.strip().startswith("-"):
         action = f"- {action.strip()}"
-
-    if not evidence:
-        evidence = "- Recorte aplicado conforme consulta do usuario; confirme periodo e filtros para auditoria."
-    elif not evidence.strip().startswith("-"):
-        evidence = f"- {evidence.strip()}"
-
-    template_line = f"- Template oficial: {template['nome']} ({template['processo']})"
 
     return (
         "## Resumo executivo\n"
         f"{summary}\n"
-        f"{template_line}\n\n"
+        "\n"
         "## Tabela operacional\n"
         f"{table}\n\n"
-        "## SQL/Python\n"
-        f"{sql_python}\n\n"
-        "## Ação recomendada\n"
-        f"{action}\n\n"
-        "## Recorte e evidência\n"
-        f"{evidence}"
+        "## Próximas ações\n"
+        f"{action}"
     )
 
 
@@ -148,7 +110,28 @@ def validate_executive_output(text: str) -> Dict[str, bool]:
     return {
         "resumo": "## resumo executivo" in lowered or "## resumo" in lowered,
         "tabela": "## tabela operacional" in lowered or "## tabela" in lowered,
-        "sql_python": "## sql/python" in lowered or "## sql" in lowered or "## python" in lowered,
-        "acao": "## ação recomendada" in lowered or "## acao recomendada" in lowered,
-        "evidencia": "## recorte e evidência" in lowered or "## recorte e evidencia" in lowered,
+        "acoes": "## próximas ações" in lowered or "## proximas acoes" in lowered or "## ação recomendada" in lowered or "## acao recomendada" in lowered,
     }
+
+
+def _default_action_for_query(query: str) -> str:
+    q = (query or "").lower()
+    if any(k in q for k in ["dashboard", "gráfico", "grafico", "vendas", "segmento", "une", "loja"]):
+        return (
+            "- Priorize as 3 UNEs/segmentos de menor venda com plano comercial em até 7 dias.\n"
+            "- Revise ruptura e cobertura de estoque dos itens líderes para sustentar o giro.\n"
+            "- Reavalie os KPIs no próximo ciclo (D+7) e ajuste preço/mix conforme resultado."
+        )
+    if any(k in q for k in ["pesquisa de mercado", "concorrente", "preço", "preco"]):
+        return (
+            "- Valide as 3 melhores ofertas com cotação direta antes de fechar o pedido.\n"
+            "- Negocie com base na mediana de preço e no prazo de entrega.\n"
+            "- Reexecute a pesquisa com marca/SKU para aumentar a precisão."
+        )
+    if any(k in q for k in ["eoq", "lote econômico", "lote economico", "sensibilidade"]):
+        return (
+            "- Use o lote recomendado como baseline de compra desta semana.\n"
+            "- Simule variação de demanda (+/-20%) antes de confirmar o volume final.\n"
+            "- Monitore ruptura e giro por 30 dias para recalibrar o parâmetro."
+        )
+    return "- Execute o próximo passo operacional com base no resumo e valide resultado no próximo ciclo."

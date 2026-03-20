@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from langchain_core.tools import tool
 from backend.app.core.data_source_manager import get_data_manager
+from backend.app.core.utils.query_router import extract_chart_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +29,24 @@ def _build_no_data_payload(
 ) -> Dict[str, Any]:
     """Monta payload padronizado para ausência de dados com diagnóstico de recorte/RLS."""
     active_segments: List[str] = []
+    get_segments_fn = None
     try:
-        from backend.app.core.context import get_current_user_segments
+        from backend.app.core.context import get_current_user_segments as _get_segments
 
-        active_segments = get_current_user_segments() or []
+        get_segments_fn = _get_segments
     except Exception:
-        active_segments = []
+        try:
+            from app.core.context import get_current_user_segments as _get_segments
+
+            get_segments_fn = _get_segments
+        except Exception:
+            get_segments_fn = None
+
+    if get_segments_fn is not None:
+        try:
+            active_segments = get_segments_fn() or []
+        except Exception:
+            active_segments = []
 
     requested_segment = (filtro_segmento or "").strip().upper()
     allowed_norm = {str(s).strip().upper() for s in active_segments if str(s).strip()}
@@ -141,13 +154,8 @@ def gerar_grafico_universal_v2(
     
     # Lógica de Comparação
     is_comparison = len(lista_unes) > 1 and ("compar" in descricao_lower or "entre" in descricao_lower or "vs" in descricao_lower)
-    # Detectar "por loja" / "todas as lojas"
-    # FIX: Usar quebra_por explícito se fornecido
-    is_by_store = False
-    if quebra_por and any(x in quebra_por.upper() for x in ["LOJA", "UNE", "STORE"]):
-        is_by_store = True
-    else:
-        is_by_store = any(kw in descricao_lower for kw in ["por loja", "por une", "todas as lojas", "cada loja", "em todas", "todas lojas"])
+    inferred_breakdown = (quebra_por or extract_chart_breakdown(descricao) or "").upper()
+    is_by_store = any(x in inferred_breakdown for x in ["LOJA", "UNE", "STORE"])
 
     # -------------------------------------------------------------------------
     # DEFENSIVE OVERRIDE 2026-01-28: Prevent Truncation
@@ -166,8 +174,8 @@ def gerar_grafico_universal_v2(
 
     # Definição de Colunas de Agrupamento (Dimensão)
     # FIX: Priorizar quebra_por explícito
-    if quebra_por:
-        qp = quebra_por.upper()
+    if inferred_breakdown:
+        qp = inferred_breakdown
         if "LOJA" in qp or "UNE" in qp:
             group_col = "UNE"
             titulo_dimensao = "Loja (UNE)"
@@ -630,6 +638,8 @@ def gerar_grafico_universal_v2(
     total_valor = float(df_agg["valor"].sum() or 0)
     top_n = df_agg.nlargest(min(3, len(df_agg)), "valor")[["dimensao", "valor"]]
     bottom_n = df_agg.nsmallest(min(3, len(df_agg)), "valor")[["dimensao", "valor"]]
+    top_n_10 = df_agg.nlargest(min(10, len(df_agg)), "valor")[["dimensao", "valor"]]
+    bottom_n_10 = df_agg.nsmallest(min(10, len(df_agg)), "valor")[["dimensao", "valor"]]
 
     def _to_pairs(frame: pd.DataFrame) -> List[Dict[str, Any]]:
         return [{"dimensao": str(r["dimensao"]), "valor": float(r["valor"])} for _, r in frame.iterrows()]
@@ -653,6 +663,8 @@ def gerar_grafico_universal_v2(
             "total_valor": total_valor,
             "top_3": _to_pairs(top_n),
             "bottom_3": _to_pairs(bottom_n),
+            "top_10": _to_pairs(top_n_10),
+            "bottom_10": _to_pairs(bottom_n_10),
             "mensagem": summary_msg,
         }
     }

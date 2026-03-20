@@ -244,32 +244,37 @@ def get_seasonal_recommendation(
             "urgency": "NORMAL"
         }
     
-    # Aplicar multiplicador sazonal
-    multiplier = seasonal_context["multiplier"]
+    # Aplicar multiplicador sazonal (com fallback para contextos parciais em testes)
+    multiplier = seasonal_context.get("multiplier", 1.0)
     recommended_quantity = base_quantity * multiplier
     
     # Ajustar se estamos próximos do pico
-    if seasonal_context["is_peak_period"]:
+    is_peak_period = bool(seasonal_context.get("is_peak_period", False))
+    if is_peak_period:
         # Aumentar mais 20% se estamos no pico
         recommended_quantity *= 1.2
         peak_adjustment = " (PICO - +20% adicional)"
     else:
         peak_adjustment = ""
+
+    season_name = str(seasonal_context.get("season", "periodo_sazonal"))
+    description = str(seasonal_context.get("description", season_name))
+    coverage_days = int(seasonal_context.get("coverage_days", 30))
     
     reasoning = (
-        f"Ajuste para {seasonal_context['description']}: "
+        f"Ajuste para {description}: "
         f"demanda {multiplier}x maior{peak_adjustment}. "
-        f"Estoque recomendado: {seasonal_context['coverage_days']} dias."
+        f"Estoque recomendado: {coverage_days} dias."
     )
     
     return {
         "recommended_quantity": round(recommended_quantity, 0),
         "base_quantity": base_quantity,
-        "adjustment_factor": multiplier * (1.2 if seasonal_context["is_peak_period"] else 1.0),
+        "adjustment_factor": multiplier * (1.2 if is_peak_period else 1.0),
         "reasoning": reasoning,
-        "urgency": seasonal_context["urgency"],
-        "season": seasonal_context["season"],
-        "days_until_peak": seasonal_context["days_until_peak"]
+        "urgency": seasonal_context.get("urgency", "NORMAL"),
+        "season": season_name,
+        "days_until_peak": seasonal_context.get("days_until_peak", 0)
     }
 
 

@@ -1,6 +1,7 @@
 param(
     [ValidateSet("report", "gate")]
-    [string]$Mode = "report"
+    [string]$Mode = "report",
+    [switch]$AllowDirtyWorkspace
 )
 
 Set-StrictMode -Version Latest
@@ -44,34 +45,56 @@ if ($gitAvailable) {
 }
 $trackedCount = @($tracked).Count
 $dirtyCount = @($dirty).Count
-$dirtyOk = $dirtyCount -eq 0
-$results += Write-Check "workspace_clean" $dirtyOk "Arquivos rastreados: $trackedCount | Mudanças pendentes: $dirtyCount"
+$dirtyOk = ($dirtyCount -eq 0) -or [bool]$AllowDirtyWorkspace
+$dirtyDetail = "Arquivos rastreados: $trackedCount | Mudanças pendentes: $dirtyCount | AllowDirtyWorkspace=$([bool]$AllowDirtyWorkspace)"
+$results += Write-Check "workspace_clean" $dirtyOk $dirtyDetail
 
 # 3) Mandatory files
 $mustExist = @(
     "README.md",
     "backend/app/api/v1/endpoints/playground.py",
     "frontend-solid/src/pages/Playground.tsx",
-    ".github/workflows/ci.yml"
+    ".github/workflows/ci.yml",
+    "scripts/chatbi_canary_rollback_drill.ps1",
+    "docs/CHATBI_SPRINT6_GO_LIVE_RUNBOOK.md",
+    "docs/CHATBI_PLAYBOOK_TREINAMENTO_DASHBOARD.md",
+    "backend/tests/llmops/test_domain_eval_gate.py",
+    "backend/tests/llmops/test_capability_targets.py"
 )
 foreach ($path in $mustExist) {
     $exists = Test-Path -Path $path
     $results += Write-Check "file_exists:$path" $exists "Verificação de presença de arquivo crítico."
 }
 
-# 4) CI quality gate signal
+# 4b) ADR coverage for decision traceability
+$adrRequired = @(
+    "docs/adr/ADR-001-fallback-local-playground.md",
+    "docs/adr/ADR-002-router-rules-first.md",
+    "docs/adr/ADR-003-risk-guardrails-playground.md",
+    "docs/adr/ADR-004-rbac-capability-scoping.md",
+    "docs/adr/ADR-005-dashboard-chat-first.md"
+)
+foreach ($adrPath in $adrRequired) {
+    $exists = Test-Path -Path $adrPath
+    $results += Write-Check "adr_exists:$adrPath" $exists "Rastreabilidade arquitetural obrigatória."
+}
+
+# 5) CI quality gate signal
 $ciPath = ".github/workflows/ci.yml"
 $ciOk = $false
 $ciDetail = "Arquivo ausente."
 if (Test-Path $ciPath) {
     $content = Get-Content $ciPath -Raw
     $continueOnErrorCount = ([regex]::Matches($content, "continue-on-error:\s*true")).Count
-    $ciOk = $continueOnErrorCount -eq 0
-    $ciDetail = "continue-on-error=true encontrados: $continueOnErrorCount"
+    $hasRepoGate = $content -match "sprint0_quality_gate\.ps1\s+-Mode\s+gate"
+    $hasDomainGate = $content -match "test_domain_eval_gate\.py"
+    $hasCapabilityGate = $content -match "test_capability_targets\.py"
+    $ciOk = ($continueOnErrorCount -eq 0) -and $hasRepoGate -and $hasDomainGate -and $hasCapabilityGate
+    $ciDetail = "continue-on-error=true: $continueOnErrorCount | repo_gate: $hasRepoGate | domain_gate: $hasDomainGate | capability_gate: $hasCapabilityGate"
 }
 $results += Write-Check "ci_blocking_quality_gate" $ciOk $ciDetail
 
-# 5) Test config existence
+# 6) Test config existence
 $pytestExists = Test-Path "pytest.ini"
 $results += Write-Check "pytest_config" $pytestExists "pytest.ini presente."
 

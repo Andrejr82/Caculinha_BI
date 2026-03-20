@@ -11,12 +11,16 @@ Baseado nas recomendações do Backend Specialist.
 
 import time
 import logging
+import sys
 from enum import Enum
 from typing import Callable, Any, Optional
 from functools import wraps
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+_THIS_MODULE = sys.modules[__name__]
+sys.modules["app.infrastructure.resilience.circuit_breaker"] = _THIS_MODULE
+sys.modules["backend.app.infrastructure.resilience.circuit_breaker"] = _THIS_MODULE
 
 
 class CircuitState(str, Enum):

@@ -65,13 +65,13 @@ def build_structured_response(
         table_md = "\n".join(lines)
 
     parts = [
-        "## Resumo",
+        "## Resumo executivo",
         summary,
         "",
-        "## Tabela",
+        "## Tabela operacional",
         table_md if table_md else "_Sem dados tabulares para este caso._",
         "",
-        "## Ação recomendada",
+        "## Próximas ações",
         action,
     ]
     if template and language:

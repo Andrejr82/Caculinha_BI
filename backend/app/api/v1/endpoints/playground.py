@@ -1,5 +1,6 @@
 from typing import Annotated, Dict, Any, List, Optional
 from datetime import datetime, timedelta
+import asyncio
 import json
 import logging
 from uuid import uuid4
@@ -74,6 +75,22 @@ def _safe_response_or_block(text: str) -> tuple[str, bool, str]:
         "Ajuste a solicitação para uma versão somente leitura/não destrutiva."
     )
     return blocked, False, validation.reason
+
+
+def _playground_remote_timeout_seconds() -> int:
+    raw_value = getattr(settings, "PLAYGROUND_REMOTE_TIMEOUT_SECONDS", 18)
+    try:
+        return max(5, int(raw_value))
+    except (TypeError, ValueError):
+        return 18
+
+
+async def _run_playground_remote_call(callable_obj, *args, **kwargs):
+    timeout_seconds = _playground_remote_timeout_seconds()
+    return await asyncio.wait_for(
+        asyncio.to_thread(callable_obj, *args, **kwargs),
+        timeout=timeout_seconds,
+    )
 
 
 async def _get_sql_access_state(user: User, db: AsyncSession) -> tuple[bool, str, str | None]:
@@ -164,7 +181,10 @@ async def _get_playground_access_state(user: User, db: AsyncSession) -> tuple[bo
         return state
 
     pref = result.scalar_one_or_none()
-    enabled = bool(pref and str(pref.value).strip().lower() == "true")
+    raw_value = getattr(pref, "value", None) if pref is not None else None
+    if raw_value is None and pref is not None:
+        logger.warning("playground_access_preference_missing_value: user_id=%s", user.id)
+    enabled = bool(raw_value is not None and str(raw_value).strip().lower() == "true")
     state = (enabled, "Acesso habilitado pelo administrador." if enabled else "Acesso ao Playground não habilitado para este usuário.")
     _playground_access_cache[user_key] = (now + timedelta(seconds=_SQL_ACCESS_CACHE_TTL_SECONDS), state)
     return state
@@ -505,7 +525,7 @@ async def playground_stream(
     # Prepare messages
     messages = []
     for msg in request.history:
-        role = "model" if msg.role == "assistant" else "user"
+        role = "assistant" if msg.role == "assistant" else "user"
         messages.append({"role": role, "content": msg.content})
     messages.append({"role": "user", "content": request.message})
 
@@ -540,33 +560,49 @@ async def playground_stream(
             # For simplicity, we'll iterate directly (might block loop slightly but ok for playground)
             
             full_text = ""
-            if provider == "groq":
-                result = llm_adapter.get_completion(messages)
-                if "error" in result:
-                    lower = str(result["error"]).lower()
-                    if any(key in lower for key in ["429", "quota", "rate", "resource_exhausted"]):
-                        yield f"data: {json.dumps({'type': 'degraded', 'text': 'Quota estourada / configure billing / tente depois'})}\n\n"
-                    else:
-                        yield f"data: {json.dumps({'type': 'error', 'text': 'Falha temporaria no Playground. Tente novamente em instantes.'})}\n\n"
-                    yield f"data: {json.dumps({'type': 'done', 'request_id': request_id})}\n\n"
-                    return
-                full_text = str(result.get("content", "") or "")
-                if full_text:
-                    yield f"data: {json.dumps({'type': 'token', 'text': full_text})}\n\n"
-            else:
-                iterator = llm_adapter.stream_completion(messages)
-                for chunk in iterator:
-                    if "content" in chunk:
-                        text = chunk["content"]
-                        full_text += text
-                        yield f"data: {json.dumps({'type': 'token', 'text': text})}\n\n"
-                    elif "error" in chunk:
-                        lower = str(chunk["error"]).lower()
-                        if any(key in lower for key in ["429", "quota", "rate", "resource_exhausted"]):
-                            yield f"data: {json.dumps({'type': 'degraded', 'text': 'Quota estourada / configure billing / tente depois'})}\n\n"
-                        else:
-                            yield f"data: {json.dumps({'type': 'error', 'text': 'Falha temporaria no Playground. Tente novamente em instantes.'})}\n\n"
-            
+            try:
+                if provider == "groq":
+                    result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
+                else:
+                    result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
+            except asyncio.TimeoutError:
+                fallback_text = _build_local_fallback_response(
+                    message=request.message,
+                    json_mode=request.json_mode,
+                )
+                normalized = enforce_playground_response_schema(fallback_text, json_mode=request.json_mode)
+                scoped_text, scope_ok, scope_reason = _apply_sql_scope(
+                    text=normalized,
+                    has_sql_access=has_sql_access,
+                )
+                safe_text, is_safe, safety_reason = _safe_response_or_block(scoped_text)
+                _record_playground_usage(
+                    db,
+                    user_id=current_user.id,
+                    action="playground_stream_timeout_fallback",
+                    details={"request_id": request_id, "endpoint": "stream", "timeout_seconds": _playground_remote_timeout_seconds()},
+                    status="warning",
+                )
+                await _safe_db_commit(db, "playground")
+                yield f"data: {json.dumps({'type': 'degraded', 'text': 'Tempo limite do provedor remoto atingido. Usando fallback local.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'token', 'text': safe_text})}\n\n"
+                duration = (datetime.now() - start_time).total_seconds()
+                yield f"data: {json.dumps({'type': 'done', 'request_id': request_id, 'metrics': {'time': duration, 'tokens': max(1, len(safe_text)//4)}, 'safety': {'is_safe': is_safe and scope_ok, 'reason': f'{sql_access_reason} | {scope_reason} | {safety_reason}'}})}\n\n"
+                return
+
+            if "error" in result:
+                lower = str(result["error"]).lower()
+                if any(key in lower for key in ["429", "quota", "rate", "resource_exhausted"]):
+                    yield f"data: {json.dumps({'type': 'degraded', 'text': 'Quota estourada / configure billing / tente depois'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'text': 'Falha temporaria no Playground. Tente novamente em instantes.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'request_id': request_id})}\n\n"
+                return
+
+            full_text = str(result.get("content", "") or "")
+            if full_text:
+                yield f"data: {json.dumps({'type': 'token', 'text': full_text})}\n\n"
+             
             duration = (datetime.now() - start_time).total_seconds()
             scoped_text, scope_ok, scope_reason = _apply_sql_scope(
                 text=full_text,
@@ -829,35 +865,73 @@ async def playground_chat(
 
         # Invocar LLM
         start_time = datetime.now()
-        if provider == "groq":
-            messages: list[dict[str, str]] = []
-            for msg in request.history:
-                role = "model" if msg.role == "assistant" else "user"
-                messages.append({"role": role, "content": msg.content})
-            messages.append({"role": "user", "content": request.message})
+        messages: list[dict[str, str]] = []
+        for msg in request.history:
+            role = "assistant" if msg.role == "assistant" else "user"
+            messages.append({"role": role, "content": msg.content})
+        messages.append({"role": "user", "content": request.message})
 
-            llm_adapter = LLMFactory.get_adapter(provider="groq", use_smart=True)
-            if hasattr(llm_adapter, "system_instruction"):
-                llm_adapter.system_instruction = request.system_instruction
-            result = llm_adapter.get_completion(messages)
+        try:
+            if provider == "groq":
+                llm_adapter = LLMFactory.get_adapter(provider="groq", use_smart=True)
+                if hasattr(llm_adapter, "system_instruction"):
+                    llm_adapter.system_instruction = request.system_instruction
+            else:
+                llm_adapter = GeminiLLMAdapter(
+                    model_name=settings.LLM_MODEL_NAME,
+                    gemini_api_key=settings.GEMINI_API_KEY,
+                    system_instruction=request.system_instruction
+                )
+            result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
             if "error" in result:
                 raise Exception(str(result["error"]))
             response_text = str(result.get("content", "") or "")
-        else:
-            llm = GeminiLLMAdapter(
-                model_name=settings.LLM_MODEL_NAME,
-                gemini_api_key=settings.GEMINI_API_KEY,
-                system_instruction=request.system_instruction
-            ).get_llm()
-            messages = []
-            for msg in request.history:
-                if msg.role == "user":
-                    messages.append(("human", msg.content))
-                elif msg.role == "assistant":
-                    messages.append(("assistant", msg.content))
-            messages.append(("human", request.message))
-            response = llm.invoke(messages)
-            response_text = str(response.content or "")
+        except asyncio.TimeoutError:
+            fallback_text = _build_local_fallback_response(
+                message=request.message,
+                json_mode=request.json_mode,
+            )
+            normalized = enforce_playground_response_schema(fallback_text, json_mode=request.json_mode)
+            scoped_text, scope_ok, scope_reason = _apply_sql_scope(
+                text=normalized,
+                has_sql_access=has_sql_access,
+            )
+            safe_text, is_safe, safety_reason = _safe_response_or_block(scoped_text)
+            _record_playground_usage(
+                db,
+                user_id=current_user.id,
+                action="playground_chat_timeout_fallback",
+                details={"request_id": request_id, "endpoint": "chat", "timeout_seconds": _playground_remote_timeout_seconds()},
+                status="warning",
+            )
+            await _safe_db_commit(db, "playground")
+            return {
+                "response": safe_text,
+                "model_info": {
+                    "model": "local-fallback",
+                    "temperature": request.temperature,
+                    "max_tokens": request.max_tokens,
+                    "json_mode": request.json_mode,
+                    "timeout_fallback": True,
+                },
+                "metadata": {
+                    "response_time": round((datetime.now() - start_time).total_seconds(), 2),
+                    "timestamp": datetime.now().isoformat(),
+                    "user": current_user.username,
+                    "request_id": request_id,
+                    "source": "local-fallback",
+                    "intent": "fallback.timeout",
+                    "remote_llm_reason": f"Timeout de {_playground_remote_timeout_seconds()}s no provedor remoto.",
+                    "sql_access_expires_at": sql_access_expires_at,
+                    "safety": {"is_safe": is_safe and scope_ok, "reason": f"{sql_access_reason} | {scope_reason} | {safety_reason}"},
+                },
+                "cache_stats": {
+                    "hits": 0,
+                    "misses": 0,
+                    "hit_rate": 0.0,
+                    "enabled": False,
+                },
+            }
 
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds()

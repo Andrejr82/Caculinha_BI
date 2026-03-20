@@ -40,6 +40,10 @@ def test_competitive_search_returns_success_when_all_providers_empty(monkeypatch
 
     assert result["status"] == "success"
     assert isinstance(result["total_itens"], int)
+    assert result["source"] == "tool.pesquisar_precos_concorrentes"
+    assert isinstance(result.get("confidence"), float)
+    assert isinstance(result.get("mode"), str)
+    assert isinstance(result.get("citations"), list)
 
 
 def test_build_competitor_search_queries_adds_variants_and_location() -> None:
@@ -119,6 +123,10 @@ def test_generic_market_query_uses_fast_first_provider(monkeypatch) -> None:
     assert result["total_itens"] == 1
     assert result["providers_used"]
     assert result["providers_used"][0] == "websearch"
+    assert result["source"] == "tool.pesquisar_precos_concorrentes"
+    assert isinstance(result.get("confidence"), float)
+    assert isinstance(result.get("mode"), str)
+    assert isinstance(result.get("citations"), list)
 
 
 def test_diversify_competitor_results_limits_single_competitor_dominance() -> None:
@@ -158,7 +166,7 @@ def test_market_web_collects_other_sources_even_when_ml_returns_many(monkeypatch
         "_search_mercadolivre_market",
         lambda *_args, **_kwargs: [
             {
-                "produto": f"ML item {i}",
+                "produto": f"Fita 45x45 ML item {i}",
                 "preco": 10.0 + i,
                 "moeda": "BRL",
                 "vendedor": "Mercado Livre",
@@ -173,7 +181,7 @@ def test_market_web_collects_other_sources_even_when_ml_returns_many(monkeypatch
         "_search_google_shopping_open",
         lambda *_args, **_kwargs: [
             {
-                "produto": "Fita Kalunga",
+                "produto": "Fita adesiva 45x45 Kalunga",
                 "preco": 9.9,
                 "moeda": "BRL",
                 "vendedor": "",
@@ -181,7 +189,7 @@ def test_market_web_collects_other_sources_even_when_ml_returns_many(monkeypatch
                 "url": "https://www.kalunga.com.br/prod/fita-adesiva",
             },
             {
-                "produto": "Fita Americanas",
+                "produto": "Fita adesiva 45x45 Americanas",
                 "preco": 9.7,
                 "moeda": "BRL",
                 "vendedor": "",
@@ -201,6 +209,10 @@ def test_market_web_collects_other_sources_even_when_ml_returns_many(monkeypatch
     competitors = {str(i.get("concorrente")) for i in result["itens"]}
     assert "Mercado Livre" in competitors
     assert "Kalunga" in competitors or "Americanas" in competitors
+    assert result["source"] == "tool.pesquisar_mercado_web"
+    assert isinstance(result.get("confidence"), float)
+    assert isinstance(result.get("mode"), str)
+    assert isinstance(result.get("citations"), list)
 
 
 def test_market_web_infers_competitor_from_domain(monkeypatch) -> None:
@@ -231,13 +243,53 @@ def test_market_web_infers_competitor_from_domain(monkeypatch) -> None:
     assert "Americanas" in result.get("concorrentes_identificados", [])
 
 
+def test_market_web_discards_irrelevant_items_for_nonexistent_product(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ct,
+        "_search_mercadolivre_market",
+        lambda *_args, **_kwargs: [
+            {
+                "produto": "Cartão de visita 1000un",
+                "preco": 80.0,
+                "moeda": "BRL",
+                "vendedor": "Mercado Livre",
+                "fonte": "mercadolivre_api",
+                "url": "https://produto.mercadolivre.com.br/MLB-999",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        ct,
+        "_search_google_shopping_open",
+        lambda *_args, **_kwargs: [
+            {
+                "produto": "Livro O cavaleiro inexistente",
+                "preco": 61.0,
+                "moeda": "BRL",
+                "vendedor": "Google Shopping",
+                "fonte": "google_shopping",
+                "url": "https://example.com/livro-inexistente",
+            }
+        ],
+    )
+    monkeypatch.setattr(ct, "_search_serpapi_open", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(ct, "_search_duckduckgo_web", lambda *_args, **_kwargs: [])
+
+    tool_fn = getattr(ct.pesquisar_mercado_web, "func", ct.pesquisar_mercado_web)
+    result = tool_fn(termo_pesquisa="produto inexistente xyz-abc-999", limite="10")
+
+    assert result["status"] == "success"
+    assert result["total_itens"] == 0
+    assert result["mode"] in {"deterministic_no_evidence", "deterministic_degraded_timeout"}
+
+
 def test_market_web_expands_competitor_coverage_when_initially_concentrated(monkeypatch) -> None:
     monkeypatch.setattr(
         ct,
         "_search_mercadolivre_market",
         lambda *_args, **_kwargs: [
             {
-                "produto": f"ML item {i}",
+                "produto": f"Fita 45x45 ML item {i}",
                 "preco": 11.0 + i,
                 "moeda": "BRL",
                 "vendedor": "Mercado Livre",
@@ -296,7 +348,7 @@ def test_market_web_mercadolivre_provider_prefers_api_and_increases_volume(monke
         "_search_mercadolivre_market",
         lambda *_args, **_kwargs: [
             {
-                "produto": f"ML API item {i}",
+                "produto": f"Fita 45x45 ML API item {i}",
                 "preco": 10.0 + i,
                 "moeda": "BRL",
                 "vendedor": "Mercado Livre",

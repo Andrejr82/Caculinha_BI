@@ -358,4 +358,17 @@ export const playgroundApi = {
     api.post('/playground/feedback', payload),
 };
 
+export const chatAutomationApi = {
+  approve: (payload: {
+    approval_id?: string;
+    proposal?: Record<string, any>;
+    follow_up_action?: string;
+  }) => api.post('/chat/automation/approve', payload),
+  reject: (payload: {
+    approval_id?: string;
+    proposal?: Record<string, any>;
+  }) => api.post('/chat/automation/reject', payload),
+  getHistory: (limit: number = 20) => api.get(`/chat/automation/history?limit=${limit}`),
+};
+
 export default api;

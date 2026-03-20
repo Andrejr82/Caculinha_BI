@@ -8,7 +8,16 @@ Date: 2026-01-24
 
 import pytest
 from backend.app.core.utils.intent_classifier import classify_intent, IntentType
-from backend.app.core.utils.query_router import route_query, extract_segment_filter, is_all_stores_scope
+from backend.app.core.utils.query_router import (
+    route_query,
+    extract_chart_breakdown,
+    extract_segment_filter,
+    is_all_stores_scope,
+    extract_period_filter,
+    extract_top_limit,
+    is_product_rupture_query,
+    is_product_store_leader_query,
+)
 
 
 class TestIntentClassifier:
@@ -129,15 +138,51 @@ class TestQueryRouter:
         assert selection.tool_params["filtro_segmento"] == "PAPELARIA"  # String
         assert selection.tool_params["limite"] == "5"  # String (compat provider strict schema)
 
+    def test_dashboard_routing_with_segment_and_period(self):
+        query = "crie um dashboard interativo do segmento ARTES para os ultimos 30 dias"
+        intent_result = classify_intent(query)
+
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "gerar_dashboard_executivo"
+        assert selection.tool_params.get("segmento") == "ARTES"
+        assert selection.tool_params.get("periodo") == "30d"
+
     def test_extract_segment_filter_handles_all_stores_typo(self):
         """Segmento deve ser extraído sem capturar 'toas/todas as unes/lojas'."""
         query = "me de um grafico de vendas do segmento artes de toas as unes"
         assert extract_segment_filter(query) == "ARTES"
 
+    def test_extract_segment_filter_ignores_each_store_suffix(self):
+        query = "me de o gráfico de vendas do segmento tecidos de cada loja"
+        assert extract_segment_filter(query) == "TECIDOS"
+        assert extract_chart_breakdown(query) == "LOJA"
+
+    def test_extract_segment_filter_handles_segment_typos(self):
+        query = "ger eum gráfico de vendas do ssegmento festas de cada loja"
+        assert extract_segment_filter(query) == "FESTAS"
+        assert extract_chart_breakdown(query) == "LOJA"
+
     def test_detect_all_stores_scope_handles_typo(self):
         """Detector de escopo toda rede deve tolerar typo comum."""
         query = "grafico de vendas do segmento artes de toas as unes"
         assert is_all_stores_scope(query) is True
+
+    def test_extract_period_filter(self):
+        assert extract_period_filter("dashboard dos ultimos 15 dias") == "15d"
+        assert extract_period_filter("dashboard das ultimas 8 semanas") == "8w"
+        assert extract_period_filter("dashboard dos ultimos 6 meses") == "6m"
+
+    def test_extract_top_limit_handles_store_ranking_phrase(self):
+        assert extract_top_limit("quais 5 lojas mais vendem o produto 59294") == 5
+
+    def test_product_rupture_query_detects_specific_product(self):
+        assert is_product_rupture_query("quais lojas estão com rupturas do produto 369947") is True
+
+    def test_product_store_leader_query_detects_typo_and_prefers_store_breakdown(self):
+        query = "qual loja mais vede o produto 369947 ?"
+        assert is_product_store_leader_query(query) is True
+        assert extract_chart_breakdown(query) == "LOJA"
 
 
 class TestEndToEnd:
@@ -170,6 +215,79 @@ class TestEndToEnd:
 
         assert selection.tool_name == "gerar_grafico_universal_v2"
         assert selection.tool_params.get("filtro_segmento") == "ARTES"
+
+    def test_store_breakdown_query_with_segment_suffix_routes_correctly(self):
+        query = "me de o gráfico de vendas do segmento tecidos de cada loja"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "gerar_grafico_universal_v2"
+        assert selection.tool_params.get("filtro_segmento") == "TECIDOS"
+        assert selection.tool_params.get("quebra_por") == "LOJA"
+
+    def test_store_breakdown_query_with_segment_typo_routes_correctly(self):
+        query = "ger eum gráfico de vendas do ssegmento festas de cada loja"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "gerar_grafico_universal_v2"
+        assert selection.tool_params.get("filtro_segmento") == "FESTAS"
+        assert selection.tool_params.get("quebra_por") == "LOJA"
+
+    def test_product_store_leader_query_routes_to_multi_store_analysis(self):
+        query = "qual loja mais vende o produto 369947 ?"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "analisar_produto_todas_lojas"
+        assert selection.tool_params.get("produto_codigo") == 369947
+
+    def test_product_store_leader_query_with_typo_routes_to_multi_store_analysis(self):
+        query = "qual loja mais vede o produto 369947 ?"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "analisar_produto_todas_lojas"
+        assert selection.tool_params.get("produto_codigo") == 369947
+
+    def test_top_five_product_store_query_routes_to_aggregated_store_ranking(self):
+        query = "quais 5 lojas mais vendem o produto 59294"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "consultar_dados_flexivel"
+        assert selection.tool_params.get("agrupar_por") == ["UNE"]
+        assert selection.tool_params.get("ordem_desc") is True
+        assert selection.tool_params.get("limite") == 5
+        assert selection.tool_params.get("filtros", {}).get("PRODUTO") == 59294
+
+    def test_lowest_product_store_query_routes_to_bottom_store_ranking(self):
+        query = "qual loja vende menos o produto 369947"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "consultar_dados_flexivel"
+        assert selection.tool_params.get("agrupar_por") == ["UNE"]
+        assert selection.tool_params.get("ordem_desc") is False
+        assert selection.tool_params.get("limite") == 1
+        assert selection.tool_params.get("filtros", {}).get("PRODUTO") == 369947
+
+    def test_product_rupture_query_routes_to_multi_store_analysis(self):
+        query = "quais lojas estão com rupturas do produto 369947"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "analisar_produto_todas_lojas"
+        assert selection.tool_params.get("produto_codigo") == 369947
+
+    def test_all_stores_scope_does_not_override_segment_breakdown(self):
+        query = "gere um gráfico de vendas de todos os segmentos em todas as unes"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert extract_chart_breakdown(query) == "SEGMENTO"
+        assert selection.tool_name == "gerar_grafico_universal_v2"
+        assert selection.tool_params.get("quebra_por") == "SEGMENTO"
 
     def test_ruptura_query_routes_to_specialized_tool(self):
         """Perguntas de ruptura devem usar ferramenta dedicada."""

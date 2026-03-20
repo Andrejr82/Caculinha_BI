@@ -5,13 +5,22 @@ Verifica se o LLM está recebendo ferramentas corretamente
 import requests
 import json
 import uuid
+import os
 from pathlib import Path
 import pytest
 
 BASE_URL = "http://localhost:8000"
 
+pytestmark = [pytest.mark.manual, pytest.mark.external]
+
+if os.getenv("RUN_MANUAL_HTTP_TESTS", "0") != "1":
+    pytest.skip(
+        "teste HTTP manual; defina RUN_MANUAL_HTTP_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
+
 # Ler token válido (teste de integração manual)
-token_path = Path("tests/test_token.txt")
+token_path = Path(__file__).resolve().parent / "test_token.txt"
 if not token_path.exists():
     pytest.skip("teste manual: tests/test_token.txt não encontrado", allow_module_level=True)
 

@@ -1,0 +1,157 @@
+{
+  "dataset_version": "v1.0.0",
+  "created_at": "2026-03-09",
+  "owner": "chatbi-team",
+  "description": "Dataset versionado para gate de precisão operacional e follow-up ancorado do ChatBI.",
+  "cases": [
+    {
+      "id": "route_product_store_leader_typo",
+      "kind": "route",
+      "query": "qual loja mais vede o produto 369947 ?",
+      "expected_tool": "analisar_produto_todas_lojas",
+      "expected_params": {
+        "produto_codigo": 369947
+      },
+      "min_confidence": 0.85
+    },
+    {
+      "id": "route_product_store_top5",
+      "kind": "route",
+      "query": "quais 5 lojas mais vendem o produto 59294",
+      "expected_tool": "consultar_dados_flexivel",
+      "expected_params": {
+        "agregacao": "SUM",
+        "coluna_agregacao": "VENDA_30DD",
+        "agrupar_por": [
+          "UNE"
+        ],
+        "ordem_desc": true,
+        "limite": 5,
+        "filtros": {
+          "PRODUTO": 59294
+        }
+      },
+      "min_confidence": 0.85
+    },
+    {
+      "id": "route_product_store_bottom1",
+      "kind": "route",
+      "query": "qual loja vende menos o produto 369947",
+      "expected_tool": "consultar_dados_flexivel",
+      "expected_params": {
+        "agregacao": "SUM",
+        "coluna_agregacao": "VENDA_30DD",
+        "agrupar_por": [
+          "UNE"
+        ],
+        "ordem_desc": false,
+        "limite": 1,
+        "filtros": {
+          "PRODUTO": 369947
+        }
+      },
+      "min_confidence": 0.85
+    },
+    {
+      "id": "route_product_rupture",
+      "kind": "route",
+      "query": "quais lojas estão com rupturas do produto 369947",
+      "expected_tool": "analisar_produto_todas_lojas",
+      "expected_params": {
+        "produto_codigo": 369947
+      },
+      "min_confidence": 0.9
+    },
+    {
+      "id": "resolve_followup_product_bottom",
+      "kind": "resolve_followup",
+      "query": "e qual vende menos?",
+      "chat_history": [
+        {
+          "role": "user",
+          "content": "quais 5 lojas mais vendem o produto 59294"
+        },
+        {
+          "role": "assistant",
+          "content": "ok",
+          "metadata": {
+            "context": {
+              "product_code": 59294,
+              "response_breakdown": "LOJA",
+              "scope_all_stores": true
+            }
+          }
+        }
+      ],
+      "expected_resolved_query": "qual loja vende menos o produto 59294"
+    },
+    {
+      "id": "resolve_followup_product_rupture",
+      "kind": "resolve_followup",
+      "query": "e quais estão em ruptura?",
+      "chat_history": [
+        {
+          "role": "user",
+          "content": "quais 5 lojas mais vendem o produto 59294"
+        },
+        {
+          "role": "assistant",
+          "content": "ok",
+          "metadata": {
+            "context": {
+              "product_code": 59294,
+              "response_breakdown": "LOJA",
+              "scope_all_stores": true
+            }
+          }
+        }
+      ],
+      "expected_resolved_query": "quais lojas estão com rupturas do produto 59294"
+    },
+    {
+      "id": "clarification_unanchored_short_followup",
+      "kind": "clarification",
+      "query": "e qual vende menos?",
+      "tool_name": "consultar_dados_flexivel",
+      "confidence": 0.9,
+      "expected_message_contains": [
+        "confirme o contexto principal",
+        "produto 369947"
+      ]
+    },
+    {
+      "id": "clarification_vague_negative_sales_scope",
+      "kind": "clarification",
+      "query": "quais estão com venda negativa?",
+      "tool_name": "consultar_dados_flexivel",
+      "confidence": 0.9,
+      "expected_message_contains": [
+        "recorte da análise"
+      ]
+    },
+    {
+      "id": "fallback_grounded_product_query_avoids_chart",
+      "kind": "fallback",
+      "query": "qual loja vende menos o produto 369947",
+      "primary_tool_name": "consultar_dados_flexivel",
+      "configured_fallbacks": [
+        "gerar_grafico_universal_v2",
+        "analisar_produto_todas_lojas"
+      ],
+      "expected_fallbacks": [
+        "analisar_produto_todas_lojas"
+      ]
+    },
+    {
+      "id": "fallback_product_rupture_disables_secondary_tools",
+      "kind": "fallback",
+      "query": "quais lojas estão com rupturas do produto 369947",
+      "primary_tool_name": "analisar_produto_todas_lojas",
+      "configured_fallbacks": [
+        "consultar_dados_flexivel",
+        "gerar_grafico_universal_v2"
+      ],
+      "expected_fallbacks": []
+    }
+  ]
+}

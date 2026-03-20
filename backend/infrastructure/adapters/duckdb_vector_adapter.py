@@ -294,6 +294,173 @@ class DuckDBVectorAdapter(IVectorRepository):
             (entries[id], scores[id])
             for id in sorted_ids[:limit]
         ]
+
+    async def search_similar_documents(
+        self,
+        query_embedding: List[float],
+        limit: int = 5,
+        tenant_id: Optional[str] = None,
+        min_score: float = 0.0,
+    ) -> List[dict]:
+        """Busca documentos similares por embedding."""
+        await self._ensure_initialized()
+        conn = self._get_connection()
+
+        where_clauses = ["embedding IS NOT NULL"]
+        params = []
+        if tenant_id:
+            where_clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        where_sql = " AND ".join(where_clauses)
+
+        query = f"""
+            SELECT
+                document_id,
+                tenant_id,
+                content,
+                created_at,
+                metadata,
+                list_cosine_similarity(embedding, ?::FLOAT[{self.dimension}]) AS similarity
+            FROM document_embeddings
+            WHERE {where_sql}
+            ORDER BY similarity DESC
+            LIMIT ?
+        """
+
+        rows = conn.execute(query, [query_embedding] + params + [limit]).fetchall()
+        results = []
+        for row in rows:
+            similarity = row[5] if row[5] else 0.0
+            if similarity < min_score:
+                continue
+            results.append(
+                {
+                    "document_id": row[0],
+                    "tenant_id": row[1],
+                    "content": row[2],
+                    "created_at": row[3],
+                    "metadata": json.loads(row[4]) if row[4] else None,
+                    "score": similarity,
+                }
+            )
+        return results
+
+    async def search_documents_by_content(
+        self,
+        query: str,
+        limit: int = 5,
+        tenant_id: Optional[str] = None,
+    ) -> List[dict]:
+        """Busca documentos por conteúdo textual."""
+        await self._ensure_initialized()
+        conn = self._get_connection()
+
+        where_clauses = ["content ILIKE ?"]
+        params = [f"%{query}%"]
+        if tenant_id:
+            where_clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        where_sql = " AND ".join(where_clauses)
+
+        rows = conn.execute(
+            f"""
+            SELECT document_id, tenant_id, content, created_at, metadata
+            FROM document_embeddings
+            WHERE {where_sql}
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+        return [
+            {
+                "document_id": row[0],
+                "tenant_id": row[1],
+                "content": row[2],
+                "created_at": row[3],
+                "metadata": json.loads(row[4]) if row[4] else None,
+                "score": 0.5,
+            }
+            for row in rows
+        ]
+
+    async def list_recent_documents(
+        self,
+        limit: int = 10,
+        tenant_id: Optional[str] = None,
+    ) -> List[dict]:
+        """Lista documentos mais recentes indexados para filtros adicionais em memória."""
+        await self._ensure_initialized()
+        conn = self._get_connection()
+
+        where_clauses = []
+        params = []
+        if tenant_id:
+            where_clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        rows = conn.execute(
+            f"""
+            SELECT document_id, tenant_id, content, created_at, metadata
+            FROM document_embeddings
+            {where_sql}
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+        return [
+            {
+                "document_id": row[0],
+                "tenant_id": row[1],
+                "content": row[2],
+                "created_at": row[3],
+                "metadata": json.loads(row[4]) if row[4] else None,
+                "score": 0.0,
+            }
+            for row in rows
+        ]
+
+    async def hybrid_document_search(
+        self,
+        query: str,
+        query_embedding: Optional[List[float]],
+        limit: int = 5,
+        tenant_id: Optional[str] = None,
+        alpha: float = 0.5,
+    ) -> List[dict]:
+        """Busca híbrida em documentos (texto + embedding)."""
+        vector_results = []
+        if query_embedding:
+            vector_results = await self.search_similar_documents(
+                query_embedding=query_embedding,
+                limit=limit * 2,
+                tenant_id=tenant_id,
+            )
+
+        text_results = await self.search_documents_by_content(
+            query=query,
+            limit=limit * 2,
+            tenant_id=tenant_id,
+        )
+
+        scores = {}
+        entries = {}
+
+        for index, entry in enumerate(vector_results):
+            entry_id = str(entry.get("document_id") or index)
+            scores[entry_id] = scores.get(entry_id, 0.0) + alpha / (index + 1)
+            entries[entry_id] = entry
+
+        for index, entry in enumerate(text_results):
+            entry_id = str(entry.get("document_id") or index)
+            scores[entry_id] = scores.get(entry_id, 0.0) + (1 - alpha) / (index + 1)
+            entries[entry_id] = entry
+
+        ranked_ids = sorted(scores.keys(), key=lambda item: scores[item], reverse=True)
+        return [entries[item] for item in ranked_ids[:limit]]
     
     # =========================================================================
     # MANAGEMENT OPERATIONS

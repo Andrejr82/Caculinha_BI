@@ -1,5 +1,6 @@
 import time
 import uuid
+import os
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,14 @@ from backend.app.api.v1.endpoints import code_chat as code_chat_endpoint
 from backend.app.api.v1.endpoints import playground as playground_endpoint
 from backend.app.api.dependencies import get_current_active_user
 from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
+
+pytestmark = [pytest.mark.integration, pytest.mark.manual]
+
+if os.getenv("RUN_LOCAL_STABILIZATION_TESTS", "0") != "1":
+    pytest.skip(
+        "teste de estabilização local; defina RUN_LOCAL_STABILIZATION_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
 
 
 class FakeUser:

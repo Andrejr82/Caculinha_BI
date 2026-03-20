@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
+import numpy as np
 import duckdb
 
 from langchain.tools import tool
@@ -59,6 +60,100 @@ def _execute_duckdb_query(sql: str) -> pd.DataFrame:
     except Exception as e:
         logger.error(f"Erro ao executar query DuckDB: {e}")
         return pd.DataFrame()
+
+
+def _distribute_integer_quantities(weights: np.ndarray, total: int) -> np.ndarray:
+    weights = np.asarray(weights, dtype=float)
+    if total <= 0 or weights.size == 0:
+        return np.zeros_like(weights, dtype=int)
+
+    weights = np.clip(weights, a_min=0.0, a_max=None)
+    weight_sum = float(weights.sum())
+    if weight_sum <= 0:
+        base = np.zeros_like(weights, dtype=int)
+        base[: min(len(base), total)] = 1
+        return base
+
+    raw = weights / weight_sum * total
+    base = np.floor(raw).astype(int)
+    remainder = int(total - base.sum())
+    if remainder > 0:
+        fractional_order = np.argsort(-(raw - base))
+        for idx in fractional_order[:remainder]:
+            base[idx] += 1
+    return base
+
+
+def _build_forecast_series(
+    venda_diaria: float,
+    periodo_dias: int,
+    random_seed: int = 42,
+) -> List[float]:
+    rng = np.random.default_rng(random_seed)
+    forecast: List[float] = []
+
+    for i in range(max(0, int(periodo_dias))):
+        trend = 1 + (i * 0.005)
+        weekly_season = 1.0 + (0.15 if (i % 7) >= 5 else 0.0)
+        noise = float(rng.uniform(0.9, 1.1))
+        value = max(0.0, float(venda_diaria) * trend * weekly_season * noise)
+        forecast.append(round(value, 4))
+
+    return forecast
+
+
+def _allocate_stock_dataframe(
+    lojas: pd.DataFrame,
+    quantidade_total: int,
+    criterio: str,
+) -> pd.DataFrame:
+    lojas = lojas.copy()
+    if lojas.empty:
+        return lojas
+
+    lojas["total_vendas"] = pd.to_numeric(lojas["total_vendas"], errors="coerce").fillna(0.0)
+    lojas["estoque_atual"] = pd.to_numeric(lojas["estoque_atual"], errors="coerce").fillna(0.0)
+    lojas["alocacao"] = 0
+    lojas["justificativa"] = ""
+
+    if criterio == "proporcional_vendas":
+        allocations = _distribute_integer_quantities(lojas["total_vendas"].to_numpy(dtype=float), int(quantidade_total))
+        lojas["alocacao"] = allocations
+        total_vendas = max(float(lojas["total_vendas"].sum()), 1.0)
+        lojas["justificativa"] = lojas.apply(
+            lambda row: f"Vendas: {row['total_vendas']:.0f} ({row['total_vendas'] / total_vendas * 100:.1f}%)",
+            axis=1,
+        )
+        return lojas
+
+    if criterio == "prioridade_ruptura":
+        consumo_diario = np.where(lojas["total_vendas"] > 0, lojas["total_vendas"] / 30.0, 0.0)
+        lojas["cobertura_dias"] = np.where(consumo_diario > 0, lojas["estoque_atual"] / consumo_diario, 999.0)
+        lojas = lojas.sort_values(["cobertura_dias", "total_vendas"], ascending=[True, False]).reset_index(drop=True)
+
+        restante = int(quantidade_total)
+        for idx, row in lojas.iterrows():
+            if restante <= 0:
+                break
+            necessidade = max(0.0, row["total_vendas"] * 2 - row["estoque_atual"])
+            alocar = int(min(round(necessidade), restante))
+            lojas.at[idx, "alocacao"] = alocar
+            lojas.at[idx, "justificativa"] = f"Cobertura: {row['cobertura_dias']:.0f} dias"
+            restante -= alocar
+
+        if restante > 0:
+            complement = _distribute_integer_quantities(lojas["total_vendas"].to_numpy(dtype=float), restante)
+            lojas["alocacao"] = lojas["alocacao"].to_numpy(dtype=int) + complement
+
+        return lojas
+
+    if criterio == "igual":
+        allocations = _distribute_integer_quantities(np.ones(len(lojas), dtype=float), int(quantidade_total))
+        lojas["alocacao"] = allocations
+        lojas["justificativa"] = "Igualitária"
+        return lojas
+
+    raise ValueError(f"Critério '{criterio}' inválido")
 
 def calculate_eoq_logic(
     produto_id: str,
@@ -261,20 +356,7 @@ def calculate_demand_forecast_logic(
         venda_mensal_base = historico.iloc[0]['VENDA_30DD']
         venda_diaria = venda_mensal_base / 30
         
-        import random
-        # Adicionar variação estocástica (ruído) para evitar linhas retas artificiais
-        # Sementes fixas para reprodutibilidade básica por dia
-        forecast_data = []
-        for i in range(periodo_dias):
-            # Tendência base levemente crescente
-            trend = 1 + (i * 0.005) 
-            # Sazonalidade semanal (pico finais de semana)
-            weekly_season = 1.0 + (0.15 if (i % 7) >= 5 else 0.0)
-            # Ruído aleatório (Gaussian noise)
-            noise = random.uniform(0.9, 1.1)
-            
-            val = venda_diaria * trend * weekly_season * noise
-            forecast_data.append(max(0, val))
+        forecast_data = _build_forecast_series(venda_diaria=venda_diaria, periodo_dias=periodo_dias)
         
         forecast_result = {
             "forecast": forecast_data, 
@@ -339,36 +421,10 @@ def allocate_stock_logic(
         if lojas.empty:
             return {"error": "Nenhuma loja com histórico de vendas", "produto": produto_id, "nome": produto_nome}
         
-        if criterio == "proporcional_vendas":
-            total_vendas = lojas['total_vendas'].sum()
-            lojas['alocacao'] = (lojas['total_vendas'] / total_vendas * quantidade_total).round(0)
-            lojas['justificativa'] = lojas.apply(lambda row: f"Vendas: {row['total_vendas']:.0f} ({row['total_vendas']/total_vendas*100:.1f}%)", axis=1)
-        
-        elif criterio == "prioridade_ruptura":
-            lojas['cobertura_dias'] = (lojas['estoque_atual'] / (lojas['total_vendas'] / 30)).fillna(999)
-            lojas = lojas.sort_values('cobertura_dias')
-            lojas['alocacao'] = 0
-            lojas['justificativa'] = ""
-            restante = quantidade_total
-            
-            for idx, row in lojas.iterrows():
-                if restante <= 0: break
-                necessidade = max(0, row['total_vendas'] * 2 - row['estoque_atual'])
-                alocar = min(necessidade, restante)
-                lojas.at[idx, 'alocacao'] = alocar
-                lojas.at[idx, 'justificativa'] = f"Cobertura: {row['cobertura_dias']:.0f} dias"
-                restante -= alocar
-            
-            if restante > 0:
-                total_vendas = lojas['total_vendas'].sum()
-                lojas['alocacao'] += (lojas['total_vendas'] / total_vendas * restante).round(0)
-        
-        elif criterio == "igual":
-            lojas['alocacao'] = quantidade_total // len(lojas)
-            lojas['justificativa'] = "Igualitária"
-        
-        else:
-            return {"error": f"Critério '{criterio}' inválido", "produto": produto_id}
+        try:
+            lojas = _allocate_stock_dataframe(lojas, quantidade_total=quantidade_total, criterio=criterio)
+        except ValueError as e:
+            return {"error": str(e), "produto": produto_id}
         
         alocacoes = [
             {"une": int(row['UNE']), "quantidade": int(row['alocacao']), "justificativa": row['justificativa']}

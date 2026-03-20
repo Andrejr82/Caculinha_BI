@@ -26,6 +26,11 @@ jobs:
         cd backend
         pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Run repository quality gate (blocking)
+      shell: pwsh
+      run: |
+        ./scripts/sprint0_quality_gate.ps1 -Mode gate
     
     - name: Run syntax checks
       run: |
@@ -43,6 +48,16 @@ jobs:
         cd backend
         pip install pytest pytest-cov
         pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+
+    - name: Run domain eval gate
+      run: |
+        cd backend
+        pytest tests/llmops/test_domain_eval_gate.py -v --tb=short
+
+    - name: Run capability targets gate
+      run: |
+        cd backend
+        pytest tests/llmops/test_capability_targets.py -v --tb=short
     
     - name: Check security
       run: |
