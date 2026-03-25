@@ -173,6 +173,33 @@ def test_process_agent_response_propagates_table_data_payload():
     assert len(result["table_data"]) == 2
 
 
+def test_process_agent_response_builds_enriched_sales_report_from_table_data():
+    session_manager = Mock(spec=SessionManager)
+    service = ChatServiceV3(session_manager=session_manager)
+
+    agent_response = {
+        "response": "Consolidei os dados de vendas por segmento.",
+        "table_data": [
+            {"NOMESEGMENTO": "PAPELARIA", "valor": 778096.0},
+            {"NOMESEGMENTO": "TECIDOS", "valor": 610686.0},
+            {"NOMESEGMENTO": "ARTES", "valor": 319947.0},
+            {"NOMESEGMENTO": "AVIAMENTOS", "valor": 152340.0},
+        ],
+    }
+
+    result = service._process_agent_response(
+        agent_response,
+        query="preciso de um relatório de vendas do segmento tecidos de todas as lojas",
+    )
+    message = result["result"]["mensagem"]
+
+    assert "## Resumo executivo" in message
+    assert "KPIs-chave" in message
+    assert "| Segmento | Venda (R$) | Part. % | Ranking | Gap p/ média (R$) | Classificação |" in message
+    assert "PAPELARIA" in message
+    assert isinstance(result.get("table_data"), list)
+
+
 def test_process_agent_response_propagates_image_and_audio_assets():
     session_manager = Mock(spec=SessionManager)
     service = ChatServiceV3(session_manager=session_manager)

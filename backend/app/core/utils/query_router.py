@@ -48,9 +48,15 @@ def _normalize_query_for_extraction(query: str) -> str:
     def normalize_segment_token(match: re.Match[str]) -> str:
         token = match.group(0)
         lower = token.lower()
+        best_candidate = token
+        best_ratio = 0.0
         for candidate in ("segmento", "segmentos"):
-            if SequenceMatcher(None, lower, candidate).ratio() >= 0.78:
-                return candidate
+            ratio = SequenceMatcher(None, lower, candidate).ratio()
+            if ratio > best_ratio:
+                best_candidate = candidate
+                best_ratio = ratio
+        if best_ratio >= 0.78:
+            return best_candidate
         return token
 
     return re.sub(
@@ -125,6 +131,12 @@ def extract_segment_filter(query: str) -> Optional[str]:
         r"\s+(?:para\s+os?|nos?|das?|dos?)\s+[uú]ltim[oa]s?\s+\d+\s+(?:dias|semanas?|meses?)\b.*$",
         r"\s+(?:neste|nesta|no|na|do|da)\s+(?:m[eê]s|dia)\s+atual\b.*$",
     ]
+    invalid_segment_tokens = {
+        "a", "as", "o", "os",
+        "da", "das", "de", "do", "dos",
+        "em", "na", "nas", "no", "nos",
+        "para", "por", "com",
+    }
 
     for pattern in patterns:
         match = re.search(pattern, normalized_query, re.IGNORECASE)
@@ -140,6 +152,8 @@ def extract_segment_filter(query: str) -> Optional[str]:
 
         # Evita capturar apenas termos de escopo (une/loja/rede).
         segment_lower = segment.lower()
+        if segment_lower in invalid_segment_tokens or len(segment_lower) <= 2:
+            continue
         if re.fullmatch(r"(?:une|unes|loja|lojas|rede)(?:\s+\w+)?", segment_lower):
             continue
 
@@ -222,6 +236,52 @@ def extract_percentage_param(query: str) -> Optional[float]:
         if match:
             return float(match.group(1).replace(",", "."))
 
+    return None
+
+
+def extract_ranking_param(query: str) -> Optional[int]:
+    """Extrai ranking comercial da query para política de preço."""
+    if not query:
+        return None
+    patterns = [
+        r"ranking\s+(\d)",
+        r"classifica(?:ç|c)[aã]o\s+(\d)",
+        r"faixa\s+(\d)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def extract_payment_term(query: str) -> Optional[str]:
+    """Extrai forma de pagamento da query."""
+    if not query:
+        return None
+    q = query.lower()
+    if "à vista" in q or "a vista" in q or "avista" in q or "vista" in q:
+        return "vista"
+    for term in ("30d", "90d", "120d"):
+        if term in q:
+            return term
+    return None
+
+
+def extract_purchase_value(query: str) -> Optional[float]:
+    """Extrai valor de compra/orçamento da query."""
+    if not query:
+        return None
+    patterns = [
+        r"valor\s+(?:de\s+compra\s+)?(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+        r"compra\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+        r"pedido\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+        r"or[çc]amento\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            return float(match.group(1).replace(",", "."))
     return None
 
 
@@ -347,6 +407,7 @@ def extract_chart_breakdown(query: str) -> Optional[str]:
     if not query:
         return None
     q = _normalize_query_for_extraction(query).lower()
+    segment_filter = extract_segment_filter(query)
 
     explicit_store_breakdown_patterns = [
         r"\b(?:tabela|ranking|gr[aá]fico|grafico)\s+por\s+(?:une|loja|unidade)\b",
@@ -359,6 +420,11 @@ def extract_chart_breakdown(query: str) -> Optional[str]:
     if is_product_store_leader_query(query) or any(
         re.search(pattern, q, re.IGNORECASE) for pattern in explicit_store_breakdown_patterns
     ):
+        return "LOJA"
+
+    # Se o segmento já virou filtro explícito e a pergunta pede toda a rede,
+    # o eixo esperado deixa de ser "segmento" e passa a ser "loja/UNE".
+    if segment_filter and is_all_stores_scope(query):
         return "LOJA"
 
     # "em todas as UNEs/lojas" define escopo, não eixo do gráfico.
@@ -380,6 +446,35 @@ def extract_chart_breakdown(query: str) -> Optional[str]:
     if re.search(r"\b(?:unes?|lojas?)\b", q, re.IGNORECASE) and not is_all_stores_scope(query):
         return "LOJA"
     return None
+
+
+def is_explicit_table_request(query: str) -> bool:
+    """Detecta quando o usuário quer uma saída tabular explícita."""
+    if not query:
+        return False
+    q = _normalize_query_for_extraction(query).lower()
+    markers = (
+        "tabela",
+        "tabular",
+        "mostre em tabela",
+        "lista em tabela",
+        "me mostre em tabela",
+    )
+    return any(marker in q for marker in markers)
+
+
+def map_breakdown_to_group_column(breakdown: Optional[str]) -> Optional[str]:
+    if not breakdown:
+        return None
+    mapping = {
+        "LOJA": "UNE",
+        "SEGMENTO": "NOMESEGMENTO",
+        "CATEGORIA": "NOMECATEGORIA",
+        "GRUPO": "NOMEGRUPO",
+        "FABRICANTE": "NOMEFABRICANTE",
+        "PRODUTO": "PRODUTO",
+    }
+    return mapping.get(str(breakdown).upper())
 
 
 def route_visualization(query: str, confidence: float) -> ToolSelection:
@@ -499,6 +594,9 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
     product = extract_product_code(query)
     une = extract_une_filter(query)
     desconto_pct = extract_percentage_param(query)
+    ranking = extract_ranking_param(query)
+    payment_term = extract_payment_term(query)
+    purchase_value = extract_purchase_value(query)
     cart_context = any(
         marker in query_lower
         for marker in ["cesta", "carrinho", "pedido", "combo", "basket"]
@@ -554,10 +652,14 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
             if filtros:
                 params["filtros"] = filtros
             reasoning = "Média comum solicitada sem parâmetros mínimos; fallback para dados base"
+    elif ("margem de contribuição" in query_lower or "media comum" in query_lower or "média comum" in query_lower or re.search(r"\bmc\b", query_lower)) and product and une:
+        tool_name = "calcular_mc_produto"
+        params = {"produto_id": int(product), "une_id": int(une)}
+        reasoning = "Consulta de MC/Média Comum diretamente na UNE informada"
     elif "margem" in query_lower or "mc" in query_lower:
         tool_name = "consultar_dados_flexivel"
         params = {
-            "colunas": ["PRODUTO", "NOME", "UNE", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD", "VENDA_30DD"],
+            "colunas": ["PRODUTO", "NOME", "UNE", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD", "VENDA_30DD", "ESTOQUE_UNE", "ESTOQUE_CD", "MEDIA_CONSIDERADA_LV"],
             "limite": "50",
         }
         filtros = {}
@@ -570,12 +672,34 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
         reasoning = "Margem solicitada sem semântica de cesta; retorno dos dados de preço e custo para análise correta"
         
     elif "preço final" in query_lower or "preco final" in query_lower:
-        # Tool calcular_preco_final_une exige parâmetros comerciais não inferíveis da query livre.
+        if purchase_value is not None and ranking is not None and payment_term:
+            tool_name = "calcular_preco_final_une"
+            params = {
+                "valor_compra": purchase_value,
+                "ranking": ranking,
+                "forma_pagamento": payment_term,
+            }
+            reasoning = "Preço final com política comercial calculado por parâmetros explícitos"
+        else:
+            tool_name = "consultar_dados_flexivel"
+            params = {"colunas": ["PRODUTO", "NOME", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD"], "limite": "50"}
+            if product:
+                params["filtros"] = {"PRODUTO": product}
+            reasoning = "Preço final solicitado sem parâmetros completos; fallback para dados de preço e custo"
+    elif any(marker in query_lower for marker in ["markup", "mark-up", "giro", "cobertura"]):
         tool_name = "consultar_dados_flexivel"
-        params = {"colunas": ["PRODUTO", "NOME", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD"], "limite": "50"}
+        params = {
+            "colunas": ["PRODUTO", "NOME", "UNE", "LIQUIDO_38", "ULTIMA_ENTRADA_CUSTO_CD", "VENDA_30DD", "ESTOQUE_UNE", "ESTOQUE_CD", "MEDIA_CONSIDERADA_LV"],
+            "limite": "50",
+        }
+        filtros = {}
         if product:
-            params["filtros"] = {"PRODUTO": product}
-        reasoning = "Preço final solicitado sem parâmetros completos; fallback para dados de preço e custo"
+            filtros["PRODUTO"] = product
+        if une:
+            filtros["UNE"] = int(une)
+        if filtros:
+            params["filtros"] = filtros
+        reasoning = "Cálculo operacional de markup, giro ou cobertura com base em preço, custo, venda e estoque"
         
     else:
         # Fallback genérico
@@ -878,6 +1002,35 @@ def route_data_query(query: str, confidence: float) -> ToolSelection:
     une = extract_une_filter(query)
     segment = extract_segment_filter(query)
     store_ranking = extract_product_store_ranking_request(query)
+    breakdown = extract_chart_breakdown(query)
+    group_column = map_breakdown_to_group_column(breakdown)
+
+    if is_explicit_table_request(query) and group_column:
+        params: Dict[str, Any] = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": [group_column],
+            "ordenar_por": "valor",
+            "ordem_desc": True,
+            "limite": extract_top_limit(query) or 50,
+        }
+        filtros = {}
+        if product and group_column != "PRODUTO":
+            filtros["PRODUTO"] = product
+        if une and group_column != "UNE":
+            filtros["UNE"] = int(une)
+        if segment and group_column != "NOMESEGMENTO":
+            filtros["NOMESEGMENTO"] = segment
+        if filtros:
+            params["filtros"] = filtros
+
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params=params,
+            confidence=max(confidence, 0.87),
+            fallback_tools=["consultar_dados_gerais"],
+            reasoning=f"Consulta tabular agregada por {group_column}",
+        )
 
     if product and is_product_store_leader_query(query):
         return ToolSelection(

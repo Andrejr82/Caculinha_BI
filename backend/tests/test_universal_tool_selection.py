@@ -17,6 +17,8 @@ from backend.app.core.utils.query_router import (
     extract_top_limit,
     is_product_rupture_query,
     is_product_store_leader_query,
+    is_explicit_table_request,
+    map_breakdown_to_group_column,
 )
 
 
@@ -86,6 +88,13 @@ class TestIntentClassifier:
         assert result.intent == IntentType.VISUALIZATION
         assert result.confidence >= 0.90
 
+    def test_table_request_intent_is_not_left_in_fallback_mode(self):
+        query = "me mostre em tabela as vendas por loja do segmento tecidos nos ultimos 30 dias"
+        result = classify_intent(query)
+
+        assert result.intent == IntentType.DATA_QUERY
+        assert result.confidence >= 0.90
+
 
 class TestQueryRouter:
     """Testes do Query Router."""
@@ -126,6 +135,39 @@ class TestQueryRouter:
         assert selection.tool_name == "calcular_eoq"
         assert "produto_id" in selection.tool_params
         assert selection.tool_params["produto_id"] == "369947"  # String
+
+    def test_calculation_routing_for_mc_uses_direct_tool(self):
+        query = "qual a média comum do produto 369947 na une 520"
+        intent_result = classify_intent(query)
+
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "calcular_mc_produto"
+        assert selection.tool_params["produto_id"] == 369947
+        assert selection.tool_params["une_id"] == 520
+
+    def test_calculation_routing_for_operational_metrics_uses_flexible_query_snapshot(self):
+        query = "calcule o giro de estoque do produto 369947 na une 520"
+        intent_result = classify_intent(query)
+
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "consultar_dados_flexivel"
+        assert "colunas" in selection.tool_params
+        assert "ESTOQUE_UNE" in selection.tool_params["colunas"]
+        assert selection.tool_params["filtros"]["PRODUTO"] == 369947
+        assert selection.tool_params["filtros"]["UNE"] == 520
+
+    def test_calculation_routing_for_price_policy_uses_direct_price_tool(self):
+        query = "calcule o preço final para compra de 1000 no ranking 2 à vista"
+        intent_result = classify_intent(query)
+
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "calcular_preco_final_une"
+        assert selection.tool_params["valor_compra"] == 1000.0
+        assert selection.tool_params["ranking"] == 2
+        assert selection.tool_params["forma_pagamento"] == "vista"
     
     def test_parameter_extraction(self):
         """Testa extração de parâmetros complexos."""
@@ -157,6 +199,14 @@ class TestQueryRouter:
         query = "me de o gráfico de vendas do segmento tecidos de cada loja"
         assert extract_segment_filter(query) == "TECIDOS"
         assert extract_chart_breakdown(query) == "LOJA"
+
+    def test_extract_chart_breakdown_prefers_store_when_segment_is_filter_and_scope_is_all_stores(self):
+        query = "gere um gráfico de vendas do segmento tecidos em todas as lojas nos últimos 30 dias"
+        assert extract_segment_filter(query) == "TECIDOS"
+        assert is_all_stores_scope(query) is True
+        assert extract_chart_breakdown(query) == "LOJA"
+        assert is_explicit_table_request("me mostre em tabela as vendas por loja do segmento tecidos") is True
+        assert map_breakdown_to_group_column("LOJA") == "UNE"
 
     def test_extract_segment_filter_handles_segment_typos(self):
         query = "ger eum gráfico de vendas do ssegmento festas de cada loja"
@@ -207,6 +257,17 @@ class TestEndToEnd:
         assert "ranking" in selection.tool_params["descricao"].lower()
         assert selection.tool_params["tipo_grafico"] == "bar"
 
+    def test_segment_scope_query_does_not_infer_bogus_segment_filter(self):
+        query = "gere um gráfico de vendas dos segmentos da une 520"
+
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "gerar_grafico_universal_v2"
+        assert selection.tool_params["filtro_une"] == "520"
+        assert selection.tool_params["quebra_por"] == "SEGMENTO"
+        assert "filtro_segmento" not in selection.tool_params
+
     def test_user_query_typo_chart_still_routes_to_chart_tool(self):
         """A query com typo deve escolher ferramenta de gráfico com filtro de segmento."""
         query = "me de um grafico de vendas do segmento artes de toas as unes"
@@ -224,6 +285,17 @@ class TestEndToEnd:
         assert selection.tool_name == "gerar_grafico_universal_v2"
         assert selection.tool_params.get("filtro_segmento") == "TECIDOS"
         assert selection.tool_params.get("quebra_por") == "LOJA"
+
+    def test_explicit_table_request_by_store_routes_to_aggregated_table_query(self):
+        query = "me mostre em tabela as vendas por loja do segmento tecidos nos ultimos 30 dias"
+        intent_result = classify_intent(query)
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "consultar_dados_flexivel"
+        assert selection.tool_params.get("agregacao") == "SUM"
+        assert selection.tool_params.get("coluna_agregacao") == "VENDA_30DD"
+        assert selection.tool_params.get("agrupar_por") == ["UNE"]
+        assert selection.tool_params.get("filtros", {}).get("NOMESEGMENTO") == "TECIDOS"
 
     def test_store_breakdown_query_with_segment_typo_routes_correctly(self):
         query = "ger eum gráfico de vendas do ssegmento festas de cada loja"

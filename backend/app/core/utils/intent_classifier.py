@@ -99,9 +99,18 @@ INTENT_PATTERNS = {
         (r"simul(e|ar)\s+(um\s+)?desconto", 0.93),
         (r"desconto\s+na\s+cesta", 0.93),
         (r"margem\s+de\s+contribui[çc][aã]o", 0.95),
+        (r"m[eé]dia\s+comum", 0.95),
+        (r"\bmc\s+de\s+estoque", 0.94),
         (r"\bmc\s+do\s+produto", 0.93),
         (r"qual\s+(a\s+)?margem", 0.90),  # Novo padrão
         (r"qual\s+(o\s+)?pre[çc]o\s+final", 0.90),  # Novo padrão
+        (r"\bmarkup\b", 0.92),
+        (r"mark-up", 0.92),
+        (r"giro\s+de\s+estoque", 0.92),
+        (r"giro\s+do\s+estoque", 0.92),
+        (r"cobertura\s+de\s+estoque", 0.92),
+        (r"cobertura\s+em\s+dias", 0.92),
+        (r"dias\s+de\s+cobertura", 0.92),
         (r"pre[çc]o\s+final", 0.88),
         (r"calcule?\s+(o\s+|a\s+)?pre[çc]o", 0.85),
         (r"calcule?\s+(o\s+|a\s+)?margem", 0.88),
@@ -181,6 +190,13 @@ INTENT_PATTERNS = {
     
     IntentType.DATA_QUERY: [
         # Padrões de consulta simples
+        (r"mostre\s+em\s+tabela", 0.92),
+        (r"me\s+mostre\s+em\s+tabela", 0.93),
+        (r"lista\s+em\s+tabela", 0.92),
+        (r"liste\s+em\s+tabela", 0.92),
+        (r"tabela\s+de", 0.88),
+        (r"tabela\s+das?\s+", 0.88),
+        (r"tabela\s+por\s+", 0.88),
         (r"^qual\s+loja\b", 0.88),
         (r"^em\s+qual\s+loja\b", 0.88),
         (r"^quais\s+lojas\b", 0.86),

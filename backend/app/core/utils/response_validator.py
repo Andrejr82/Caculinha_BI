@@ -19,6 +19,8 @@ class ValidationResult:
     issues: List[str]
     suggestions: List[str]
     corrected_response: Optional[str] = None
+    should_block: bool = False
+    block_reason: Optional[str] = None
 
 
 class ResponseValidator:
@@ -60,7 +62,12 @@ class ResponseValidator:
         self.validation_count = 0
         self.error_count = 0
     
-    def validate(self, response: Dict[str, Any], query: str = "") -> ValidationResult:
+    def validate(
+        self,
+        response: Dict[str, Any],
+        query: str = "",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ValidationResult:
         """
         Valida uma resposta do agente.
         
@@ -75,6 +82,9 @@ class ResponseValidator:
         issues = []
         suggestions = []
         confidence = 1.0
+        should_block = False
+        block_reason = None
+        validation_context = context if isinstance(context, dict) else {}
         
         # Extrair texto da resposta
         response_text = self._extract_text(response)
@@ -110,6 +120,19 @@ class ResponseValidator:
         if numeric_issues:
             issues.extend(numeric_issues)
             confidence -= 0.1 * len(numeric_issues)
+
+        semantic_result = self._validate_semantic_contract(
+            response=response,
+            query=query,
+            context=validation_context,
+        )
+        if semantic_result["issues"]:
+            issues.extend(semantic_result["issues"])
+        if semantic_result["suggestions"]:
+            suggestions.extend(semantic_result["suggestions"])
+        confidence -= semantic_result["confidence_penalty"]
+        should_block = semantic_result["should_block"]
+        block_reason = semantic_result["block_reason"]
         
         # Garantir que confidence está entre 0 e 1
         confidence = max(0.0, min(1.0, confidence))
@@ -125,7 +148,125 @@ class ResponseValidator:
             confidence=confidence,
             issues=issues,
             suggestions=suggestions
+            ,
+            should_block=should_block,
+            block_reason=block_reason,
         )
+
+    def _validate_semantic_contract(
+        self,
+        *,
+        response: Dict[str, Any],
+        query: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        issues: List[str] = []
+        suggestions: List[str] = []
+        confidence_penalty = 0.0
+        should_block = False
+        block_reason: Optional[str] = None
+
+        expected_capability = str(context.get("expected_capability") or "").strip().lower()
+        actual_capability = str(context.get("actual_capability") or "").strip().lower()
+        response_mode = str(context.get("mode") or "").strip().lower()
+        response_source = str(context.get("source") or "").strip().lower()
+        has_visual_payload = bool(context.get("has_visual_payload"))
+        has_dashboard_payload = bool(context.get("has_dashboard_payload"))
+        has_table_payload = bool(context.get("has_table_payload"))
+        has_export_payload = bool(context.get("has_export_payload"))
+        citations_count = int(context.get("citations_count") or 0)
+        no_data_detected = bool(context.get("no_data_detected"))
+        has_evidence = bool(context.get("has_evidence"))
+
+        if (
+            expected_capability
+            and actual_capability
+            and not self._capabilities_are_compatible(expected_capability, actual_capability)
+        ):
+            issues.append(
+                f"Capacidade incoerente com a intenção da pergunta: esperado={expected_capability}, retornado={actual_capability}"
+            )
+            suggestions.append("Responder usando a capability alinhada à intenção do usuário.")
+            confidence_penalty += 0.45
+            should_block = True
+            block_reason = "capability_mismatch"
+
+        if expected_capability == "visualization" and not has_visual_payload and not no_data_detected:
+            issues.append("Pedido de gráfico sem payload visual na resposta final.")
+            suggestions.append("Gerar chart_data ou dashboard_spec antes de responder ao usuário.")
+            confidence_penalty += 0.55
+            should_block = True
+            block_reason = block_reason or "missing_visual_payload"
+
+        if expected_capability == "dashboard" and not has_dashboard_payload and not no_data_detected:
+            issues.append("Pedido de dashboard sem dashboard_spec na resposta final.")
+            suggestions.append("Gerar dashboard_spec consistente com a solicitação.")
+            confidence_penalty += 0.55
+            should_block = True
+            block_reason = block_reason or "missing_dashboard_payload"
+
+        if expected_capability == "table" and not has_table_payload and not no_data_detected:
+            issues.append("Pedido de tabela sem payload tabular na resposta final.")
+            suggestions.append("Gerar table_data consistente com a solicitação ou responder no_data de forma honesta.")
+            confidence_penalty += 0.50
+            should_block = True
+            block_reason = block_reason or "missing_table_payload"
+
+        if expected_capability == "export" and not has_export_payload and not no_data_detected:
+            issues.append("Pedido de exportação sem artefato ou metadata de export válida.")
+            suggestions.append("Gerar automation_request/artifact compatível com exportação antes de responder.")
+            confidence_penalty += 0.50
+            should_block = True
+            block_reason = block_reason or "missing_export_payload"
+
+        if expected_capability == "market_research" and citations_count <= 0 and not no_data_detected:
+            issues.append("Pesquisa de mercado sem citações ou evidências públicas.")
+            suggestions.append("Incluir citações válidas ou responder explicitamente que não houve evidência suficiente.")
+            confidence_penalty += 0.50
+            should_block = True
+            block_reason = block_reason or "missing_market_evidence"
+
+        if response_mode in {"attachment_basket_pipeline", "dataset_basket_pipeline"} and expected_capability not in {"calculation", ""}:
+            issues.append("Pipeline de basket respondeu a uma intenção não relacionada a cálculo/cesta.")
+            suggestions.append("Descartar o pipeline especializado e priorizar o fluxo compatível com a pergunta.")
+            confidence_penalty += 0.60
+            should_block = True
+            block_reason = block_reason or "wrong_specialized_pipeline"
+
+        if no_data_detected and has_evidence:
+            issues.append("Mensagem de sem dados retornada apesar de haver evidências ou payload útil.")
+            suggestions.append("Substituir a resposta por uma saída baseada nas evidências disponíveis.")
+            confidence_penalty += 0.40
+            should_block = True
+            block_reason = block_reason or "false_no_data"
+
+        if expected_capability == "calculation" and actual_capability == "market_research":
+            issues.append("Resposta de pesquisa de mercado retornada para uma pergunta de cálculo.")
+            suggestions.append("Priorizar o pipeline analítico ou de cálculo em vez de pesquisa pública.")
+            confidence_penalty += 0.40
+            should_block = True
+            block_reason = block_reason or "wrong_analysis_type"
+
+        return {
+            "issues": issues,
+            "suggestions": suggestions,
+            "confidence_penalty": confidence_penalty,
+            "should_block": should_block,
+            "block_reason": block_reason,
+        }
+
+    def _capabilities_are_compatible(self, expected_capability: str, actual_capability: str) -> bool:
+        compatibility_map = {
+            "data_query": {"data_query", "table"},
+            "table": {"table", "data_query"},
+            "visualization": {"visualization"},
+            "dashboard": {"dashboard"},
+            "export": {"export"},
+            "market_research": {"market_research"},
+            "calculation": {"calculation", "table"},
+        }
+        allowed = compatibility_map.get(expected_capability, {expected_capability})
+        return actual_capability in allowed
     
     def _extract_text(self, response: Dict[str, Any]) -> str:
         """Extrai texto da resposta do agente."""
@@ -225,9 +366,13 @@ def get_validator() -> ResponseValidator:
     return _validator
 
 
-def validate_response(response: Dict[str, Any], query: str = "") -> ValidationResult:
+def validate_response(
+    response: Dict[str, Any],
+    query: str = "",
+    context: Optional[Dict[str, Any]] = None,
+) -> ValidationResult:
     """Valida resposta do agente."""
-    return get_validator().validate(response, query)
+    return get_validator().validate(response, query, context=context)
 
 
 def validator_stats() -> Dict[str, Any]:

@@ -17,6 +17,14 @@ class StubUser:
         self.is_active = True
 
 
+class IntruderUser(StubUser):
+    def __init__(self):
+        super().__init__()
+        self.id = uuid.uuid4()
+        self.username = "intruder-user"
+        self.email = "intruder@example.com"
+
+
 def test_chat_history_endpoint_returns_persisted_session_and_sessions(tmp_path):
     session_manager = SessionManager(
         storage_dir=str(tmp_path / "sessions"),
@@ -76,6 +84,74 @@ def test_chat_history_endpoint_returns_persisted_session_and_sessions(tmp_path):
         reloaded_body = reloaded.json()
         assert reloaded_body["items"] == []
         assert reloaded_body["sessions"] == []
+    finally:
+        app.dependency_overrides.clear()
+        chat_endpoint.session_manager = original_session_manager
+
+
+def test_chat_history_endpoint_hides_sessions_from_other_users(tmp_path):
+    session_manager = SessionManager(
+        storage_dir=str(tmp_path / "sessions"),
+        db_path=str(tmp_path / "agentbi.db"),
+    )
+    owner_user = StubUser()
+    intruder_user = IntruderUser()
+    session_id = str(uuid.uuid4())
+
+    session_manager.add_message(session_id, "user", "Mensagem privada", owner_user.id)
+    session_manager.add_message(session_id, "assistant", "Resposta privada", owner_user.id)
+
+    async def _override_user():
+        return intruder_user
+
+    original_session_manager = chat_endpoint.session_manager
+    app.dependency_overrides[get_current_active_user] = _override_user
+    chat_endpoint.session_manager = session_manager
+
+    try:
+        client = TestClient(app)
+        response = client.get(f"/api/v1/chat/history?session_id={session_id}")
+        assert response.status_code == 200
+
+        body = response.json()
+        assert body["items"] == []
+        assert body["sessions"] == []
+    finally:
+        app.dependency_overrides.clear()
+        chat_endpoint.session_manager = original_session_manager
+
+
+def test_chat_history_endpoint_does_not_mix_messages_between_sessions(tmp_path):
+    session_manager = SessionManager(
+        storage_dir=str(tmp_path / "sessions"),
+        db_path=str(tmp_path / "agentbi.db"),
+    )
+    current_user = StubUser()
+    session_a = str(uuid.uuid4())
+    session_b = str(uuid.uuid4())
+
+    session_manager.add_message(session_a, "user", "Pergunta A", current_user.id)
+    session_manager.add_message(session_a, "assistant", "Resposta A", current_user.id)
+    session_manager.add_message(session_b, "user", "Pergunta B", current_user.id)
+    session_manager.add_message(session_b, "assistant", "Resposta B", current_user.id)
+
+    async def _override_user():
+        return current_user
+
+    original_session_manager = chat_endpoint.session_manager
+    app.dependency_overrides[get_current_active_user] = _override_user
+    chat_endpoint.session_manager = session_manager
+
+    try:
+        client = TestClient(app)
+        response = client.get(f"/api/v1/chat/history?session_id={session_a}")
+        assert response.status_code == 200
+
+        body = response.json()
+        assert body["session_id"] == session_a
+        assert len(body["items"]) == 2
+        assert [item["content"] for item in body["items"]] == ["Pergunta A", "Resposta A"]
+        assert {session["id"] for session in body["sessions"]} == {session_a, session_b}
     finally:
         app.dependency_overrides.clear()
         chat_endpoint.session_manager = original_session_manager

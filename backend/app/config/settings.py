@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: RedisDsn = Field(default="redis://localhost:6379/0")
     REDIS_CACHE_TTL: int = 3600  # 1 hour
+    REDIS_ENABLED: bool = False
+    REDIS_REQUIRED: bool = False
+    REDIS_KEY_PREFIX: str = "caculinha"
+    REDIS_SOCKET_TIMEOUT_SECONDS: float = 2.0
+    REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
 
     # Custom Cache Settings
     CACHE_TTL_MINUTES: int = 360 # 6 hours for LLM responses
@@ -177,6 +182,13 @@ class Settings(BaseSettings):
     # Data Sources
     PARQUET_DATA_PATH: str = Field(default="data/parquet/admmat.parquet")
     PARQUET_FILE_PATH: str = Field(default="data/parquet/admmat.parquet")  # Alias for compatibility
+    RUNTIME_STORAGE_ROOT: str = "data/runtime"
+    CHAT_STATE_BACKEND: Literal["sqlite", "sqlserver"] = "sqlite"
+    CHAT_STATE_SQLITE_FALLBACK_ENABLED: bool = True
+    CHAT_STATE_DB_PATH: str = "data/runtime/chat_state/agentbi.db"
+    VECTOR_DB_PATH: str = "data/runtime/chat_state/conversation_vectors.duckdb"
+    SESSION_LEGACY_STORAGE_PATH: str = "data/runtime/sessions"
+    ATTACHMENTS_STORAGE_PATH: str = "data/runtime/attachments"
     
     # Business Rules
     ALLOWED_UNES: list[int] = Field(default=[
@@ -226,6 +238,8 @@ class Settings(BaseSettings):
             "PARQUET_DATA_PATH", "PARQUET_FILE_PATH", "CACHE_DIR",
             "RAG_FAISS_INDEX_PATH", "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH",
             "COMPETITIVE_MANUAL_FILE", "CHAT_AUTOMATION_ARTIFACTS_PATH",
+            "RUNTIME_STORAGE_ROOT", "CHAT_STATE_DB_PATH", "VECTOR_DB_PATH",
+            "SESSION_LEGACY_STORAGE_PATH", "ATTACHMENTS_STORAGE_PATH",
         ]
         
         for field in path_fields:

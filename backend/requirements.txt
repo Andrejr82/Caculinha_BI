@@ -14,6 +14,10 @@ aiosignal==1.4.0
     # via aiohttp
 aiosqlite==0.22.1
     # via -r requirements.in
+python-tds==1.17.1
+    # via -r requirements.in
+sqlalchemy-pytds==1.0.2
+    # via -r requirements.in
 alembic==1.18.3
     # via -r requirements.in
 annotated-doc==0.0.4

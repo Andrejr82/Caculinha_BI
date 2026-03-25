@@ -45,6 +45,7 @@ from backend.app.core.utils.response_validator import validate_response, validat
 from backend.app.core.playground_mode import is_user_in_canary
 from backend.app.core.security.content_safety import sanitize_citations, sanitize_text_label
 from backend.app.core.utils.report_templates import get_official_report_templates
+from backend.app.api.v1.endpoints.memory import get_memory_agent
 # NEW SERVICE V3 - Metrics-First Architecture
 from backend.app.services.chat_service_v3 import ChatServiceV3
 from backend.app.services.chat_automation_service import ChatAutomationService
@@ -956,6 +957,50 @@ _SSE_EVENT_POLL_TIMEOUT_SECONDS = 0.1
 _SSE_KEEPALIVE_INTERVAL_TICKS = 50
 
 
+def _build_stream_validation_context(query: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    global chat_service_v3
+    if chat_service_v3 is not None and hasattr(chat_service_v3, "_build_response_validation_context"):
+        try:
+            return chat_service_v3._build_response_validation_context(query, payload)
+        except Exception as exc:
+            logger.warning("stream_validation_context_failed: %s", exc)
+    return {}
+
+
+def _build_stream_validation_block_response(
+    *,
+    query: str,
+    validation_result: Any,
+    validation_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    global chat_service_v3
+    if chat_service_v3 is not None and hasattr(chat_service_v3, "_build_validation_block_response"):
+        try:
+            return chat_service_v3._build_validation_block_response(
+                query=query,
+                validation_result=validation_result,
+                validation_context=validation_context,
+            )
+        except Exception as exc:
+            logger.warning("stream_validation_block_build_failed: %s", exc)
+    return {
+        "type": "text",
+        "result": {
+            "mensagem": (
+                "## Resumo executivo\n"
+                "- A resposta gerada nesta rodada não passou na validação interna de coerência.\n\n"
+                "## Tabela operacional\n"
+                "- O sistema descartou a saída por incompatibilidade entre intenção e payload.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a pergunta com o objetivo principal de forma direta."
+            )
+        },
+        "source": "policy.response_validation",
+        "mode": "validation_block",
+        "confidence": 0.0,
+    }
+
+
 def _resolve_active_data_fingerprint() -> str:
     """Inclui assinatura do parquet ativo para invalidar cache após sync de base."""
     parquet_path_raw = str(
@@ -989,9 +1034,33 @@ def _should_bypass_cache_for_query(query: str) -> bool:
     """
     Perguntas de mercado/concorrência usam dados externos voláteis e não devem
     reutilizar cache antigo por usuário.
+
+    Pedidos estruturados de gráfico/tabela/dashboard/export também não devem
+    reutilizar cache semântico fuzzy, porque pequenas mudanças de filtro
+    (ex.: segmento, loja, produto) podem alterar completamente o payload.
     """
     q = (query or "").strip().lower()
     if _is_competitive_market_query(q):
+        return True
+
+    structured_output_markers = [
+        "gráfico",
+        "grafico",
+        "dashboard",
+        "painel",
+        "tabela",
+        "tabular",
+        "export",
+        "exportar",
+        "planilha",
+        "excel",
+        "xlsx",
+        "csv",
+        "visualização",
+        "visualizacao",
+        "plot",
+    ]
+    if any(marker in q for marker in structured_output_markers):
         return True
 
     # Follow-ups contextuais devem recomputar resposta para preservar continuidade
@@ -1106,7 +1175,10 @@ async def initialize_agents_async():
                 print("[DEBUG] [TRAP] Entering _sync_init...", file=sys.stderr)
                 try:
                     print("[DEBUG] [TRAP] Init SessionManager...", file=sys.stderr)
-                    local_session_manager = SessionManager(storage_dir="app/data/sessions")
+                    local_session_manager = SessionManager(
+                        storage_dir=settings.SESSION_LEGACY_STORAGE_PATH,
+                        db_path=settings.CHAT_STATE_DB_PATH,
+                    )
                     
                     print("[DEBUG] [TRAP] Init ChatServiceV3...", file=sys.stderr)
                     local_service = ChatServiceV3(session_manager=local_session_manager)
@@ -1422,10 +1494,24 @@ async def stream_chat(
                 response_request_id = str(payload.get("request_id") or response_request_id)
                 final_event_payload["request_id"] = response_request_id
 
-                for key in ("source", "confidence", "mode", "image_asset", "audio_asset", "automation_request"):
+                for key in (
+                    "source",
+                    "confidence",
+                    "mode",
+                    "image_asset",
+                    "audio_asset",
+                    "automation_request",
+                    "chart_data",
+                    "chart_spec",
+                    "table_data",
+                    "dashboard_spec",
+                ):
                     value = payload.get(key)
                     if value not in (None, ""):
                         final_event_payload[key] = value
+
+                if "chart_data" in final_event_payload and "chart_spec" not in final_event_payload:
+                    final_event_payload["chart_spec"] = final_event_payload["chart_data"]
 
                 citations_value = sanitize_citations(payload.get("citations"))
                 if citations_value:
@@ -1921,9 +2007,27 @@ async def stream_chat(
             if isinstance(agent_response, dict):
                 _update_final_event_metadata(agent_response)
 
+            validation_context = _build_stream_validation_context(q, agent_response) if isinstance(agent_response, dict) else {}
             # Validação de qualidade da resposta (guardrail enterprise)
-            validation = validate_response(agent_response, q)
-            
+            validation = validate_response(agent_response, q, context=validation_context)
+            if isinstance(agent_response, dict) and getattr(validation, "should_block", False):
+                trace_logger.warning(
+                    "chat_stream_response_blocked_by_validator",
+                    request_id=response_request_id,
+                    session_id=str(session_id),
+                    user_id=str(getattr(current_user, "id", "")),
+                    expected_capability=validation_context.get("expected_capability"),
+                    actual_capability=validation_context.get("actual_capability"),
+                    block_reason=getattr(validation, "block_reason", None),
+                    issues=getattr(validation, "issues", []),
+                )
+                agent_response = _build_stream_validation_block_response(
+                    query=q,
+                    validation_result=validation,
+                    validation_context=validation_context,
+                )
+                _update_final_event_metadata(agent_response)
+
             response_type = agent_response.get("type", "text")
             response_content = agent_response.get("result")
             response_text = ""
@@ -2150,6 +2254,22 @@ async def submit_feedback(
             detail="Nao foi possivel salvar o feedback agora."
         )
 
+    chat_state_feedback_status = "skipped"
+    try:
+        memory_agent = get_memory_agent()
+        rating_map = {"positive": 5, "partial": 3, "negative": 1}
+        await memory_agent.save_feedback(
+            request_id=feedback_data.response_id,
+            rating=rating_map.get(str(feedback_data.feedback_type or "").strip().lower(), 3),
+            comment=feedback_data.comment,
+        )
+        chat_state_feedback_status = "persisted"
+    except HTTPException:
+        logger.info("chat_feedback_memory_agent_unavailable")
+    except Exception as exc:
+        chat_state_feedback_status = "failed"
+        logger.warning("chat_feedback_chat_state_persist_failed: %s", exc, exc_info=True)
+
     learning_actions: List[str] = []
     learning_status = "skipped"
     if (feedback_data.query_text or "").strip() and (feedback_data.response_text or "").strip():
@@ -2182,6 +2302,7 @@ async def submit_feedback(
     return {
         "message": "Feedback submitted successfully.",
         "request_id": feedback_data.response_id,
+        "chat_state_feedback_status": chat_state_feedback_status,
         "learning_status": learning_status,
         "learning_actions": learning_actions,
     }

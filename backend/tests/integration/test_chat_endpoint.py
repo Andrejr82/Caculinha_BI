@@ -332,6 +332,8 @@ def test_stream_chat_contract_emits_progress_text_chart_table_and_final(monkeypa
     assert "chart_spec" in chart_event
     assert table_event["data"] == [{"segmento": "A", "valor": 10}]
     assert final_event["request_id"] == "req-contract-001"
+    assert final_event["chart_spec"]["layout"]["title"] == "Teste"
+    assert final_event["table_data"] == [{"segmento": "A", "valor": 10}]
 
 
 def test_stream_chat_contract_emits_dashboard_and_final(monkeypatch):
@@ -363,6 +365,7 @@ def test_stream_chat_contract_emits_dashboard_and_final(monkeypatch):
 
     assert dashboard_event["dashboard_spec"]["title"] == "Painel Executivo"
     assert final_event["request_id"] == "req-dashboard-001"
+    assert final_event["dashboard_spec"]["title"] == "Painel Executivo"
 
 
 def test_stream_chat_final_event_includes_image_asset(monkeypatch):
@@ -578,6 +581,7 @@ def test_post_chat_feedback_persists_structured_metadata_and_triggers_learning(m
     token = _make_valid_token()
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir(parents=True, exist_ok=True)
+    fake_memory_agent = SimpleNamespace(save_feedback=AsyncMock(return_value=True))
 
     fake_learner = SimpleNamespace(
         process_interaction=AsyncMock(
@@ -591,6 +595,7 @@ def test_post_chat_feedback_persists_structured_metadata_and_triggers_learning(m
 
     monkeypatch.setattr(chat_endpoint.settings, "LEARNING_FEEDBACK_PATH", str(feedback_dir), raising=False)
     monkeypatch.setattr(learner_module, "get_continuous_learner", lambda: fake_learner, raising=False)
+    monkeypatch.setattr(chat_endpoint, "get_memory_agent", lambda: fake_memory_agent, raising=False)
     monkeypatch.setattr(
         chat_endpoint,
         "session_manager",
@@ -641,6 +646,7 @@ def test_post_chat_feedback_persists_structured_metadata_and_triggers_learning(m
     assert response.status_code == 200
     body = response.json()
     assert body["request_id"] == "req-feedback-001"
+    assert body["chat_state_feedback_status"] == "persisted"
     assert body["learning_status"] == "processed"
     assert body["learning_actions"] == ["added_to_golden_dataset"]
 
@@ -659,6 +665,11 @@ def test_post_chat_feedback_persists_structured_metadata_and_triggers_learning(m
     assert saved_payload["latency_ms"] == 1250.0
     assert saved_payload["ab_variants"]["prompt_variant"] == "concise"
 
+    fake_memory_agent.save_feedback.assert_awaited_once_with(
+        request_id="req-feedback-001",
+        rating=5,
+        comment="Resposta útil",
+    )
     fake_learner.process_interaction.assert_awaited_once()
 
 
