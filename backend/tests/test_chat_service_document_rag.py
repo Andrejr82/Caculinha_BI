@@ -324,10 +324,10 @@ async def test_process_message_does_not_route_graph_query_to_basket_pipeline_due
     )
 
     agent.run_async.assert_awaited_once()
-    assert response["source"] == "rag.internal_documents"
-    assert response.get("mode") is None
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
     assert response["result"]["mensagem"].startswith("## Resumo executivo")
-    assert "fallback-grafico" in response["result"]["mensagem"]
+    assert "visualização confiável" in response["result"]["mensagem"].lower()
 
 
 @pytest.mark.asyncio
@@ -384,6 +384,144 @@ async def test_process_message_recovers_visualization_when_agent_returns_plain_t
     agent._attempt_routed_tool_rescue.assert_awaited_once()
     assert response["source"] == "tool.gerar_grafico_universal_v2"
     assert response.get("chart_data")
+
+
+@pytest.mark.asyncio
+async def test_process_message_recovers_table_when_agent_returns_plain_text(monkeypatch):
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    monkeypatch.setattr(
+        "backend.app.core.utils.intent_classifier.classify_intent",
+        lambda query: SimpleNamespace(intent=SimpleNamespace(value="data_query"), confidence=0.91, matched_patterns=[]),
+    )
+    monkeypatch.setattr(
+        "backend.app.core.utils.query_router.route_query",
+        lambda intent, query, confidence: SimpleNamespace(
+            tool_name="consultar_dados_flexivel",
+            tool_params={
+                "agregacao": "SUM",
+                "coluna_agregacao": "VENDA_30DD",
+                "agrupar_por": ["UNE"],
+                "ordenar_por": "valor",
+                "ordem_desc": True,
+                "limite": 10,
+                "filtros": {"NOMESEGMENTO": "TECIDOS"},
+            },
+            confidence=0.91,
+            fallback_tools=[],
+            reasoning="table recovery",
+        ),
+    )
+
+    agent = Mock()
+    agent.run_async = AsyncMock(return_value={"response": "Consolidei a analise e posso resumir em texto."})
+    agent._resolve_query_with_history_context = Mock(side_effect=lambda query, history: query)
+    agent._enrich_tool_selection_for_business = Mock()
+    agent._ensure_tool_selection_available = Mock()
+    agent._build_clarification_if_needed = Mock(return_value=None)
+    agent._attempt_routed_tool_rescue = AsyncMock(
+        return_value={
+            "response": "Tabela gerada com sucesso.",
+            "source": "tool.consultar_dados_flexivel",
+            "table_data": [
+                {"Loja (UNE)": "1685", "Venda (R$)": 311492.84, "Ranking": 1},
+                {"Loja (UNE)": "520", "Venda (R$)": 154720.52, "Ranking": 2},
+            ],
+            "tool_calls": [{"function": {"name": "consultar_dados_flexivel"}}],
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="me mostre em tabela as vendas por loja do segmento tecidos nos ultimos 30 dias",
+        session_id="sess-table",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    agent.run_async.assert_awaited_once()
+    agent._attempt_routed_tool_rescue.assert_awaited_once()
+    assert response["source"] == "tool.consultar_dados_flexivel"
+    assert isinstance(response.get("table_data"), list)
+    assert len(response["table_data"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_process_message_recovers_table_even_when_agent_initially_returns_no_data_text(monkeypatch):
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    monkeypatch.setattr(
+        "backend.app.core.utils.intent_classifier.classify_intent",
+        lambda query: SimpleNamespace(intent=SimpleNamespace(value="data_query"), confidence=0.91, matched_patterns=[]),
+    )
+    monkeypatch.setattr(
+        "backend.app.core.utils.query_router.route_query",
+        lambda intent, query, confidence: SimpleNamespace(
+            tool_name="consultar_dados_flexivel",
+            tool_params={
+                "agregacao": "SUM",
+                "coluna_agregacao": "VENDA_30DD",
+                "agrupar_por": ["UNE"],
+                "ordenar_por": "valor",
+                "ordem_desc": True,
+                "limite": 10,
+                "filtros": {"NOMESEGMENTO": "TECIDOS"},
+            },
+            confidence=0.91,
+            fallback_tools=[],
+            reasoning="table recovery after no_data",
+        ),
+    )
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Nao consegui montar uma tabela confiavel para este pedido nesta rodada.",
+            "source": "llm.direct",
+        }
+    )
+    agent._resolve_query_with_history_context = Mock(side_effect=lambda query, history: query)
+    agent._enrich_tool_selection_for_business = Mock()
+    agent._ensure_tool_selection_available = Mock()
+    agent._build_clarification_if_needed = Mock(return_value=None)
+    agent._attempt_routed_tool_rescue = AsyncMock(
+        return_value={
+            "response": "Tabela gerada com sucesso.",
+            "source": "tool.consultar_dados_flexivel",
+            "table_data": [
+                {"Loja (UNE)": "1685", "Venda (R$)": 311492.84, "Ranking": 1},
+            ],
+            "tool_calls": [{"function": {"name": "consultar_dados_flexivel"}}],
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="me mostre em tabela as vendas por loja do segmento tecidos nos ultimos 30 dias",
+        session_id="sess-table-recovery",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    agent._attempt_routed_tool_rescue.assert_awaited_once()
+    assert response["source"] == "tool.consultar_dados_flexivel"
+    assert response.get("table_data")
 
 
 @pytest.mark.asyncio
@@ -512,3 +650,281 @@ async def test_same_chat_can_answer_attachment_basket_then_graph_and_operational
     assert chart_query == "me gere um gráfico de vendas do produto 369947 em todas as lojas"
     assert operational_query == "agora me diga quais lojas vendem melhor o produto 369947"
     assert service.vector_memory_repository.list_recent_documents.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_visualization_response_without_visual_payload():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Segue a análise textual das vendas do produto 369947.",
+            "source": "tool.gerar_grafico_universal_v2",
+            "mode": "deterministic_tool",
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="me gere um gráfico de vendas do produto 369947 em todas as lojas",
+        session_id="sess-chart-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "visualização confiável" in response["result"]["mensagem"].lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_keeps_honest_chart_failure_instead_of_policy_block():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Não consegui gerar o gráfico: Não encontrei dados para montar o gráfico nesse recorte.",
+            "source": "tool.gerar_grafico_universal_v2",
+            "mode": "deterministic_tool",
+            "confidence": 0.74,
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="gere um gráfico de vendas dos segmentos da une 520",
+        session_id="sess-chart-no-data",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "tool.gerar_grafico_universal_v2"
+    assert response["mode"] == "deterministic_tool"
+    assert "não consegui gerar o gráfico" in response["result"]["mensagem"].lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_market_research_without_citations():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Encontrei um preço médio de mercado para o item solicitado.",
+            "source": "tool.pesquisar_mercado_web",
+            "mode": "deterministic_tool",
+            "confidence": 0.82,
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="faça uma pesquisa de mercado do produto cola quente",
+        session_id="sess-market-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "evidência pública" in response["result"]["mensagem"].lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_dashboard_without_dashboard_payload():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Preparei um painel executivo para as lojas.",
+            "source": "tool.dashboard",
+            "mode": "deterministic_tool",
+            "confidence": 0.84,
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="monte um dashboard de vendas por loja",
+        session_id="sess-dashboard-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "dashboard" in response["result"]["mensagem"].lower()
+    assert "dashboard_spec" in response["result"]["mensagem"].lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_table_without_table_payload():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Segue o consolidado executivo por loja.",
+            "source": "tool.consultar_dados_flexivel",
+            "mode": "deterministic_tool",
+            "confidence": 0.88,
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="me mostre em tabela as vendas por loja",
+        session_id="sess-table-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "table_data" in response["result"]["mensagem"]
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_export_without_export_payload():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Consolidei os dados e posso seguir com a exportação.",
+            "source": "tool.consultar_dados_flexivel",
+            "mode": "deterministic_tool",
+            "confidence": 0.8,
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="exporte um csv de vendas por loja",
+        session_id="sess-export-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "exportação" in response["result"]["mensagem"].lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_wrong_basket_pipeline_for_non_basket_query():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Encontrei relações frequentes entre itens no arquivo.",
+            "source": "tool.minerar_cestas_frequentes",
+            "mode": "attachment_basket_pipeline",
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="me gere um gráfico de vendas do produto 369947 em todas as lojas",
+        session_id="sess-wrong-basket-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "pipeline especializado incompatível" in response["result"]["mensagem"].lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_blocks_wrong_basket_pipeline_for_export_query():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._retrieve_document_context = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "Encontrei relações frequentes entre itens no arquivo.",
+            "source": "tool.minerar_cestas_frequentes",
+            "mode": "attachment_basket_pipeline",
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="exporte um csv com as vendas por loja",
+        session_id="sess-export-basket-block",
+        user_id="12345678-1234-1234-1234-123456789012",
+        user_role="analyst",
+    )
+
+    assert response["source"] == "policy.response_validation"
+    assert response["mode"] == "validation_block"
+    assert "exportação" in response["result"]["mensagem"].lower()

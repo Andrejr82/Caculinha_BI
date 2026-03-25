@@ -28,6 +28,7 @@ load_dotenv(_ENV_PATH)
 # Configurar logging (Observability)
 from backend.app.core.observability.logging import configure_logging
 configure_logging(log_level=os.getenv("LOG_LEVEL", "INFO"))
+from backend.app.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -52,7 +53,10 @@ async def lifespan(app: FastAPI):
     from backend.application.agents.memory_agent import MemoryAgent
     from backend.application.agents.vectorization_agent import VectorizationAgent
     from backend.infrastructure.adapters.sqlite_memory_adapter import SQLiteMemoryAdapter
+    from backend.infrastructure.adapters.sqlserver_memory_adapter import SQLServerMemoryAdapter
+    from backend.infrastructure.adapters.sqlserver_pytds_memory_adapter import SQLServerPyTDSMemoryAdapter
     from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAdapter
+    from backend.app.infrastructure.redis_client import init_redis_client, close_redis_client
     from backend.app.services.image_analysis import ImageAnalysisService
     from backend.app.api.v1.endpoints.memory import set_memory_agent
     from backend.app.api.v1.endpoints.ingest import set_ingest_dependencies
@@ -61,9 +65,44 @@ async def lifespan(app: FastAPI):
     MetricsService()
     BillingService()
 
+    runtime_root = Path(settings.RUNTIME_STORAGE_ROOT)
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    Path(settings.ATTACHMENTS_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
+    Path(settings.SESSION_LEGACY_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
+
+    redis_client = await init_redis_client()
+    app.state.redis_client = redis_client
+    app.state.redis_enabled = redis_client is not None
+
+    chat_state_backend = settings.CHAT_STATE_BACKEND
     memory_db_path = SessionManager.default_db_path()
-    vector_db_path = memory_db_path.with_name("conversation_vectors.duckdb")
-    memory_repository = SQLiteMemoryAdapter(str(memory_db_path))
+    vector_db_path = Path(settings.VECTOR_DB_PATH)
+    vector_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if chat_state_backend == "sqlserver":
+        if not settings.DATABASE_URL:
+            raise RuntimeError(
+                "CHAT_STATE_BACKEND=sqlserver requires DATABASE_URL configured"
+            )
+        if str(settings.DATABASE_URL).startswith("mssql+pytds://"):
+            memory_repository = SQLServerPyTDSMemoryAdapter(str(settings.DATABASE_URL))
+            app.state.chat_state_backend = "sqlserver_pytds"
+        else:
+            if not settings.USE_SQL_SERVER:
+                raise RuntimeError(
+                    "Async SQL Server backend requires USE_SQL_SERVER=true"
+                )
+            from backend.app.config.database import AsyncSessionLocal, engine
+
+            memory_repository = SQLServerMemoryAdapter(
+                session_factory=AsyncSessionLocal,
+                engine=engine,
+            )
+            app.state.chat_state_backend = "sqlserver"
+    else:
+        memory_repository = SQLiteMemoryAdapter(str(memory_db_path))
+        app.state.chat_state_backend = "sqlite"
+
     await memory_repository._ensure_initialized()
     memory_agent = MemoryAgent(memory_repository)
     set_memory_agent(memory_agent)
@@ -82,13 +121,17 @@ async def lifespan(app: FastAPI):
     
     logger.info(
         "services_initialized",
+        chat_state_backend=app.state.chat_state_backend,
         memory_db_path=str(memory_db_path),
         vector_db_path=str(vector_db_path),
+        redis_enabled=app.state.redis_enabled,
+        use_sql_server=settings.USE_SQL_SERVER,
     )
     
     yield
     
     # Shutdown
+    await close_redis_client()
     logger.info("application_shutting_down")
 
 
@@ -196,7 +239,11 @@ async def health():
     return {
         "status": "healthy",
         "version": "2.0.0",
-        "llm_model": os.getenv("LLM_MODEL_NAME", "unknown")
+        "llm_model": os.getenv("LLM_MODEL_NAME", "unknown"),
+        "analytics_source": "parquet",
+        "parquet_path": settings.PARQUET_DATA_PATH,
+        "chat_state_backend": getattr(app.state, "chat_state_backend", settings.CHAT_STATE_BACKEND),
+        "redis_enabled": bool(getattr(app.state, "redis_enabled", settings.REDIS_ENABLED)),
     }
 
 

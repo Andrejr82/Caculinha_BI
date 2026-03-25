@@ -31,6 +31,18 @@ def test_cache_is_not_bypassed_for_non_market_queries() -> None:
     assert _should_bypass_cache_for_query("qual o total de vendas ontem na une 1685") is False
 
 
+def test_cache_is_bypassed_for_chart_queries_with_business_filters() -> None:
+    assert _should_bypass_cache_for_query(
+        "gere um gráfico com a venda do segmento tecidos em cada loja"
+    ) is True
+
+
+def test_cache_is_bypassed_for_table_queries_with_business_filters() -> None:
+    assert _should_bypass_cache_for_query(
+        "me mostre em tabela as vendas por loja do segmento papelaria"
+    ) is True
+
+
 def test_cache_is_bypassed_for_contextual_commercial_plan_followup() -> None:
     assert _should_bypass_cache_for_query("me dê um plano comercial para 7 dias com base nisso") is True
 

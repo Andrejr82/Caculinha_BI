@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List
+from statistics import median
+from typing import Any, Dict, List, Optional
 
 _BUSINESS_KEYWORDS = (
     "venda",
@@ -61,6 +62,201 @@ def _first_sentence(text: str) -> str:
     if match:
         return match.group(1).strip()
     return cleaned[:220].strip()
+
+
+def _normalize_key(key: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(key or "").strip().lower())
+
+
+def _to_float(value: Any) -> float:
+    if value in (None, "", []):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return 0.0
+    text = text.replace("R$", "").replace("%", "").replace(".", "").replace(",", ".")
+    try:
+        return float(text)
+    except ValueError:
+        return 0.0
+
+
+def _fmt_number(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value or "-").strip() or "-"
+    if abs(number - round(number)) < 1e-9:
+        return str(int(round(number)))
+    return f"{number:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _find_first_key(row: Dict[str, Any], aliases: List[str]) -> Optional[str]:
+    normalized_aliases = {_normalize_key(alias) for alias in aliases}
+    for key in row.keys():
+        if _normalize_key(key) in normalized_aliases:
+            return key
+    return None
+
+
+def _sales_dimension_label(key: str) -> str:
+    normalized = _normalize_key(key)
+    mapping = {
+        "une": "Loja (UNE)",
+        "lojaune": "Loja (UNE)",
+        "loja": "Loja",
+        "nomesegmento": "Segmento",
+        "segmento": "Segmento",
+        "nomecategoria": "Categoria",
+        "categoria": "Categoria",
+        "nomegrupo": "Grupo",
+        "grupo": "Grupo",
+        "nomefabricante": "Fabricante",
+        "fabricante": "Fabricante",
+        "nome": "Produto",
+        "produto": "Produto",
+    }
+    return mapping.get(normalized, str(key or "Dimensão").replace("_", " ").title())
+
+
+def build_sales_dimension_report_from_rows(query: str, rows: List[Dict[str, Any]]) -> Optional[str]:
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    q = (query or "").lower()
+    if "venda" not in q and "relatório" not in q and "relatorio" not in q:
+        return None
+
+    first_row = next((row for row in rows if isinstance(row, dict) and row), None)
+    if not first_row:
+        return None
+
+    dim_key = _find_first_key(
+        first_row,
+        [
+            "UNE",
+            "Loja (UNE)",
+            "loja",
+            "NOMESEGMENTO",
+            "segmento",
+            "NOMECATEGORIA",
+            "categoria",
+            "NOMEGRUPO",
+            "grupo",
+            "NOMEFABRICANTE",
+            "fabricante",
+            "NOME",
+            "produto",
+        ],
+    )
+    value_key = _find_first_key(
+        first_row,
+        [
+            "TOTAL_VENDAS",
+            "valor",
+            "Venda (R$)",
+            "venda",
+            "VENDA_30DD",
+            "vendas_30d",
+            "total",
+        ],
+    )
+    if not dim_key or not value_key:
+        return None
+
+    prepared_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get(dim_key) or "").strip() or "N/A"
+        value = _to_float(row.get(value_key))
+        prepared_rows.append({"label": label, "value": value})
+
+    prepared_rows = [row for row in prepared_rows if row["label"] != "N/A" or row["value"] > 0]
+    if not prepared_rows:
+        return None
+
+    prepared_rows.sort(key=lambda item: item["value"], reverse=True)
+    values = [row["value"] for row in prepared_rows]
+    total_value = sum(values)
+    if total_value <= 0:
+        return None
+
+    average_value = total_value / len(prepared_rows)
+    median_value = median(values)
+    top_5_share = (sum(values[:5]) / total_value) * 100.0
+    bottom_5_share = (sum(values[-5:]) / total_value) * 100.0
+    leader = prepared_rows[0]
+    leader_share = (leader["value"] / total_value) * 100.0
+    amplitude = leader["value"] - values[-1]
+    concentration = "alta" if leader_share >= 25 or top_5_share >= 65 else "moderada" if leader_share >= 15 or top_5_share >= 45 else "baixa"
+    dimension_label = _sales_dimension_label(dim_key)
+
+    enriched_rows: List[Dict[str, Any]] = []
+    for index, row in enumerate(prepared_rows, start=1):
+        share_pct = (row["value"] / total_value) * 100.0
+        gap_media = row["value"] - average_value
+        if row["value"] >= average_value * 1.2:
+            classification = "liderança" if index <= 3 else "acima da média"
+        elif row["value"] <= average_value * 0.8:
+            classification = "cauda" if index > max(5, len(prepared_rows) - 3) else "abaixo da média"
+        else:
+            classification = "na média"
+        enriched_rows.append(
+            {
+                "label": row["label"],
+                "value": row["value"],
+                "share_pct": share_pct,
+                "rank": index,
+                "gap_media": gap_media,
+                "classification": classification,
+            }
+        )
+
+    header = f"| {dimension_label} | Venda (R$) | Part. % | Ranking | Gap p/ média (R$) | Classificação |"
+    sep = "|---|---|---|---|---|---|"
+    body = "\n".join(
+        f"| {row['label']} | {_fmt_number(row['value'])} | {row['share_pct']:.1f}% | {row['rank']} | {_fmt_number(row['gap_media'])} | {row['classification']} |"
+        for row in enriched_rows[:10]
+    )
+    if len(enriched_rows) > 10:
+        body += f"\n... (+{len(enriched_rows) - 10} linhas)"
+
+    if "segment" in _normalize_key(dim_key):
+        reading = f"há concentração {concentration} entre os principais segmentos"
+        actions = (
+            "- Priorize os segmentos abaixo da mediana para revisão de sortimento, preço e execução comercial.\n"
+            "- Compare os segmentos líderes com a cauda para identificar lacunas de mix e demanda.\n"
+            "- Reavalie o desempenho no próximo ciclo semanal com o mesmo recorte."
+        )
+    elif _normalize_key(dim_key) in {"une", "lojaune", "loja"}:
+        reading = f"a distribuição está {concentration}mente concentrada nas posições líderes"
+        actions = (
+            "- Priorize as lojas abaixo da mediana com revisão de mix, preço e execução comercial em até 7 dias.\n"
+            "- Compare Top 5 e Bottom 5 para validar ruptura, exposição e profundidade de sortimento.\n"
+            "- Reavalie o segmento no próximo ciclo semanal para medir ganho de cobertura e venda."
+        )
+    else:
+        reading = f"há concentração {concentration} entre os principais {dimension_label.lower()}"
+        actions = (
+            f"- Priorize os {dimension_label.lower()} abaixo da mediana para revisão de sortimento, preço e execução comercial.\n"
+            f"- Compare os {dimension_label.lower()} líderes com a cauda para identificar lacunas de mix e demanda.\n"
+            "- Reavalie o desempenho no próximo ciclo semanal com o mesmo recorte."
+        )
+
+    return (
+        "## Resumo executivo\n"
+        f"- Consolidado de vendas por {dimension_label.lower()} concluído. Total vendido: {_fmt_number(total_value)} em {len(prepared_rows)} {dimension_label.lower()} analisados.\n"
+        f"- Destaque: {leader['label']} lidera com {_fmt_number(leader['value'])} e participação de {leader_share:.1f}% no total.\n"
+        f"- KPIs-chave: média de {_fmt_number(average_value)} por {dimension_label.lower()}, mediana de {_fmt_number(median_value)}, participação do Top 5 em {top_5_share:.1f}% e da cauda em {bottom_5_share:.1f}%.\n"
+        f"- Leitura gerencial: {reading}; a amplitude entre líder e última posição é de {_fmt_number(amplitude)}. Recorte solicitado: {query.strip()}.\n\n"
+        "## Tabela operacional\n"
+        f"{header}\n{sep}\n{body}\n\n"
+        "## Próximas ações\n"
+        f"{actions}"
+    )
 
 
 def ensure_executive_output(query: str, message: str) -> str:

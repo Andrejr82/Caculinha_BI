@@ -217,6 +217,35 @@ async def test_process_message_enforces_role_rate_limit(monkeypatch):
     assert metrics.get_counter("chat_rate_limited_total", labels={"role": "viewer"}) == 1
 
 
+def test_role_rate_limit_uses_redis_when_available(monkeypatch):
+    class _FakeRedis:
+        def __init__(self):
+            self.zsets = {}
+
+        def zremrangebyscore(self, key, min_score, max_score):
+            self.zsets[key] = [(member, score) for member, score in self.zsets.get(key, []) if score > max_score]
+
+        def zcard(self, key):
+            return len(self.zsets.get(key, []))
+
+        def zadd(self, key, mapping):
+            bucket = self.zsets.setdefault(key, [])
+            for member, score in mapping.items():
+                bucket.append((member, score))
+
+        def expire(self, key, ttl):
+            return True
+
+    session_manager = Mock(spec=SessionManager)
+    service = ChatServiceV3(session_manager=session_manager)
+    redis_client = _FakeRedis()
+    monkeypatch.setattr(chat_service_module, "get_sync_redis_client", lambda: redis_client, raising=False)
+    monkeypatch.setattr(service, "_get_role_rate_limit_per_minute", lambda _role: 1)
+
+    assert service._enforce_role_rate_limit("u-redis", "viewer") is None
+    assert service._enforce_role_rate_limit("u-redis", "viewer") == 1
+
+
 @pytest.mark.asyncio
 async def test_process_message_emits_structured_trace_logs(monkeypatch):
     session_manager = Mock(spec=SessionManager)

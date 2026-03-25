@@ -19,6 +19,7 @@ from backend.app.core.security.content_safety import (
     contains_dangerous_text_payload,
     validate_upload_filename,
 )
+from backend.app.infrastructure.runtime_lock import runtime_lock
 from backend.app.services.image_analysis import ImageAnalysisService
 from backend.services.metrics import MetricsService
 from backend.app.services.audit_log import get_audit_logger, AuditAction
@@ -185,39 +186,49 @@ async def ingest_text(
         metadata.setdefault("uploaded_by", str(getattr(current_user, "id", "")))
         metadata.setdefault("uploader_role", str(getattr(current_user, "role", "")))
         metadata.setdefault("source", request.source)
+        lock_scope = str(
+            metadata.get("session_id")
+            or metadata.get("filename")
+            or metadata.get("uploaded_by")
+            or "manual"
+        ).strip() or "manual"
 
-        # Cria chunks do documento
-        chunks = Document.create_chunks(
-            tenant_id=tenant_id,
-            content=request.content,
-            chunk_size=512,
-            source=request.source,
-            metadata=metadata,
-        )
-        
-        document_ids = []
-        
-        for chunk in chunks:
-            # Gera embedding
-            embedding = None
-            if _vectorization_agent:
-                embedding_vec = await _vectorization_agent.embed_text(chunk.content)
-                if embedding_vec:
-                    embedding = _vectorization_agent.create_embedding_entity(chunk.id, embedding_vec)
+        async with runtime_lock(f"ingest:{tenant_id}:{lock_scope}", ttl_seconds=45, wait_timeout_seconds=1.5) as acquired:
+            if not acquired:
+                raise HTTPException(status_code=409, detail="Outra ingestão já está em andamento para este contexto")
+
+            # Cria chunks do documento
+            chunks = Document.create_chunks(
+                tenant_id=tenant_id,
+                content=request.content,
+                chunk_size=512,
+                source=request.source,
+                metadata=metadata,
+            )
             
-            # Indexa no vector store
-            if _vector_adapter and embedding:
-                await _vector_adapter.index_document(chunk, embedding)
+            document_ids = []
             
-            document_ids.append(chunk.id)
-        
-        logger.info("ingest_complete", chunks=len(chunks), tenant_id=tenant_id)
-        
-        return IngestResponse(
-            document_ids=document_ids,
-            chunks_count=len(chunks),
-            success=True,
-        )
+            for chunk in chunks:
+                # Gera embedding
+                embedding = None
+                if _vectorization_agent:
+                    embedding_vec = await _vectorization_agent.embed_text(chunk.content)
+                    if embedding_vec:
+                        embedding = _vectorization_agent.create_embedding_entity(chunk.id, embedding_vec)
+                
+                # Indexa no vector store
+                if _vector_adapter and embedding:
+                    await _vector_adapter.index_document(chunk, embedding)
+                
+                document_ids.append(chunk.id)
+            
+            logger.info("ingest_complete", chunks=len(chunks), tenant_id=tenant_id, lock_scope=lock_scope)
+            
+            return IngestResponse(
+                document_ids=document_ids,
+                chunks_count=len(chunks),
+                success=True,
+            )
     
     except HTTPException:
         raise

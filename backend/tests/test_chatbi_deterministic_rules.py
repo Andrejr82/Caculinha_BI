@@ -100,6 +100,24 @@ def test_no_clarification_when_chart_query_has_metric_and_breakdown():
     assert response is None
 
 
+def test_no_clarification_for_explicit_chart_query_with_broad_scope():
+    agent = _agent_stub()
+    response = agent._build_clarification_if_needed(
+        "gere um gráfico de vendas de todos os segmentos em todas as unes",
+        "gerar_grafico_universal_v2",
+        0.95,
+    )
+
+    assert response is None
+
+
+def test_followup_reference_marker_does_not_match_regular_verb_prefix():
+    agent = _agent_stub()
+
+    assert agent._has_followup_reference_marker("gere um gráfico de vendas de todos os segmentos em todas as unes") is False
+    assert agent._has_followup_reference_marker("e na Kalunga?") is True
+
+
 def test_no_clarification_when_dashboard_query_has_business_filters():
     agent = _agent_stub()
     response = agent._build_clarification_if_needed(
@@ -230,6 +248,52 @@ def test_execute_calculation_sandbox_returns_structured_response():
     assert response["source"] == "sandbox.code_gen_agent"
     assert response["mode"] == "deterministic_sandbox"
     assert "EOQ recomendado" in response["result"]["mensagem"]
+
+
+def test_execute_calculation_sandbox_returns_margin_report_from_explicit_numbers():
+    class _DummyCodeGen:
+        def calculate_eoq_internal(self, demand_annual, order_cost, holding_cost_pct, unit_cost):
+            raise AssertionError("EOQ should not be used for margin calculation")
+
+    agent = _agent_stub()
+    agent.code_gen_agent = _DummyCodeGen()
+    agent.bi_tools = []
+
+    response = agent._execute_calculation_sandbox(
+        "calcule a margem do produto com preço de venda 25 e custo unitário 15",
+        SimpleNamespace(tool_params={}),
+    )
+
+    assert response is not None
+    assert response["source"] == "sandbox.code_gen_agent"
+    assert "Margem bruta estimada" in response["result"]["mensagem"]
+    assert isinstance(response.get("table_data"), list)
+
+
+def test_execute_calculation_sandbox_returns_stock_coverage_report_from_snapshot():
+    class _DummyCodeGen:
+        def calculate_eoq_internal(self, demand_annual, order_cost, holding_cost_pct, unit_cost):
+            raise AssertionError("EOQ should not be used for stock coverage calculation")
+
+    agent = _agent_stub()
+    agent.code_gen_agent = _DummyCodeGen()
+    agent.bi_tools = []
+    agent._resolve_product_snapshot_for_calculation = lambda query, params: {
+        "produto_id": "369947",
+        "produto_nome": "TNT 40GRS",
+        "venda_30dd": 300.0,
+        "estoque_une": 150.0,
+        "une_id": 520,
+    }
+
+    response = agent._execute_calculation_sandbox(
+        "calcule a cobertura em dias do produto 369947 na une 520",
+        SimpleNamespace(tool_params={"produto_id": "369947", "une": 520}),
+    )
+
+    assert response is not None
+    assert "Cobertura estimada" in response["result"]["mensagem"]
+    assert any(row["Indicador"] == "Cobertura (dias)" for row in response["table_data"])
 
 
 @pytest.mark.asyncio
@@ -776,6 +840,55 @@ def test_analisar_produto_todas_lojas_formats_rupture_store_list_for_product():
     assert "2365" in msg
 
 
+def test_calcular_mc_produto_formats_operational_report():
+    agent = _agent_stub()
+    response = agent._format_deterministic_result(
+        "qual a média comum do produto 369947 na une 520",
+        "calcular_mc_produto",
+        {
+            "produto_id": 369947,
+            "une_id": 520,
+            "nome": "TNT 40GRS",
+            "segmento": "TECIDOS",
+            "mc_calculada": 42.5,
+            "estoque_atual": 30.0,
+            "linha_verde": 60.0,
+            "percentual_linha_verde": 50.0,
+            "recomendacao": "Planejar abastecimento",
+        },
+        {"produto_id": 369947, "une_id": 520},
+    )
+
+    msg = response["result"]["mensagem"]
+    assert "MC calculada para o produto 369947" in msg
+    assert "TNT 40GRS" in msg
+    assert "| Indicador | Valor |" in msg
+
+
+def test_calcular_preco_final_une_formats_policy_report():
+    agent = _agent_stub()
+    response = agent._format_deterministic_result(
+        "calcule o preço final para compra de 1000 no ranking 2 à vista",
+        "calcular_preco_final_une",
+        {
+            "valor_original": 1000.0,
+            "tipo": "Atacado",
+            "ranking": 2,
+            "desconto_ranking": "38%",
+            "forma_pagamento": "vista",
+            "desconto_pagamento": "38%",
+            "preco_final": 384.4,
+            "economia": 615.6,
+        },
+        {"valor_compra": 1000.0, "ranking": 2, "forma_pagamento": "vista"},
+    )
+
+    msg = response["result"]["mensagem"]
+    assert "Cálculo de preço final concluído" in msg
+    assert "Ranking" not in msg or "ranking" in msg.lower()
+    assert "| Indicador | Valor |" in msg
+
+
 def test_consultar_dados_flexivel_aggregated_segment_returns_executive_table():
     agent = _agent_stub()
     tool_result = {
@@ -796,6 +909,42 @@ def test_consultar_dados_flexivel_aggregated_segment_returns_executive_table():
     assert "Consolidado de vendas por segmento concluído" in msg
     assert "| Segmento | Venda (R$) |" in msg
     assert "Código do produto" not in msg
+    assert isinstance(response.get("table_data"), list)
+    assert len(response["table_data"]) == 3
+    assert response["table_data"][0]["NOMESEGMENTO"] == "PAPELARIA"
+
+
+def test_consultar_dados_flexivel_aggregated_segment_returns_enriched_sales_report():
+    agent = _agent_stub()
+    tool_result = {
+        "resultados": [
+            {"NOMESEGMENTO": "ARTES", "valor": 319947.0},
+            {"NOMESEGMENTO": "PAPELARIA", "valor": 778096.0},
+            {"NOMESEGMENTO": "TECIDOS", "valor": 610686.0},
+            {"NOMESEGMENTO": "AVIAMENTOS", "valor": 152340.0},
+            {"NOMESEGMENTO": "DECORACAO", "valor": 104210.0},
+            {"NOMESEGMENTO": "FESTAS", "valor": 82110.0},
+        ]
+    }
+
+    response = agent._format_deterministic_result(
+        "preciso de um relatório de vendas do segmento tecidos de todas as lojas",
+        "consultar_dados_flexivel",
+        tool_result,
+        {"filtros": {"NOMESEGMENTO": "TECIDOS", "periodo": "90d"}},
+    )
+
+    msg = response["result"]["mensagem"]
+    assert "## Resumo executivo" in msg
+    assert "KPIs-chave" in msg
+    assert "Filtros aplicados" in msg
+    assert "| Segmento | Venda (R$) | Part. % | Ranking | Gap p/ média (R$) | Classificação |" in msg
+    assert "PAPELARIA" in msg
+    assert "TECIDOS" in msg
+    assert "Próximas ações" in msg
+    assert isinstance(response.get("table_data"), list)
+    assert response["table_data"][0]["NOMESEGMENTO"] == "PAPELARIA"
+    assert "TOTAL_VENDAS" in response["table_data"][0]
 
 
 def test_consultar_dados_flexivel_sales_plan_followup_generates_7_day_action_plan():
@@ -820,6 +969,38 @@ def test_consultar_dados_flexivel_sales_plan_followup_generates_7_day_action_pla
     assert "Gap para média (R$)" in msg
     assert "Dia 1" in msg
     assert "Dia 7" in msg
+    assert isinstance(response.get("table_data"), list)
+    assert str(response["table_data"][0]["UNE"]) == "35"
+
+
+def test_consultar_dados_flexivel_aggregated_une_returns_enriched_sales_report():
+    agent = _agent_stub()
+    tool_result = {
+        "resultados": [
+            {"UNE": 1685, "valor": 311492.84},
+            {"UNE": 2365, "valor": 271045.33},
+            {"UNE": 1, "valor": 206161.63},
+            {"UNE": 520, "valor": 154720.52},
+            {"UNE": 81, "valor": 125054.02},
+        ]
+    }
+
+    response = agent._format_deterministic_result(
+        "preciso de um relatório de vendas do segmento tecidos de todas as lojas",
+        "consultar_dados_flexivel",
+        tool_result,
+        {"filtros": {"NOMESEGMENTO": "TECIDOS"}},
+    )
+
+    msg = response["result"]["mensagem"]
+    assert "consolidado de vendas por loja (une) concluído" in msg.lower()
+    assert "KPIs-chave" in msg
+    assert "| Loja (UNE) | Venda (R$) | Part. % | Ranking | Gap p/ média (R$) | Classificação |" in msg
+    assert "1685" in msg
+    assert "2365" in msg
+    assert isinstance(response.get("table_data"), list)
+    assert str(response["table_data"][0]["UNE"]) == "1685"
+    assert "TOTAL_VENDAS" in response["table_data"][0]
 
 
 def test_commercial_plan_followup_routes_to_aggregated_une_query_from_history():

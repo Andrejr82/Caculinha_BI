@@ -20,6 +20,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 
+from backend.app.infrastructure.redis_client import get_redis_client
+
 
 logger = structlog.get_logger(__name__)
 
@@ -59,7 +61,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         max_requests = limits.get("max_requests_per_hour", DEFAULT_REQUESTS_PER_HOUR)
         
         # Verificar rate limit
-        allowed, remaining, reset_at = self._check_rate_limit(
+        allowed, remaining, reset_at = await self._check_rate_limit(
             key, max_requests, DEFAULT_WINDOW_SECONDS
         )
         
@@ -94,7 +96,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         return response
     
-    def _check_rate_limit(
+    async def _check_rate_limit(
         self,
         key: str,
         max_requests: int,
@@ -106,6 +108,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         Returns:
             Tuple de (allowed, remaining, reset_at)
         """
+        redis_client = get_redis_client()
+        if redis_client is not None:
+            return await self._check_rate_limit_redis(key, max_requests, window_seconds)
+
         now = time.time()
         window_start = now - window_seconds
         reset_at = int(now + window_seconds)
@@ -123,6 +129,54 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Registrar requisição
         _RATE_LIMITS[key].append(now)
         
+        return True, remaining, reset_at
+
+    async def _check_rate_limit_redis(
+        self,
+        key: str,
+        max_requests: int,
+        window_seconds: int,
+    ) -> Tuple[bool, int, int]:
+        now = time.time()
+        window_start = now - window_seconds
+        reset_at = int(now + window_seconds)
+        redis_client = get_redis_client()
+        redis_key = f"ratelimit:{key}"
+        member = f"{now}:{time.monotonic_ns()}"
+
+        try:
+            await redis_client.zremrangebyscore(redis_key, 0, window_start)
+            current_count = await redis_client.zcard(redis_key)
+            remaining = max(0, max_requests - int(current_count) - 1)
+
+            if int(current_count) >= max_requests:
+                return False, 0, reset_at
+
+            await redis_client.zadd(redis_key, {member: now})
+            await redis_client.expire(redis_key, window_seconds)
+            return True, remaining, reset_at
+        except Exception as exc:
+            logger.warning("redis_rate_limit_failed_falling_back_to_memory", error=str(exc), key=key)
+            return self._check_rate_limit_memory(key, max_requests, window_seconds)
+
+    def _check_rate_limit_memory(
+        self,
+        key: str,
+        max_requests: int,
+        window_seconds: int,
+    ) -> Tuple[bool, int, int]:
+        now = time.time()
+        window_start = now - window_seconds
+        reset_at = int(now + window_seconds)
+
+        _RATE_LIMITS[key] = [ts for ts in _RATE_LIMITS[key] if ts > window_start]
+        current_count = len(_RATE_LIMITS[key])
+        remaining = max(0, max_requests - current_count - 1)
+
+        if current_count >= max_requests:
+            return False, 0, reset_at
+
+        _RATE_LIMITS[key].append(now)
         return True, remaining, reset_at
 
 

@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import re
 import numpy as np
 import pandas as pd
 from decimal import Decimal
@@ -162,6 +163,8 @@ class CaculinhaBIAgent:
             pesquisar_precos_concorrentes,  # Pesquisa concorrencial externa
             pesquisar_mercado_web,  # Pesquisa de mercado aberta (ML, Google Shopping, etc.)
             calcular_abastecimento_une,  # Abastecimento
+            calcular_mc_produto,  # Média comum / dimensionamento
+            calcular_preco_final_une,  # Política comercial de preço
             encontrar_rupturas_criticas,  # Rupturas
             sugerir_transferencias_automaticas,  # Otimização de transferências
             consultar_dicionario_dados,  # FIX 2026-02-04: Restaurado para schema discovery
@@ -866,6 +869,40 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         except Exception:
             return None
 
+    def _extract_payment_term_hint(self, query: str) -> Optional[str]:
+        q = (query or "").lower()
+        if any(token in q for token in ["à vista", "a vista", "avista", "vista"]):
+            return "vista"
+        for term in ("30d", "90d", "120d"):
+            if term in q:
+                return term
+        return None
+
+    def _extract_ranking_hint(self, query: str) -> Optional[int]:
+        import re
+        q = (query or "").lower()
+        match = re.search(r"ranking\s+(\d)", q)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except Exception:
+            return None
+
+    def _detect_calculation_mode(self, query: str) -> str:
+        q = (query or "").lower()
+        if any(token in q for token in ["eoq", "lote econômico", "lote economico", "quanto comprar"]):
+            return "eoq"
+        if "markup" in q or "mark-up" in q:
+            return "markup"
+        if any(token in q for token in ["giro de estoque", "giro do estoque", "giro"]):
+            return "inventory_turnover"
+        if any(token in q for token in ["cobertura em dias", "dias de cobertura", "cobertura de estoque", "cobertura"]):
+            return "stock_coverage"
+        if any(token in q for token in ["margem", "margem de contribuição", "margem de contribuicao"]):
+            return "margin"
+        return "generic"
+
     def _is_tool_failure_result(self, tool_result: Any) -> bool:
         if not isinstance(tool_result, dict):
             return False
@@ -1325,6 +1362,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "encontrar_rupturas_criticas",
             "analisar_historico_vendas",
             "calcular_eoq",
+            "calcular_mc_produto",
+            "calcular_preco_final_une",
             "analisar_produto_todas_lojas",
         }:
             return self._format_deterministic_result(user_query, tool_name, tool_result, tool_params)
@@ -1347,6 +1386,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "eoq",
             "lote econômico",
             "lote economico",
+            "margem",
+            "markup",
+            "mark-up",
+            "giro",
+            "cobertura",
         ]
         if any(k in q for k in explicit_keywords):
             return True
@@ -1360,12 +1404,17 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         import re
         args = dict(params or {})
         product_id = str(args.get("produto_id") or args.get("produto_codigo") or "").strip()
+        une_id = str(args.get("une_id") or args.get("une") or "").strip()
         if not product_id:
             match = re.search(r"(?:produto|sku|item)\s+(\d+)", user_query.lower())
             if match:
                 product_id = str(match.group(1))
+        if not une_id:
+            match_une = re.search(r"(?:une|loja)\s+(\d{1,4})", user_query.lower())
+            if match_une:
+                une_id = str(match_une.group(1))
 
-        snapshot: Dict[str, Any] = {"produto_id": product_id or None}
+        snapshot: Dict[str, Any] = {"produto_id": product_id or None, "une_id": une_id or None}
         if not product_id:
             return snapshot
 
@@ -1374,18 +1423,26 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return snapshot
 
         base_params = {
-            "colunas": ["PRODUTO", "NOME", "VENDA_30DD", "ULTIMA_ENTRADA_CUSTO_CD"],
+            "colunas": ["PRODUTO", "NOME", "UNE", "NOMESEGMENTO", "VENDA_30DD", "ULTIMA_ENTRADA_CUSTO_CD", "LIQUIDO_38", "ESTOQUE_UNE", "ESTOQUE_CD", "MEDIA_CONSIDERADA_LV"],
             "filtros": {"PRODUTO": int(product_id)},
             "limite": "1",
         }
+        if une_id and une_id.isdigit():
+            base_params["filtros"]["UNE"] = int(une_id)
         try:
             result = self._execute_tool_with_recovery(query_tool, "consultar_dados_flexivel", base_params)
             rows = result.get("resultados", []) if isinstance(result, dict) else []
             if rows and isinstance(rows[0], dict):
                 row = rows[0]
                 snapshot["produto_nome"] = row.get("NOME")
+                snapshot["segmento"] = row.get("NOMESEGMENTO")
+                snapshot["une_id"] = row.get("UNE") or snapshot.get("une_id")
                 snapshot["venda_30dd"] = row.get("VENDA_30DD")
                 snapshot["custo_unitario"] = row.get("ULTIMA_ENTRADA_CUSTO_CD")
+                snapshot["preco_venda"] = row.get("LIQUIDO_38")
+                snapshot["estoque_une"] = row.get("ESTOQUE_UNE")
+                snapshot["estoque_cd"] = row.get("ESTOQUE_CD")
+                snapshot["media_considerada_lv"] = row.get("MEDIA_CONSIDERADA_LV")
         except Exception as error:
             logger.warning(f"[SANDBOX] Falha ao coletar snapshot de produto {product_id}: {error}")
 
@@ -1495,12 +1552,244 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             },
         }
 
+    def _format_operational_calculation_result(
+        self,
+        user_query: str,
+        calculation_type: str,
+        calc_result: Dict[str, Any],
+        assumptions: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if calc_result.get("error"):
+            return {
+                "type": "text",
+                "result": {"mensagem": f"Não consegui concluir o cálculo solicitado: {calc_result.get('error')}"},
+                "source": "sandbox.code_gen_agent",
+                "mode": "deterministic_sandbox_failed",
+                "confidence": 0.35,
+                "citations": [],
+            }
+
+        def _fmt_num(value: Any, digits: int = 2) -> str:
+            try:
+                if value is None:
+                    return "-"
+                return f"{float(value):,.{digits}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except Exception:
+                return str(value or "-")
+
+        product_label = assumptions.get("produto_nome") or assumptions.get("produto_id") or "item analisado"
+        support_table: List[Dict[str, Any]] = []
+
+        if calculation_type == "margin":
+            margin_pct = calc_result.get("margin_pct")
+            markup_pct = calc_result.get("markup_pct")
+            margin_value = calc_result.get("margin_value")
+            support_table = [
+                {"Indicador": "Preço de venda (R$)", "Valor": _fmt_num(assumptions.get("price"), 2)},
+                {"Indicador": "Custo unitário (R$)", "Valor": _fmt_num(assumptions.get("cost"), 2)},
+                {"Indicador": "Margem bruta (R$)", "Valor": _fmt_num(margin_value, 2)},
+                {"Indicador": "Margem bruta (%)", "Valor": f"{_fmt_num(margin_pct, 1)}%"},
+                {"Indicador": "Markup (%)", "Valor": f"{_fmt_num(markup_pct, 1)}%"},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- Cálculo de margem concluído para {product_label}.\n"
+                f"- Margem bruta estimada: {_fmt_num(margin_value, 2)} por unidade, equivalente a {_fmt_num(margin_pct, 1)}% sobre a venda.\n"
+                f"- Markup implícito: {_fmt_num(markup_pct, 1)}% sobre o custo.\n"
+                f"- Premissas: preço de venda {_fmt_num(assumptions.get('price'), 2)} e custo unitário {_fmt_num(assumptions.get('cost'), 2)}.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in support_table)
+                + "\n\n## Próximas ações\n"
+                + "- Compare a margem calculada com a meta comercial do segmento antes de aplicar desconto.\n"
+                "- Se quiser, eu também posso simular impacto de desconto, frete ou imposto sobre essa margem."
+            )
+        elif calculation_type == "markup":
+            markup_pct = calc_result.get("markup_pct")
+            price = assumptions.get("price")
+            cost = assumptions.get("cost")
+            margin_pct = calc_result.get("margin_pct")
+            support_table = [
+                {"Indicador": "Preço de venda (R$)", "Valor": _fmt_num(price, 2)},
+                {"Indicador": "Custo unitário (R$)", "Valor": _fmt_num(cost, 2)},
+                {"Indicador": "Markup (%)", "Valor": f"{_fmt_num(markup_pct, 1)}%"},
+                {"Indicador": "Margem equivalente (%)", "Valor": f"{_fmt_num(margin_pct, 1)}%"},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- Cálculo de markup concluído para {product_label}.\n"
+                f"- Markup estimado: {_fmt_num(markup_pct, 1)}% sobre o custo.\n"
+                f"- Isso equivale a uma margem bruta aproximada de {_fmt_num(margin_pct, 1)}% sobre a venda.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in support_table)
+                + "\n\n## Próximas ações\n"
+                + "- Valide se o markup calculado sustenta a política comercial e a meta de margem da categoria.\n"
+                "- Se quiser, eu posso transformar isso em preço-alvo ou simular cenários de desconto."
+            )
+        elif calculation_type == "stock_coverage":
+            support_table = [
+                {"Indicador": "Estoque base (un)", "Valor": _fmt_num(calc_result.get("stock_units"), 0)},
+                {"Indicador": "Venda 30 dias (un)", "Valor": _fmt_num(calc_result.get("sales_30d"), 0)},
+                {"Indicador": "Consumo diário médio", "Valor": _fmt_num(calc_result.get("daily_run_rate"), 2)},
+                {"Indicador": "Cobertura (dias)", "Valor": _fmt_num(calc_result.get("coverage_days"), 1)},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- Cálculo de cobertura concluído para {product_label}.\n"
+                f"- Cobertura estimada: {_fmt_num(calc_result.get('coverage_days'), 1)} dias.\n"
+                f"- Base usada: estoque de {_fmt_num(calc_result.get('stock_units'), 0)} unidades para uma venda de {_fmt_num(calc_result.get('sales_30d'), 0)} unidades nos últimos 30 dias.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in support_table)
+                + "\n\n## Próximas ações\n"
+                + "- Compare a cobertura atual com o lead time e a linha verde antes de reduzir compra.\n"
+                "- Se quiser, eu posso listar as lojas com menor cobertura para o mesmo item."
+            )
+        else:
+            support_table = [
+                {"Indicador": "Estoque base (un)", "Valor": _fmt_num(calc_result.get("stock_units"), 0)},
+                {"Indicador": "Venda 30 dias (un)", "Valor": _fmt_num(calc_result.get("sales_30d"), 0)},
+                {"Indicador": "Giro 30 dias (x)", "Valor": _fmt_num(calc_result.get("inventory_turnover_30d"), 2)},
+                {"Indicador": "Cobertura (dias)", "Valor": _fmt_num(calc_result.get("coverage_days"), 1)},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- Cálculo de giro de estoque concluído para {product_label}.\n"
+                f"- Giro aproximado em 30 dias: {_fmt_num(calc_result.get('inventory_turnover_30d'), 2)}x.\n"
+                f"- A cobertura equivalente do estoque atual é de {_fmt_num(calc_result.get('coverage_days'), 1)} dias.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in support_table)
+                + "\n\n## Próximas ações\n"
+                + "- Use o giro junto com margem e cobertura para decidir reposição e profundidade de sortimento.\n"
+                "- Se quiser, eu posso comparar esse giro com outras UNEs ou com o segmento do item."
+            )
+
+        citations = [{"source": "sandbox.code_gen_agent", "domain": "internal", "url": "", "competitor": "n/a"}]
+        if assumptions.get("produto_id"):
+            citations.append({"source": "admmat.parquet", "domain": "internal_data", "url": "", "competitor": "n/a"})
+        return {
+            "type": "text",
+            "result": {"mensagem": msg},
+            "source": "sandbox.code_gen_agent",
+            "mode": "deterministic_sandbox",
+            "confidence": 0.84 if assumptions.get("from_database") else 0.78,
+            "citations": citations,
+            "table_data": support_table,
+            "calculation": {
+                "type": calculation_type,
+                "assumptions": assumptions,
+                "result": calc_result,
+            },
+        }
+
     def _execute_calculation_sandbox(self, user_query: str, tool_selection: Any) -> Optional[Dict[str, Any]]:
         if not self.code_gen_agent:
             return None
 
         params = dict(getattr(tool_selection, "tool_params", {}) or {})
         snapshot = self._resolve_product_snapshot_for_calculation(user_query, params)
+        calculation_mode = self._detect_calculation_mode(user_query)
+
+        if calculation_mode in {"margin", "markup", "stock_coverage", "inventory_turnover"}:
+            price = self._extract_numeric_hint(
+                user_query,
+                [
+                    r"pre[çc]o\s+(?:de\s+venda\s+)?(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+                    r"venda\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+                ],
+            )
+            cost = self._extract_numeric_hint(
+                user_query,
+                [
+                    r"custo\s+(?:unit[aá]rio\s+)?(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+                    r"custo\s+de\s+aquisi[çc][aã]o\s+(?:de\s+)?r?\$?\s*(\d+(?:[.,]\d+)?)",
+                ],
+            )
+            sales_30d = self._extract_numeric_hint(
+                user_query,
+                [
+                    r"venda(?:s)?\s+(?:de\s+)?(\d+(?:[.,]\d+)?)\s*(?:unidades?|itens|pe[cç]as)?\s*(?:nos\s+[uú]ltimos\s+30\s+dias)?",
+                    r"(\d+(?:[.,]\d+)?)\s*(?:unidades?|itens|pe[cç]as)\s+nos\s+[uú]ltimos\s+30\s+dias",
+                ],
+            )
+            stock_units = self._extract_numeric_hint(
+                user_query,
+                [
+                    r"estoque\s+(?:atual\s+)?(?:de\s+)?(\d+(?:[.,]\d+)?)\s*(?:unidades?|itens|pe[cç]as)?",
+                ],
+            )
+
+            if price is None:
+                try:
+                    if snapshot.get("preco_venda") is not None:
+                        price = float(snapshot.get("preco_venda"))
+                except Exception:
+                    price = None
+            if cost is None:
+                try:
+                    if snapshot.get("custo_unitario") is not None:
+                        cost = float(snapshot.get("custo_unitario"))
+                except Exception:
+                    cost = None
+            if sales_30d is None:
+                try:
+                    if snapshot.get("venda_30dd") is not None:
+                        sales_30d = float(snapshot.get("venda_30dd"))
+                except Exception:
+                    sales_30d = None
+            if stock_units is None:
+                for stock_key in ("estoque_une", "estoque_cd", "media_considerada_lv"):
+                    try:
+                        if snapshot.get(stock_key) is not None:
+                            stock_units = float(snapshot.get(stock_key))
+                            break
+                    except Exception:
+                        continue
+
+            if calculation_mode in {"margin", "markup"}:
+                if price is None or price <= 0 or cost is None or cost < 0:
+                    return None
+                margin_value = price - cost
+                margin_pct = (margin_value / price * 100.0) if price > 0 else 0.0
+                markup_pct = (margin_value / cost * 100.0) if cost > 0 else 0.0
+                calc_result = {
+                    "margin_value": round(margin_value, 2),
+                    "margin_pct": round(margin_pct, 2),
+                    "markup_pct": round(markup_pct, 2),
+                }
+                assumptions = {
+                    "calculation_type": calculation_mode,
+                    "produto_id": snapshot.get("produto_id"),
+                    "produto_nome": snapshot.get("produto_nome"),
+                    "price": round(float(price), 2),
+                    "cost": round(float(cost), 2),
+                    "from_database": bool(snapshot.get("preco_venda") is not None and snapshot.get("custo_unitario") is not None),
+                }
+                return self._format_operational_calculation_result(user_query, calculation_mode, calc_result, assumptions)
+
+            if stock_units is None or stock_units < 0 or sales_30d is None or sales_30d <= 0:
+                return None
+
+            daily_run_rate = sales_30d / 30.0
+            coverage_days = stock_units / daily_run_rate if daily_run_rate > 0 else 0.0
+            inventory_turnover_30d = sales_30d / stock_units if stock_units > 0 else 0.0
+            calc_result = {
+                "stock_units": round(float(stock_units), 2),
+                "sales_30d": round(float(sales_30d), 2),
+                "daily_run_rate": round(float(daily_run_rate), 4),
+                "coverage_days": round(float(coverage_days), 2),
+                "inventory_turnover_30d": round(float(inventory_turnover_30d), 4),
+            }
+            assumptions = {
+                "calculation_type": calculation_mode,
+                "produto_id": snapshot.get("produto_id"),
+                "produto_nome": snapshot.get("produto_nome"),
+                "une_id": snapshot.get("une_id"),
+                "from_database": bool(snapshot.get("venda_30dd") is not None),
+            }
+            return self._format_operational_calculation_result(user_query, calculation_mode, calc_result, assumptions)
 
         demand_annual = self._extract_numeric_hint(
             user_query,
@@ -2383,23 +2672,9 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "giro",
             "cobertura",
         )
-        referential_markers = (
-            "e ",
-            "agora",
-            "dessas",
-            "delas",
-            "desse",
-            "dessa",
-            "nesse",
-            "nessa",
-            "nisso",
-            "anterior",
-            "última resposta",
-            "ultima resposta",
-        )
         word_count = len([token for token in q.split() if token.strip()])
         has_objective = any(marker in q for marker in objective_markers)
-        has_reference = q.startswith("e ") or any(marker in q for marker in referential_markers)
+        has_reference = self._has_followup_reference_marker(q)
         return has_objective and (has_reference or word_count <= 6)
 
     def _is_underspecified_business_followup(self, query: str) -> bool:
@@ -2407,6 +2682,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         if not q:
             return False
         if self._is_commercial_plan_query(q):
+            return False
+        if (
+            (self._is_chart_request(q) or self._is_dashboard_request(q))
+            and self._has_business_metric_hint(q)
+            and bool(self._infer_chart_breakdown(q))
+        ):
             return False
 
         has_explicit_anchor = any(
@@ -2435,20 +2716,29 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             "lider",
             "líder",
         )
-        referential_markers = (
-            "e ",
-            "agora",
-            "dessas",
-            "delas",
-            "desse",
-            "dessa",
-            "nisso",
-            "anterior",
-            "última resposta",
-            "ultima resposta",
-        )
-        has_reference = q.startswith("e ") or any(marker in q for marker in referential_markers)
+        has_reference = self._has_followup_reference_marker(q)
         return any(marker in q for marker in objective_markers) and has_reference
+
+    @staticmethod
+    def _has_followup_reference_marker(query: str) -> bool:
+        q = (query or "").strip().lower()
+        if not q:
+            return False
+        patterns = (
+            r"^e\s+",
+            r"\bagora\b",
+            r"\bdessas\b",
+            r"\bdelas\b",
+            r"\bdesse\b",
+            r"\bdessa\b",
+            r"\bnesse\b",
+            r"\bnessa\b",
+            r"\bnisso\b",
+            r"\banterior\b",
+            r"\búltima resposta\b",
+            r"\bultima resposta\b",
+        )
+        return any(re.search(pattern, q) for pattern in patterns)
 
     def _expand_business_followup_with_context(
         self,
@@ -4038,6 +4328,103 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 "citations": [{"source": "admmat.parquet", "domain": "internal_data", "url": "", "competitor": "n/a"}],
             }
 
+        if tool_name == "calcular_mc_produto":
+            if tool_result.get("error"):
+                return {
+                    "type": "text",
+                    "result": {"mensagem": f"Não consegui concluir o cálculo de MC: {tool_result.get('error')}"},
+                }
+
+            produto = tool_result.get("produto_id") or (tool_params or {}).get("produto_id")
+            une = tool_result.get("une_id") or (tool_params or {}).get("une_id")
+            nome = tool_result.get("nome")
+            segmento = tool_result.get("segmento")
+            mc_calculada = tool_result.get("mc_calculada")
+            estoque_atual = tool_result.get("estoque_atual")
+            linha_verde = tool_result.get("linha_verde")
+            percentual_lv = tool_result.get("percentual_linha_verde")
+            recomendacao = tool_result.get("recomendacao")
+
+            def _fmt_calc(v: Any) -> str:
+                try:
+                    return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return str(v or "-")
+
+            table_data = [
+                {"Indicador": "MC calculada", "Valor": _fmt_calc(mc_calculada)},
+                {"Indicador": "Estoque atual", "Valor": _fmt_calc(estoque_atual)},
+                {"Indicador": "Linha verde", "Valor": _fmt_calc(linha_verde)},
+                {"Indicador": "% da linha verde", "Valor": f"{_fmt_calc(percentual_lv)}%"},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- MC calculada para o produto {produto or '-'}"
+                + (f" ({nome})" if nome else "")
+                + f" na UNE {une or '-'}.\n"
+                f"- Segmento: {segmento or '-'}.\n"
+                f"- MC de referência: {_fmt_calc(mc_calculada)}; estoque atual: {_fmt_calc(estoque_atual)}; linha verde: {_fmt_calc(linha_verde)}.\n"
+                f"- Leitura operacional: o item está em { _fmt_calc(percentual_lv) }% da linha verde. Recomendação: {recomendacao or '-'}.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in table_data)
+                + "\n\n## Próximas ações\n"
+                + "- Use a MC e o percentual da linha verde para calibrar abastecimento e exposição em gôndola.\n"
+                "- Se quiser, eu também posso comparar esse item com outras UNEs."
+            )
+            return {
+                "type": "text",
+                "result": {"mensagem": msg},
+                "source": "tool.calcular_mc_produto",
+                "confidence": 0.86,
+                "mode": "deterministic_tool",
+                "citations": [{"source": "admmat.parquet", "domain": "internal_data", "url": "", "competitor": "n/a"}],
+                "table_data": table_data,
+            }
+
+        if tool_name == "calcular_preco_final_une":
+            if tool_result.get("error"):
+                return {
+                    "type": "text",
+                    "result": {"mensagem": f"Não consegui concluir o cálculo de preço final: {tool_result.get('error')}"},
+                }
+
+            def _fmt_calc(v: Any) -> str:
+                try:
+                    return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return str(v or "-")
+
+            table_data = [
+                {"Indicador": "Valor original (R$)", "Valor": _fmt_calc(tool_result.get("valor_original"))},
+                {"Indicador": "Tipo de preço", "Valor": str(tool_result.get("tipo") or "-")},
+                {"Indicador": "Desconto ranking", "Valor": str(tool_result.get("desconto_ranking") or "-")},
+                {"Indicador": "Desconto pagamento", "Valor": str(tool_result.get("desconto_pagamento") or "-")},
+                {"Indicador": "Preço final (R$)", "Valor": _fmt_calc(tool_result.get("preco_final"))},
+                {"Indicador": "Economia (R$)", "Valor": _fmt_calc(tool_result.get("economia"))},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- Cálculo de preço final concluído para compra de R$ {_fmt_calc(tool_result.get('valor_original'))}.\n"
+                f"- Tipo de preço aplicado: {tool_result.get('tipo') or '-'}; ranking: {tool_result.get('ranking') or '-'}; forma de pagamento: {tool_result.get('forma_pagamento') or '-'}.\n"
+                f"- Preço final calculado: R$ {_fmt_calc(tool_result.get('preco_final'))}, com economia estimada de R$ {_fmt_calc(tool_result.get('economia'))}.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in table_data)
+                + "\n\n## Próximas ações\n"
+                + "- Valide se a política de ranking aplicada está aderente à campanha e ao canal.\n"
+                "- Se quiser, eu também posso simular outras formas de pagamento ou faixas de compra."
+            )
+            return {
+                "type": "text",
+                "result": {"mensagem": msg},
+                "source": "tool.calcular_preco_final_une",
+                "confidence": 0.84,
+                "mode": "deterministic_tool",
+                "citations": [{"source": "politica_une", "domain": "internal_rule", "url": "", "competitor": "n/a"}],
+                "table_data": table_data,
+            }
+
         if tool_name == "consultar_dados_flexivel":
             from backend.app.core.utils.query_router import (
                 extract_product_code,
@@ -4068,6 +4455,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 text = str(v or "").strip()
                 return text or "N/A"
 
+            def _as_float(v: Any) -> float:
+                try:
+                    return float(v or 0)
+                except (TypeError, ValueError):
+                    return 0.0
+
             def _table(rows: List[Dict[str, Any]], cols: List[str], max_rows: int = 10) -> str:
                 display_map = {
                     "UNE": "Loja (UNE)",
@@ -4094,6 +4487,160 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 if len(rows) > max_rows:
                     table_md += f"\n... (+{len(rows) - max_rows} linhas)"
                 return table_md
+
+            def _table_payload(
+                rows: List[Dict[str, Any]],
+                cols: Optional[List[str]] = None,
+                max_rows: int = 50,
+            ) -> List[Dict[str, Any]]:
+                payload_rows: List[Dict[str, Any]] = []
+                for row in rows[:max_rows]:
+                    if not isinstance(row, dict):
+                        continue
+                    if cols:
+                        projected = {col: row.get(col) for col in cols}
+                    else:
+                        projected = dict(row)
+                    payload_rows.append(projected)
+                return payload_rows
+
+            def _build_sales_dimension_report(
+                *,
+                rows: List[Dict[str, Any]],
+                dim_col: str,
+                dim_label: str,
+                filters_text: str = "Sem filtros adicionais",
+                max_rows: int = 15,
+            ) -> str:
+                sorted_rows = sorted(
+                    [dict(row) for row in rows if isinstance(row, dict)],
+                    key=lambda item: _as_float(item.get("TOTAL_VENDAS") or item.get("valor")),
+                    reverse=True,
+                )
+                if not sorted_rows:
+                    return (
+                        "## Resumo executivo\n"
+                        "- Não encontrei vendas suficientes para montar o relatório neste recorte.\n\n"
+                        "## Tabela operacional\n"
+                        "- Sem dados tabulares adicionais para exibir nesta resposta.\n\n"
+                        "## Próximas ações\n"
+                        "- Revise filtros de período, segmento e lojas antes de repetir a consulta."
+                    )
+
+                valores = [_as_float(row.get("TOTAL_VENDAS") or row.get("valor")) for row in sorted_rows]
+                total_valor = sum(valores)
+                media_valor = total_valor / len(sorted_rows) if sorted_rows else 0.0
+                valores_ordenados = sorted(valores)
+                meio = len(valores_ordenados) // 2
+                if len(valores_ordenados) % 2 == 0:
+                    mediana_valor = (valores_ordenados[meio - 1] + valores_ordenados[meio]) / 2 if valores_ordenados else 0.0
+                else:
+                    mediana_valor = valores_ordenados[meio] if valores_ordenados else 0.0
+
+                top_5_share = (sum(valores[:5]) / total_valor * 100.0) if total_valor > 0 else 0.0
+                bottom_5_share = (sum(valores[-5:]) / total_valor * 100.0) if total_valor > 0 else 0.0
+                lider_row = sorted_rows[0]
+                lider_nome = _clean_dimension_value(lider_row.get(dim_col))
+                lider_valor = _as_float(lider_row.get("TOTAL_VENDAS") or lider_row.get("valor"))
+                lider_share = (lider_valor / total_valor * 100.0) if total_valor > 0 else 0.0
+                amplitude = lider_valor - (valores[-1] if valores else 0.0)
+
+                if lider_share >= 25 or top_5_share >= 65:
+                    concentracao = "alta"
+                elif lider_share >= 15 or top_5_share >= 45:
+                    concentracao = "moderada"
+                else:
+                    concentracao = "baixa"
+
+                leitura = (
+                    f"a distribuição está {concentracao}mente concentrada nas posições líderes"
+                    if dim_col == "UNE"
+                    else f"há concentração {concentracao} entre os principais {dim_label.lower()}"
+                )
+
+                enriched_rows: List[Dict[str, Any]] = []
+                for idx, row in enumerate(sorted_rows, start=1):
+                    valor = _as_float(row.get("TOTAL_VENDAS") or row.get("valor"))
+                    share_pct = (valor / total_valor * 100.0) if total_valor > 0 else 0.0
+                    gap_media = valor - media_valor
+                    if valor >= media_valor * 1.2:
+                        classificacao = "liderança" if idx <= 3 else "acima da média"
+                    elif valor <= media_valor * 0.8:
+                        classificacao = "cauda" if idx > max(5, len(sorted_rows) - 3) else "abaixo da média"
+                    else:
+                        classificacao = "na média"
+                    enriched_rows.append(
+                        {
+                            dim_col: row.get(dim_col),
+                            "TOTAL_VENDAS": valor,
+                            "SHARE_PCT": f"{share_pct:.1f}%",
+                            "RANK": idx,
+                            "GAP_MEDIA": gap_media,
+                            "CLASSIFICACAO": classificacao,
+                        }
+                    )
+
+                display_map_extra = {
+                    "SHARE_PCT": "Part. %",
+                    "RANK": "Ranking",
+                    "CLASSIFICACAO": "Classificação",
+                }
+
+                def _table_enriched(rows_to_show: List[Dict[str, Any]], cols: List[str], max_rows_inner: int = 10) -> str:
+                    display_cols = []
+                    for c in cols:
+                        if c in display_map_extra:
+                            display_cols.append(display_map_extra[c])
+                        else:
+                            display_cols.append({
+                                "UNE": "Loja (UNE)",
+                                "TOTAL_VENDAS": "Venda (R$)",
+                                "GAP_MEDIA": "Gap p/ média (R$)",
+                                "NOMESEGMENTO": "Segmento",
+                                "NOMEGRUPO": "Grupo",
+                            }.get(c, c.replace("_", " ").title()))
+                    header = "| " + " | ".join(display_cols) + " |"
+                    sep = "|" + "|".join(["---" for _ in cols]) + "|"
+                    body = []
+                    for row in rows_to_show[:max_rows_inner]:
+                        rendered = []
+                        for c in cols:
+                            value = row.get(c)
+                            if c in {"SHARE_PCT", "CLASSIFICACAO", "RANK"}:
+                                rendered.append(str(value))
+                            else:
+                                rendered.append(_fmt(value))
+                        body.append("| " + " | ".join(rendered) + " |")
+                    table_md = "\n".join([header, sep] + body)
+                    if len(rows_to_show) > max_rows_inner:
+                        table_md += f"\n... (+{len(rows_to_show) - max_rows_inner} linhas)"
+                    return table_md
+
+                action_lines = (
+                    "- Priorize as lojas abaixo da mediana com revisão de mix, preço e execução comercial em até 7 dias.\n"
+                    "- Compare Top 5 e Bottom 5 para validar ruptura, exposição e profundidade de sortimento.\n"
+                    "- Reavalie o segmento no próximo ciclo semanal para medir ganho de cobertura e venda."
+                    if dim_col == "UNE"
+                    else f"- Priorize os {dim_label.lower()} abaixo da mediana para revisão de sortimento, preço e execução comercial.\n"
+                    f"- Compare os {dim_label.lower()} líderes com a cauda para identificar lacunas de mix e demanda.\n"
+                    "- Reavalie o desempenho no próximo ciclo semanal com o mesmo recorte."
+                )
+
+                return (
+                    "## Resumo executivo\n"
+                    f"- Consolidado de vendas por {dim_label.lower()} concluído. Total vendido: {_fmt(total_valor)} em {len(sorted_rows)} {dim_label.lower()} analisados.\n"
+                    f"- Destaque: {lider_nome} lidera com {_fmt(lider_valor)} e participação de {round(lider_share, 1):.1f}% no total.\n"
+                    f"- KPIs-chave: média de {_fmt(media_valor)} por {dim_label.lower()}, mediana de {_fmt(mediana_valor)}, participação do Top 5 em {round(top_5_share, 1):.1f}% e da cauda em {round(bottom_5_share, 1):.1f}%.\n"
+                    f"- Leitura gerencial: {leitura}; a amplitude entre líder e última posição é de {_fmt(amplitude)}. Filtros aplicados: {filters_text}.\n\n"
+                    "## Tabela operacional\n"
+                    + _table_enriched(
+                        enriched_rows,
+                        [dim_col, "TOTAL_VENDAS", "SHARE_PCT", "RANK", "GAP_MEDIA", "CLASSIFICACAO"],
+                        max_rows_inner=max_rows,
+                    )
+                    + "\n\n## Próximas ações\n"
+                    + action_lines
+                )
 
             # Caso especial: perguntas sobre vendas negativas/ruins.
             if any(k in query_lower for k in ["negativ", "ruin", "piores grupos", "vendaas ruins"]):
@@ -4241,7 +4788,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                             + "\n\n## Próximas ações\n"
                             + next_actions
                         )
-                        return {"type": "text", "result": {"mensagem": msg}}
+                        return {
+                            "type": "text",
+                            "result": {"mensagem": msg},
+                            "table_data": _table_payload(plan_rows, [dim_col, "TOTAL_VENDAS", "GAP_MEDIA"], max_rows=20),
+                        }
                     if dim_col == "UNE" and isinstance(ranking_request, dict):
                         requested_limit = max(1, int(ranking_request.get("limite", 1) or 1))
                         ranking_rows = rows[:requested_limit]
@@ -4299,21 +4850,32 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                                     "- Atue primeiro nas UNEs de menor giro com revisão de preço, exposição e abastecimento.\n"
                                     "- Compare o bottom ranking com as lojas líderes para identificar lacunas operacionais."
                                 )
-                        return {"type": "text", "result": {"mensagem": msg}}
-                    msg = (
-                        "## Resumo executivo\n"
-                        f"- Consolidado de vendas por {dim_label.lower()} concluído. "
-                        f"Itens analisados: {len(rows)}. Destaque: {lider}. Total: {_fmt(total_valor)}.\n\n"
-                        "## Tabela operacional\n"
-                        + _table(top_rows, [dim_col, "TOTAL_VENDAS"], max_rows=10)
-                        + "\n\n## Próximas ações\n"
-                        + (
-                            "- Atue primeiro nas UNEs com menor venda e ajuste plano comercial/abastecimento em 7 dias."
-                            if dim_col == "UNE"
-                            else f"- Priorize os {dim_label.lower()} com menor venda e ajuste sortimento/preço na próxima semana."
-                        )
+                        return {
+                            "type": "text",
+                            "result": {"mensagem": msg},
+                            "table_data": _table_payload(ranking_rows, [dim_col, "TOTAL_VENDAS"], max_rows=max(requested_limit, 1)),
+                        }
+                    filtros_txt = "Sem filtros adicionais"
+                    if isinstance(tool_params, dict):
+                        filtros = tool_params.get("filtros")
+                        if isinstance(filtros, dict) and filtros:
+                            filtros_txt = "; ".join(
+                                f"{str(k).replace('_', ' ').title()}: {v}"
+                                for k, v in filtros.items()
+                                if v not in (None, "", [])
+                            ) or filtros_txt
+                    msg = _build_sales_dimension_report(
+                        rows=rows,
+                        dim_col=dim_col,
+                        dim_label=dim_label,
+                        filters_text=filtros_txt,
+                        max_rows=10,
                     )
-                    return {"type": "text", "result": {"mensagem": msg}}
+                    return {
+                        "type": "text",
+                        "result": {"mensagem": msg},
+                        "table_data": _table_payload(rows, [dim_col, "TOTAL_VENDAS"], max_rows=50),
+                    }
 
             # Caso especial: resultado agregado por UNE (colunas UNE + valor).
             if all(isinstance(r, dict) and "UNE" in r and "valor" in r for r in resultados[:1]):
@@ -4345,18 +4907,18 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         parts.append(f"{label}: {v}")
                     if parts:
                         filtros_txt = "; ".join(parts)
-                top_une = rows[0]["UNE"] if rows else "N/A"
-                msg = (
-                    "## Resumo executivo\n"
-                    f"Total de vendas por UNE consolidado com sucesso. "
-                    f"UNEs analisadas: {len(rows)}. UNE líder: {top_une}. Total geral: {_fmt(total)}.\n"
-                    f"- Filtros aplicados: {filtros_txt}."
-                    "\n\n## Tabela operacional\n"
-                    + _table(rows, ["UNE", "TOTAL_VENDAS"], max_rows=50)
-                    + "\n\n## Próximas ações\n"
-                    "Priorizar plano comercial nas UNEs com menor venda total e revisar sortimento/campanha local."
+                msg = _build_sales_dimension_report(
+                    rows=rows,
+                    dim_col="UNE",
+                    dim_label="UNE",
+                    filters_text=filtros_txt,
+                    max_rows=50,
                 )
-                return {"type": "text", "result": {"mensagem": msg}}
+                return {
+                    "type": "text",
+                    "result": {"mensagem": msg},
+                    "table_data": _table_payload(rows, ["UNE", "VENDA_30DD_TOTAL", "ESTOQUE_UNE_TOTAL", "ITENS"], max_rows=50),
+                }
 
             # Resposta executiva para perguntas de vendas em todas as lojas/UNEs.
             if (
@@ -4436,7 +4998,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         "- Dia 6: replicar práticas das UNEs líderes.\n"
                         "- Dia 7: medir ganho, fechar D+7 e recalibrar meta."
                     )
-                    return {"type": "text", "result": {"mensagem": msg}}
+                    return {
+                        "type": "text",
+                        "result": {"mensagem": msg},
+                        "table_data": _table_payload(plan_rows, ["UNE", "TOTAL_VENDAS", "GAP_MEDIA"], max_rows=20),
+                    }
 
                 segment_hint = ""
                 if "segmento" in query_lower and not any(
@@ -4457,7 +5023,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                     "Priorizar as UNEs com menor venda total e estoque elevado para plano comercial/abastecimento dirigido."
                     + segment_hint
                 )
-                return {"type": "text", "result": {"mensagem": msg}}
+                return {
+                    "type": "text",
+                    "result": {"mensagem": msg},
+                    "table_data": _table_payload(rows, ["UNE", "VENDA_30DD_TOTAL", "ESTOQUE_UNE_TOTAL", "ITENS"], max_rows=50),
+                }
 
             # Default determinístico para consulta flexível.
             first = resultados[0] if resultados else {}
@@ -4473,6 +5043,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return {
                 "type": "text",
                 "result": {"mensagem": msg},
+                "table_data": _table_payload(resultados, cols if cols else None, max_rows=50),
             }
 
         return {

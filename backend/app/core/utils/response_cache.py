@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from backend.app.config.settings import settings
+from backend.app.infrastructure.redis_client import get_sync_redis_client
 import re
 
 class ResponseCache:
@@ -18,6 +19,7 @@ class ResponseCache:
         self.cache_dir = cache_dir
         os.makedirs(self.cache_dir, exist_ok=True)
         self.ttl = timedelta(minutes=ttl_minutes)
+        self.ttl_seconds = max(1, int(self.ttl.total_seconds()))
         print(f"ResponseCache initialized in {self.cache_dir} with TTL {self.ttl}")
 
     def _get_cache_file_path(self, key: str) -> str:
@@ -52,6 +54,15 @@ class ResponseCache:
         """
         Retrieves a cached response if it exists and is not expired.
         """
+        redis_client = get_sync_redis_client()
+        if redis_client is not None:
+            try:
+                cached_payload = redis_client.get(self._redis_key(key))
+                if cached_payload:
+                    return json.loads(cached_payload)
+            except Exception as exc:
+                print(f"Redis cache read failed for key {key}: {exc}")
+
         file_path = self._get_cache_file_path(key)
         if os.path.exists(file_path):
             try:
@@ -80,6 +91,13 @@ class ResponseCache:
         """
         Stores a response in the cache with a timestamp.
         """
+        redis_client = get_sync_redis_client()
+        if redis_client is not None:
+            try:
+                redis_client.setex(self._redis_key(key), self.ttl_seconds, json.dumps(response, ensure_ascii=False))
+            except Exception as exc:
+                print(f"Redis cache write failed for key {key}: {exc}")
+
         file_path = self._get_cache_file_path(key)
         data_to_cache = {
             "timestamp": datetime.now().isoformat(),
@@ -117,6 +135,9 @@ class ResponseCache:
                     print(f"Error checking/cleaning cache file {file_path}: {e}. Removing.")
                     if os.path.exists(file_path):
                         os.remove(file_path)
+
+    def _redis_key(self, key: str) -> str:
+        return f"{settings.REDIS_KEY_PREFIX}:response_cache:{key}"
 
 # Example usage
 if __name__ == '__main__':

@@ -1,11 +1,13 @@
 import asyncio
 import base64
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.app.api.dependencies import get_current_active_user
+from backend.app.config.settings import settings as global_settings
 from backend.app.core.utils.session_manager import SessionManager
 from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAdapter
 from backend.services.metrics import MetricsService
@@ -43,6 +45,17 @@ PNG_1X1 = base64.b64decode(
 )
 
 
+def _configure_runtime_paths(monkeypatch, db_path):
+    vector_db_path = db_path.with_name("conversation_vectors.duckdb")
+    monkeypatch.setattr(
+        SessionManager,
+        "default_db_path",
+        staticmethod(lambda: db_path),
+    )
+    monkeypatch.setattr(global_settings, "VECTOR_DB_PATH", str(vector_db_path))
+    return vector_db_path
+
+
 def _reset_metrics() -> MetricsService:
     metrics = MetricsService()
     metrics.reset()
@@ -51,12 +64,7 @@ def _reset_metrics() -> MetricsService:
 
 def test_ingest_file_indexes_internal_document_for_rag(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    vector_db_path = db_path.with_name("conversation_vectors.duckdb")
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    vector_db_path = _configure_runtime_paths(monkeypatch, db_path)
 
     metrics = _reset_metrics()
     current_user = IngestUser()
@@ -97,11 +105,7 @@ def test_ingest_file_indexes_internal_document_for_rag(tmp_path, monkeypatch):
 
 def test_ingest_file_rejects_unsupported_extension(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    _configure_runtime_paths(monkeypatch, db_path)
 
     metrics = _reset_metrics()
     current_user = IngestUser()
@@ -125,11 +129,7 @@ def test_ingest_file_rejects_unsupported_extension(tmp_path, monkeypatch):
 
 def test_ingest_file_requires_multimodal_capability(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    _configure_runtime_paths(monkeypatch, db_path)
 
     current_user = IngestUser(role="viewer")
 
@@ -151,11 +151,7 @@ def test_ingest_file_requires_multimodal_capability(tmp_path, monkeypatch):
 
 def test_ingest_file_rejects_binary_payload(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    _configure_runtime_paths(monkeypatch, db_path)
 
     _reset_metrics()
     current_user = IngestUser()
@@ -178,11 +174,7 @@ def test_ingest_file_rejects_binary_payload(tmp_path, monkeypatch):
 
 def test_ingest_file_rejects_oversized_payload(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    _configure_runtime_paths(monkeypatch, db_path)
 
     _reset_metrics()
     current_user = IngestUser()
@@ -205,11 +197,7 @@ def test_ingest_file_rejects_oversized_payload(tmp_path, monkeypatch):
 
 def test_ingest_file_rejects_active_content_payload(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    _configure_runtime_paths(monkeypatch, db_path)
 
     _reset_metrics()
     current_user = IngestUser()
@@ -230,14 +218,38 @@ def test_ingest_file_rejects_active_content_payload(tmp_path, monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_ingest_file_returns_conflict_when_runtime_lock_is_busy(tmp_path, monkeypatch):
+    db_path = tmp_path / "agentbi.db"
+    _configure_runtime_paths(monkeypatch, db_path)
+
+    current_user = IngestUser()
+
+    async def _override_user():
+        return current_user
+
+    @asynccontextmanager
+    async def _busy_lock(*args, **kwargs):
+        yield False
+
+    monkeypatch.setattr("backend.app.api.v1.endpoints.ingest.runtime_lock", _busy_lock)
+
+    app.dependency_overrides[get_current_active_user] = _override_user
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/ingest/file",
+                data={"session_id": "sess-locked"},
+                files={"file": ("manual.txt", b"conteudo para lock", "text/plain")},
+            )
+            assert response.status_code == 409
+            assert "Outra ingestão já está em andamento" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_ingest_image_indexes_analysis_for_rag(tmp_path, monkeypatch):
     db_path = tmp_path / "agentbi.db"
-    vector_db_path = db_path.with_name("conversation_vectors.duckdb")
-    monkeypatch.setattr(
-        SessionManager,
-        "default_db_path",
-        staticmethod(lambda: db_path),
-    )
+    vector_db_path = _configure_runtime_paths(monkeypatch, db_path)
 
     metrics = _reset_metrics()
     current_user = IngestUser()

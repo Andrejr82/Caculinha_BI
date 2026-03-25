@@ -50,13 +50,15 @@ from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAd
 from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
-from backend.app.core.utils.executive_output import ensure_executive_output
+from backend.app.core.utils.executive_output import build_sales_dimension_report_from_rows, ensure_executive_output
+from backend.app.core.utils.response_validator import validate_response
 from backend.app.core.security.content_safety import sanitize_citations, sanitize_public_url, sanitize_text_label
 from backend.app.core.learning.chat_example_capture import build_chat_example_payload
 from backend.app.core.learning.unified_dataset_builder import build_default_unified_learning_dataset
 from backend.app.core.rag.example_collector import ExampleCollector
 from backend.app.config.settings import settings
 from backend.app.config.database import get_db_context
+from backend.app.infrastructure.redis_client import get_sync_redis_client
 from backend.app.infrastructure.database.models import UserPreference
 from backend.services.metrics import MetricsService
 from backend.app.services.audit_log import get_audit_logger, AuditAction
@@ -1021,6 +1023,22 @@ class ChatServiceV3:
         """
         limit = self._get_role_rate_limit_per_minute(normalized_role)
         key = f"{normalized_role}:{str(user_id or '').strip() or 'anonymous'}"
+        redis_client = get_sync_redis_client()
+        if redis_client is not None:
+            now_wall = time.time()
+            window_start = now_wall - 60.0
+            redis_key = f"{settings.REDIS_KEY_PREFIX}:chat_role_rate_limit:{key}"
+            member = f"{now_wall}:{time.monotonic_ns()}"
+            try:
+                redis_client.zremrangebyscore(redis_key, 0, window_start)
+                current_count = int(redis_client.zcard(redis_key) or 0)
+                if current_count >= limit:
+                    return limit
+                redis_client.zadd(redis_key, {member: now_wall})
+                redis_client.expire(redis_key, 60)
+                return None
+            except Exception as exc:
+                logger.warning("[DEBUG] Redis role rate limit falhou; usando fallback local: %s", exc)
         now = time.monotonic()
         window_start = now - 60.0
         with self._role_rate_limit_lock:
@@ -1036,8 +1054,12 @@ class ChatServiceV3:
         q = self._query_without_attachment_metadata(query).lower()
         if any(k in q for k in ["pesquisa de mercado", "concorrente", "cotação", "cotacao", "preço de mercado", "preco de mercado"]):
             return "market_research"
+        if any(k in q for k in ["exportar", "exporte", "export", "csv", "excel", "xlsx", "planilha", "baixar arquivo"]):
+            return "export"
         if any(k in q for k in ["dashboard", "painel interativo"]):
             return "dashboard"
+        if any(k in q for k in ["tabela", "tabular", "liste", "listar", "lista em tabela", "mostre em tabela"]):
+            return "table"
         if any(k in q for k in ["gráfico", "grafico", "chart", "ranking"]):
             return "visualization"
         if any(k in q for k in [
@@ -1086,6 +1108,34 @@ class ChatServiceV3:
         return bool(response.get("chart_data") or response.get("dashboard_spec") or response.get("type") == "dashboard")
 
     @staticmethod
+    def _response_has_export_payload(response: Dict[str, Any]) -> bool:
+        artifact = response.get("artifact")
+        if isinstance(artifact, dict) and any(artifact.get(key) for key in ("download_url", "filename")):
+            return True
+
+        automation_request = response.get("automation_request")
+        result_payload = response.get("result", {}) if isinstance(response.get("result"), dict) else {}
+        if not isinstance(automation_request, dict):
+            automation_request = result_payload.get("automation_request")
+        if not isinstance(automation_request, dict):
+            return False
+
+        action = str(automation_request.get("action") or "").strip().lower()
+        follow_up_action = str(automation_request.get("follow_up_action") or "").strip().lower()
+        nested_artifact = automation_request.get("artifact")
+        if isinstance(nested_artifact, dict) and any(nested_artifact.get(key) for key in ("download_url", "filename")):
+            return True
+
+        export_markers = ("export", "csv", "spreadsheet", "excel", "xlsx", "report")
+        return (
+            any(marker in action for marker in export_markers)
+            or any(marker in follow_up_action for marker in export_markers)
+        ) and any(
+            automation_request.get(key) not in (None, "", [])
+            for key in ("approval_status", "proposal_id", "title")
+        )
+
+    @staticmethod
     def _response_capability(response: Dict[str, Any]) -> str:
         internal_meta = response.get("_internal_meta", {}) if isinstance(response.get("_internal_meta"), dict) else {}
         source = str(response.get("source") or internal_meta.get("source") or "").lower()
@@ -1093,6 +1143,8 @@ class ChatServiceV3:
             return "dashboard"
         if response.get("chart_data"):
             return "visualization"
+        if ChatServiceV3._response_has_export_payload(response):
+            return "export"
         if "gerar_dashboard_executivo" in source or source == "tool.dashboard":
             return "dashboard"
         if "gerar_grafico_universal_v2" in source or "gerar_grafico_universal" in source or source == "tool.chart":
@@ -1108,9 +1160,34 @@ class ChatServiceV3:
             or "basket_analysis" in source
         ):
             return "calculation"
+        if isinstance(response.get("table_data"), list) and response.get("table_data"):
+            return "table"
         return "data_query"
 
-    async def _attempt_visualization_recovery(
+    @staticmethod
+    def _response_has_dashboard_payload(response: Dict[str, Any]) -> bool:
+        return bool(response.get("dashboard_spec") or response.get("type") == "dashboard")
+
+    @staticmethod
+    def _response_has_table_payload(response: Dict[str, Any]) -> bool:
+        return bool(isinstance(response.get("table_data"), list) and response.get("table_data"))
+
+    def _response_satisfies_expected_capability(
+        self,
+        expected_capability: str,
+        response: Dict[str, Any],
+    ) -> bool:
+        if expected_capability == "visualization":
+            return self._response_has_visual_payload(response)
+        if expected_capability == "dashboard":
+            return self._response_has_dashboard_payload(response)
+        if expected_capability == "table":
+            return self._response_has_table_payload(response)
+        if expected_capability == "export":
+            return self._response_has_export_payload(response)
+        return True
+
+    async def _attempt_capability_recovery(
         self,
         *,
         query: str,
@@ -1119,11 +1196,10 @@ class ChatServiceV3:
         current_response: Dict[str, Any],
         on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ) -> Optional[Dict[str, Any]]:
-        if self._query_expected_capability(query) != "visualization":
+        expected_capability = str(self._query_expected_capability(query) or "").strip().lower()
+        if expected_capability not in {"visualization", "dashboard", "table", "export"}:
             return None
-        if self._response_has_visual_payload(current_response):
-            return None
-        if self._is_no_data_message(str(current_response.get("response") or current_response.get("result", {}).get("mensagem") or "")):
+        if self._response_satisfies_expected_capability(expected_capability, current_response):
             return None
         if not hasattr(agent, "_attempt_routed_tool_rescue"):
             return None
@@ -1161,10 +1237,14 @@ class ChatServiceV3:
                 tool_selection,
                 on_progress=on_progress,
             )
-            if recovered and self._response_has_visual_payload(recovered):
+            if recovered and self._response_satisfies_expected_capability(expected_capability, recovered):
                 return recovered
         except Exception as exc:
-            logger.warning("Falha ao executar recuperação de visualização orientada à intenção: %s", exc)
+            logger.warning(
+                "Falha ao executar recuperação orientada à intenção para capability %s: %s",
+                expected_capability,
+                exc,
+            )
         return None
 
     @staticmethod
@@ -1175,12 +1255,23 @@ class ChatServiceV3:
         markers = [
             "não encontrei dados",
             "nao encontrei dados",
-            "sem dados",
+            "não consegui gerar o gráfico",
+            "nao consegui gerar o grafico",
+            "não consegui gerar uma visualização",
+            "nao consegui gerar uma visualizacao",
+            "não consegui gerar um dashboard",
+            "nao consegui gerar um dashboard",
+            "não consegui montar uma tabela",
+            "nao consegui montar uma tabela",
+            "não consegui preparar uma exportação",
+            "nao consegui preparar uma exportacao",
             "sem evidência pública",
             "sem evidencia publica",
             "nenhum dado encontrado",
             "não foi possível gerar",
             "nao foi possivel gerar",
+            "não houve evidência pública suficiente",
+            "nao houve evidencia publica suficiente",
         ]
         return any(marker in normalized for marker in markers)
 
@@ -1258,6 +1349,123 @@ class ChatServiceV3:
             false_positive_total = metrics.get_counter("no_data_false_positive_total")
             fp_rate = (false_positive_total / no_data_total) if no_data_total > 0 else 0.0
             metrics.set_gauge("no_data_false_positive_rate", round(fp_rate, 4))
+
+    def _build_response_validation_context(self, query: str, processed_response: Dict[str, Any]) -> Dict[str, Any]:
+        internal_meta = processed_response.get("_internal_meta", {}) if isinstance(processed_response.get("_internal_meta"), dict) else {}
+        source = str(processed_response.get("source") or internal_meta.get("source") or "").strip()
+        mode = str(processed_response.get("mode") or internal_meta.get("mode") or "").strip()
+        citations = processed_response.get("citations")
+        if citations in (None, "", []):
+            citations = internal_meta.get("citations")
+        citations = sanitize_citations(citations)
+        message = str(processed_response.get("result", {}).get("mensagem", "") or "")
+        chart_data = processed_response.get("chart_data")
+        dashboard_spec = processed_response.get("dashboard_spec")
+        table_data = processed_response.get("table_data")
+        has_export_payload = self._response_has_export_payload(processed_response)
+        return {
+            "expected_capability": self._query_expected_capability(query),
+            "actual_capability": self._response_capability(processed_response),
+            "source": source,
+            "mode": mode,
+            "citations_count": len(citations) if isinstance(citations, list) else 0,
+            "has_visual_payload": bool(chart_data or dashboard_spec),
+            "has_dashboard_payload": bool(dashboard_spec),
+            "has_table_payload": bool(isinstance(table_data, list) and table_data),
+            "has_export_payload": has_export_payload,
+            "no_data_detected": self._is_no_data_message(message),
+            "has_evidence": bool((isinstance(citations, list) and citations) or chart_data or dashboard_spec or (isinstance(table_data, list) and table_data) or has_export_payload),
+        }
+
+    def _build_validation_block_response(
+        self,
+        *,
+        query: str,
+        validation_result: Any,
+        validation_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        expected_capability = str(validation_context.get("expected_capability") or "").strip().lower()
+        block_reason = str(getattr(validation_result, "block_reason", "") or "").strip().lower()
+        response_mode = str(validation_context.get("mode") or "").strip().lower()
+
+        if expected_capability == "market_research" and block_reason == "missing_market_evidence":
+            message = (
+                "## Resumo executivo\n"
+                "- Não encontrei evidência pública suficiente para sustentar uma pesquisa de mercado confiável nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A resposta gerada não trouxe citações, links ou sinais verificáveis de mercado para o item solicitado.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a pesquisa informando marca, medida, SKU ou concorrentes desejados.\n"
+                "- Se quiser, peça explicitamente fontes públicas e links na resposta."
+            )
+        elif block_reason == "wrong_specialized_pipeline" or response_mode in {"attachment_basket_pipeline", "dataset_basket_pipeline"}:
+            message = (
+                "## Resumo executivo\n"
+                "- A resposta automática gerada não ficou coerente com o assunto da sua pergunta.\n\n"
+                "## Tabela operacional\n"
+                "- Um pipeline especializado incompatível com a intenção da consulta foi descartado por segurança.\n\n"
+                "## Próximas ações\n"
+                "- Reenvie a pergunta deixando explícito o objetivo principal.\n"
+                "- Se quiser usar o anexo, diga isso explicitamente na pergunta."
+            )
+        elif expected_capability == "table":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui montar uma tabela confiável para este pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A intenção identificada foi tabular, mas a resposta não trouxe `table_data` válido para exibição.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a consulta informando as colunas ou recortes desejados.\n"
+                "- Se preferir, peça explicitamente a tabela por produto, loja, segmento ou período."
+            )
+        elif expected_capability == "export":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui preparar uma exportação confiável para este pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A resposta não trouxe artefato ou metadata válida de exportação para aprovação/download.\n\n"
+                "## Próximas ações\n"
+                "- Refaça o pedido informando o formato desejado, como CSV ou planilha.\n"
+                "- Se a exportação depender de aprovação, peça explicitamente para gerar o arquivo exportável."
+            )
+        elif expected_capability == "dashboard":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui gerar um dashboard confiável para este pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A intenção identificada foi de dashboard, mas a resposta não trouxe `dashboard_spec` válido.\n\n"
+                "## Próximas ações\n"
+                "- Refaça o pedido informando o objetivo do painel e os filtros desejados.\n"
+                "- Se preferir, peça explicitamente um painel executivo por período, loja ou segmento."
+            )
+        elif expected_capability == "visualization":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui gerar uma visualização confiável para o pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A intenção identificada foi de gráfico/dashboard, mas a resposta gerada não trouxe payload visual válido.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a consulta informando período, métrica e recorte desejado.\n"
+                "- Se preferir, peça explicitamente o tipo de gráfico esperado."
+            )
+        else:
+            message = (
+                "## Resumo executivo\n"
+                "- A resposta gerada nesta rodada não passou na validação interna de coerência.\n\n"
+                "## Tabela operacional\n"
+                "- O sistema detectou inconsistência entre a intenção da pergunta e o tipo de resposta montada.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a pergunta com o objetivo principal de forma direta.\n"
+                "- Se houver recortes importantes, informe período, produto, loja ou fonte desejada."
+            )
+
+        return {
+            "type": "text",
+            "result": {"mensagem": message},
+            "source": "policy.response_validation",
+            "mode": "validation_block",
+            "confidence": max(0.0, min(0.99, float(getattr(validation_result, "confidence", 0.0) or 0.0))),
+        }
 
     def get_llm_status(self) -> Dict[str, Any]:
         """
@@ -1591,19 +1799,19 @@ class ChatServiceV3:
                     )
                     logger.info(f"[DEBUG] [DEBUG] agent.run_async() RETORNOU: {type(agent_response)}")
                     logger.info(f"[DEBUG] [DEBUG] Resposta do agente: {str(agent_response)[:200]}...")
-                    visualization_recovery = await self._attempt_visualization_recovery(
+                    capability_recovery = await self._attempt_capability_recovery(
                         query=query,
                         chat_history=agent_history,
                         agent=agent,
                         current_response=agent_response if isinstance(agent_response, dict) else {},
                         on_progress=emit_progress,
                     )
-                    if visualization_recovery is not None:
+                    if capability_recovery is not None:
                         logger.info(
-                            "[DEBUG] Recuperação de visualização acionada com sucesso: %s",
-                            visualization_recovery.get("source"),
+                            "[DEBUG] Recuperação orientada à capability acionada com sucesso: %s",
+                            capability_recovery.get("source"),
                         )
-                        agent_response = visualization_recovery
+                        agent_response = capability_recovery
             
             # TRAP: Se for coroutine, logar erro critico
             if asyncio.iscoroutine(agent_response):
@@ -1730,6 +1938,33 @@ class ChatServiceV3:
                 processed_response=response,
                 normalized_role=normalized_role_for_metrics,
             )
+
+            validation_context = self._build_response_validation_context(query, response)
+            validation_result = validate_response(
+                response,
+                query=query,
+                context=validation_context,
+            )
+            metrics.increment("response_validation_total")
+            if not validation_result.is_valid:
+                metrics.increment("response_validation_failures_total")
+            if getattr(validation_result, "should_block", False):
+                metrics.increment("response_validation_blocks_total")
+                trace_logger.warning(
+                    "chat_response_blocked_by_validator",
+                    request_id=request_id,
+                    session_id=str(session_id),
+                    user_id=str(user_id),
+                    expected_capability=validation_context.get("expected_capability"),
+                    actual_capability=validation_context.get("actual_capability"),
+                    block_reason=getattr(validation_result, "block_reason", None),
+                    issues=getattr(validation_result, "issues", []),
+                )
+                response = self._build_validation_block_response(
+                    query=query,
+                    validation_result=validation_result,
+                    validation_context=validation_context,
+                )
 
             internal_meta = response.get("_internal_meta", {}) if isinstance(response.get("_internal_meta"), dict) else {}
             source_value = response.get("source") or internal_meta.get("source")
@@ -2322,11 +2557,23 @@ class ChatServiceV3:
             logger.warning(f"[WARNING] [DEBUG] response_text VAZIO! agent_response keys: {agent_response.keys()}")
             response_text = "Desculpe, não consegui gerar uma resposta adequada. Por favor, reformule sua pergunta."
             
+        result_data_payload = agent_response.get("result", {})
+        if not isinstance(result_data_payload, dict):
+            result_data_payload = {}
+
         # Dashboard estruturado não recebe wrapping executivo textual adicional.
         is_dashboard_payload = bool(agent_response.get("dashboard_spec"))
 
-        # Padrão executivo: apenas para respostas textuais de negócio.
-        if isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload:
+        table_data = agent_response.get("table_data")
+        if not table_data:
+            table_data = result_data_payload.get("table_data")
+
+        structured_sales_report = None
+        if isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload and isinstance(table_data, list) and table_data:
+            structured_sales_report = build_sales_dimension_report_from_rows(query=query, rows=table_data)
+        if structured_sales_report:
+            response_text = structured_sales_report
+        elif isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload:
             response_text = ensure_executive_output(query=query, message=response_text)
         response_text = self._sanitize_executive_output_for_role(response_text, user_role=user_role)
 
@@ -2335,17 +2582,9 @@ class ChatServiceV3:
         if not chart_data:
             chart_data = agent_response.get("chart_spec")
 
-        result_data_payload = agent_response.get("result", {})
-        if not isinstance(result_data_payload, dict):
-            result_data_payload = {}
-
         dashboard_spec = agent_response.get("dashboard_spec")
         if not dashboard_spec:
             dashboard_spec = result_data_payload.get("dashboard_spec")
-
-        table_data = agent_response.get("table_data")
-        if not table_data:
-            table_data = result_data_payload.get("table_data")
 
         image_asset = agent_response.get("image_asset")
         if image_asset in (None, "", {}):

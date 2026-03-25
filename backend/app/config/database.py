@@ -17,10 +17,21 @@ from backend.app.config.settings import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# Create async engine with optimized pool settings
-if settings.USE_SQL_SERVER:
+# Create async engine with optimized pool settings.
+# Local fallback note:
+# `mssql+pytds://` is supported for chat state local fallback, but it is a
+# synchronous dialect. In this module we keep the generic async DB dependency
+# on SQLite unless the configured SQL Server URL is async-capable.
+database_url = str(settings.DATABASE_URL or "")
+use_async_sqlserver = (
+    settings.USE_SQL_SERVER
+    and bool(database_url)
+    and not database_url.startswith("mssql+pytds://")
+)
+
+if use_async_sqlserver:
     engine = create_async_engine(
-        str(settings.DATABASE_URL),
+        database_url,
         echo=settings.DB_ECHO,
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_MAX_OVERFLOW,
@@ -29,13 +40,11 @@ if settings.USE_SQL_SERVER:
         connect_args={"timeout": settings.SQL_SERVER_TIMEOUT},
     )
 else:
-    # Use persistent SQLite file for preferences and user data
-    data_dir = Path(__file__).parent.parent.parent / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    sqlite_path = data_dir / "agentbi.db"
-    
-    logger.info(f"Using SQLite database: {sqlite_path}")
-    
+    # Use explicit runtime SQLite path for local/dev persistence only.
+    sqlite_path = Path(settings.CHAT_STATE_DB_PATH)
+    sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Using SQLite database: %s", sqlite_path)
+
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{sqlite_path}",
         poolclass=NullPool,
