@@ -72,7 +72,9 @@ class SyncService:
             
             # Limpar cache do Polars (se houver mecanismo de invalidação)
             from backend.app.core.parquet_cache import cache
+            from backend.app.core.utils.semantic_cache import get_semantic_cache
             cache.clear()
+            get_semantic_cache().clear()
             
             duration = time.time() - start_time
             logger.info(f"[OK] Sincronização concluída em {duration:.2f}s")

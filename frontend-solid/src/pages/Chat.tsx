@@ -18,115 +18,36 @@ import {
   isMarketResearchDownloadLink,
 } from '@/lib/marketResearchDownload';
 import { buildThinkingStep } from '@/lib/chatProgress';
-import { marked } from 'marked';
+import {
+  DEFAULT_CHAT_CAPABILITIES,
+  normalizeChatCapabilities,
+  type ChatCapabilities,
+  type ChatHistoryResponse,
+  type ConversationSession,
+  type HistoryItem,
+} from '@/lib/chatRuntime';
+import { useChatRuntime } from '@/hooks/useChatRuntime';
+import {
+  applyStructuredStreamEventToMessage,
+  buildAttachmentAwareQuery,
+  buildAttachmentAwareUserText,
+  mergeStructuredPayloadIntoMessage,
+  normalizeAudioAsset,
+  normalizeAutomationState,
+  normalizeChartSpec,
+  normalizeCitations,
+  normalizeImageAsset,
+  normalizeTableData,
+  sanitizeHyperlink,
+  sanitizePlainText,
+} from '@/lib/chatPayload';
+import { renderChatMarkdown } from '@/lib/chatMarkdown';
+import { openChatStream, type ChatStreamConnection } from '@/lib/chatStreamClient';
 import { Trash2, StopCircle, Bot, Sparkles, SendHorizontal, Paperclip, History, Plus, X, Mic, Volume2 } from 'lucide-solid';
 import 'github-markdown-css/github-markdown.css';
 import './chat-markdown.css';
 import type { DashboardSpec } from '@/components/ChatDashboardRenderer';
 import type { ChatAutomationState } from '@/components/ChatAutomationCard';
-
-// --- HELPERS (Sanitization & Markdown) ---
-const MARKET_DOWNLOAD_PATH_PREFIX = '/api/v1/chat/market-research/download/';
-
-const sanitizePlainText = (rawValue: unknown, maxLength = 160): string => {
-  const text = String(rawValue || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!text) return '';
-  return text.slice(0, maxLength);
-};
-
-const sanitizeHyperlink = (rawValue: unknown, allowInternalDownload = false): string => {
-  const raw = String(rawValue || '').trim();
-  if (!raw) return '';
-  if (/[\u0000-\u001F\u007F]/.test(raw)) return '';
-
-  const lower = raw.toLowerCase();
-  if (lower.startsWith('javascript:') || lower.startsWith('vbscript:') || lower.startsWith('data:')) {
-    return '';
-  }
-
-  if (allowInternalDownload && raw.startsWith(MARKET_DOWNLOAD_PATH_PREFIX)) {
-    return raw;
-  }
-
-  try {
-    const parsed = new URL(raw, window.location.origin);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.toString();
-    }
-  } catch {
-    return '';
-  }
-
-  return '';
-};
-
-const sanitizeHTML = (html: string): string => {
-  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
-    return html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-      .replace(/\son\w+=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/\s(?:src|href)\s*=\s*(['"])\s*(?:javascript|vbscript|data):.*?\1/gi, '');
-  }
-
-  const parser = new DOMParser();
-  const documentNode = parser.parseFromString(html, 'text/html');
-  documentNode.querySelectorAll('script,iframe,object,embed,style,meta,link,form,input,button,textarea,select,option,svg,math,img').forEach(node => {
-    node.remove();
-  });
-
-  Array.from(documentNode.body.querySelectorAll('*')).forEach((element) => {
-    for (const attributeName of element.getAttributeNames()) {
-      const normalized = attributeName.toLowerCase();
-      if (normalized.startsWith('on') || normalized === 'style' || normalized === 'srcdoc' || normalized === 'formaction') {
-        element.removeAttribute(attributeName);
-        continue;
-      }
-
-      if (normalized === 'href') {
-        const safeHref = sanitizeHyperlink(element.getAttribute(attributeName), true);
-        if (safeHref) {
-          element.setAttribute(attributeName, safeHref);
-        } else {
-          element.removeAttribute(attributeName);
-        }
-        continue;
-      }
-
-      if (normalized === 'src') {
-        element.removeAttribute(attributeName);
-      }
-    }
-
-    if (element.tagName.toLowerCase() === 'a') {
-      element.setAttribute('rel', 'noopener noreferrer');
-      if (element.getAttribute('href')?.startsWith('http')) {
-        element.setAttribute('target', '_blank');
-      }
-    }
-  });
-
-  return documentNode.body.innerHTML;
-};
-
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
-
-const renderMarkdown = (text: string): string => {
-  try {
-    const rawHtml = marked.parse(text) as string;
-    return sanitizeHTML(rawHtml);
-  } catch (e) {
-    console.error('Erro ao renderizar Markdown:', e);
-    return sanitizeHTML(text);
-  }
-};
 
 // --- INTERFACES ---
 interface Message {
@@ -162,42 +83,10 @@ interface Message {
   isThinking?: boolean;
 }
 
-interface HistoryItem {
-  id?: string;
-  role?: string;
-  content?: string;
-  timestamp?: string | number;
-  metadata?: Record<string, any>;
-}
-
-interface ConversationSession {
-  id: string;
-  title?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  message_count?: number;
-}
-
-interface ChatHistoryResponse {
-  items?: HistoryItem[];
-  sessions?: ConversationSession[];
-  session_id?: string | null;
-  user?: string;
-  capabilities?: Partial<ChatCapabilities>;
-}
-
 interface PendingAttachment {
   id: string;
   file: File;
   kind: 'document' | 'image';
-}
-
-interface ChatCapabilities {
-  memory: boolean;
-  multimodal: boolean;
-  attachments: boolean;
-  voice: boolean;
-  computer_use: boolean;
 }
 
 type BasketBuilderMode = 'margin' | 'promotion' | 'basket';
@@ -252,132 +141,6 @@ const parseOptionalNumber = (rawValue: string): number | undefined => {
   if (!normalized) return undefined;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : undefined;
-};
-
-const normalizeImageAsset = (rawValue: unknown): Message['image_asset'] | undefined => {
-  if (typeof rawValue === 'string' && rawValue.trim()) {
-    return { url: rawValue.trim() };
-  }
-  if (!rawValue || typeof rawValue !== 'object') return undefined;
-
-  const candidate = rawValue as Record<string, unknown>;
-  const url = typeof candidate.url === 'string' ? candidate.url.trim() : '';
-  if (!url) return undefined;
-
-  return {
-    url,
-    alt: typeof candidate.alt === 'string' ? candidate.alt : undefined,
-    prompt: typeof candidate.prompt === 'string' ? candidate.prompt : undefined,
-  };
-};
-
-const normalizeAudioAsset = (rawValue: unknown): Message['audio_asset'] | undefined => {
-  if (typeof rawValue === 'string' && rawValue.trim()) {
-    return { url: rawValue.trim() };
-  }
-  if (!rawValue || typeof rawValue !== 'object') return undefined;
-
-  const candidate = rawValue as Record<string, unknown>;
-  const url = typeof candidate.url === 'string' ? candidate.url.trim() : '';
-  if (!url) return undefined;
-
-  return {
-    url,
-    title: typeof candidate.title === 'string' ? candidate.title : undefined,
-    mime_type: typeof candidate.mime_type === 'string' ? candidate.mime_type : undefined,
-  };
-};
-
-const normalizeAutomationState = (rawValue: unknown): ChatAutomationState | undefined => {
-  if (!rawValue || typeof rawValue !== 'object') return undefined;
-  const candidate = rawValue as Record<string, any>;
-  const approvalStatus = sanitizePlainText(candidate.approval_status || candidate.status, 60);
-  const action = sanitizePlainText(candidate.action, 80);
-  const proposalId = sanitizePlainText(candidate.proposal_id, 120);
-  const approvalId = sanitizePlainText(candidate.approval_id, 120);
-  if (!approvalStatus && !action && !proposalId && !approvalId) return undefined;
-
-  const artifactRaw = candidate.artifact && typeof candidate.artifact === 'object'
-    ? candidate.artifact as Record<string, any>
-    : null;
-  const draftRaw = candidate.draft && typeof candidate.draft === 'object'
-    ? candidate.draft as Record<string, any>
-    : null;
-
-  const artifact = artifactRaw ? {
-    filename: sanitizePlainText(artifactRaw.filename, 180) || undefined,
-    download_url: sanitizeHyperlink(artifactRaw.download_url),
-    mime_type: sanitizePlainText(artifactRaw.mime_type, 80) || undefined,
-    size_bytes: typeof artifactRaw.size_bytes === 'number' ? artifactRaw.size_bytes : undefined,
-  } : undefined;
-
-  const draft = draftRaw ? {
-    channel: sanitizePlainText(draftRaw.channel, 40) || undefined,
-    recipient: sanitizePlainText(draftRaw.recipient, 120) || undefined,
-    subject: sanitizePlainText(draftRaw.subject, 160) || undefined,
-    body: typeof draftRaw.body === 'string' ? draftRaw.body.trim().slice(0, 4000) : undefined,
-  } : undefined;
-
-  return {
-    proposal_id: proposalId || undefined,
-    approval_id: approvalId || undefined,
-    approval_status: approvalStatus || undefined,
-    action: action || undefined,
-    title: sanitizePlainText(candidate.title, 160) || undefined,
-    summary: sanitizePlainText(candidate.summary, 240) || undefined,
-    request_text: typeof candidate.request_text === 'string' ? candidate.request_text.trim().slice(0, 1200) : undefined,
-    params: candidate.params && typeof candidate.params === 'object' ? candidate.params as Record<string, any> : undefined,
-    target_label: sanitizePlainText(candidate.target_label, 120) || undefined,
-    review_required: candidate.review_required === true,
-    follow_up_action: sanitizePlainText(candidate.follow_up_action, 80) || undefined,
-    follow_up_label: sanitizePlainText(candidate.follow_up_label, 80) || undefined,
-    result_summary: sanitizePlainText(candidate.result_summary, 240) || undefined,
-    execution_error: sanitizePlainText(candidate.execution_error, 240) || undefined,
-    artifact,
-    draft,
-  };
-};
-
-const normalizeCitations = (rawValue: unknown): Array<Record<string, any>> => {
-  if (!Array.isArray(rawValue)) return [];
-
-  return rawValue
-    .slice(0, 8)
-    .flatMap((entry, index) => {
-      if (!entry || typeof entry !== 'object') return [];
-
-      const candidate = entry as Record<string, unknown>;
-      const source = sanitizePlainText(
-        candidate.source || candidate.domain || candidate.competitor || `Fonte ${index + 1}`,
-        140,
-      );
-      const domain = sanitizePlainText(candidate.domain, 80);
-      const competitor = sanitizePlainText(candidate.competitor, 80);
-      const documentId = sanitizePlainText(candidate.document_id, 120);
-      const url = sanitizeHyperlink(candidate.url);
-
-      if (!source && !domain && !competitor && !documentId && !url) return [];
-
-      return [{
-        source: source || undefined,
-        domain: domain || undefined,
-        competitor: competitor || undefined,
-        document_id: documentId || undefined,
-        url: url || undefined,
-      }];
-    });
-};
-
-const normalizeChatCapabilities = (rawValue: unknown): ChatCapabilities => {
-  const candidate = rawValue && typeof rawValue === 'object' ? rawValue as Record<string, unknown> : {};
-  const multimodal = candidate.multimodal !== false;
-  return {
-    memory: candidate.memory !== false,
-    multimodal,
-    attachments: multimodal && candidate.attachments !== false,
-    voice: multimodal && candidate.voice !== false,
-    computer_use: candidate.computer_use === true,
-  };
 };
 
 const createInitialGreetingMessage = (): Message => ({
@@ -479,27 +242,18 @@ const mapHistoryItemToMessage = (item: HistoryItem, index: number): Message | nu
     message.thinkingSteps = [];
     message.thinkingStepKeys = [];
     message.isThinking = false;
-
-    if (uiPayload?.chart_spec && typeof uiPayload.chart_spec === 'object') {
-      message.chart_spec = uiPayload.chart_spec;
-      message.type = 'chart';
-    }
-    if (Array.isArray(uiPayload?.data) && uiPayload.data.length > 0) {
-      message.data = uiPayload.data;
-      if (!message.chart_spec) {
-        message.type = 'table';
-      }
-    }
-    if (uiPayload?.dashboard_spec && typeof uiPayload.dashboard_spec === 'object') {
-      message.dashboard_spec = uiPayload.dashboard_spec as DashboardSpec;
-      message.type = 'dashboard';
-    }
-    if (imageAsset && !message.chart_spec && !message.data && !message.dashboard_spec) {
-      message.type = 'image';
-    }
-    if (audioAsset && !message.chart_spec && !message.data && !message.dashboard_spec && !imageAsset) {
-      message.type = 'audio';
-    }
+    return mergeStructuredPayloadIntoMessage(message, {
+      chart_spec: uiPayload?.chart_spec,
+      data: uiPayload?.data,
+      dashboard_spec: uiPayload?.dashboard_spec,
+      image_asset: imageAsset,
+      audio_asset: audioAsset,
+      citations,
+      automation_request: automationRequest,
+      source: message.source,
+      confidence: message.confidence,
+      mode: message.mode,
+    });
   }
 
   return message;
@@ -507,12 +261,13 @@ const mapHistoryItemToMessage = (item: HistoryItem, index: number): Message | nu
 
 // --- MAIN COMPONENT ---
 export default function Chat() {
+  const chatRuntime = useChatRuntime();
+
   // State
   const [messages, setMessages] = createSignal<Message[]>([createInitialGreetingMessage()]);
   const [input, setInput] = createSignal('');
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [sessionId, setSessionId] = createSignal<string>('');
-  const [conversationHistory, setConversationHistory] = createSignal<ConversationSession[]>([]);
   const [pendingAttachments, setPendingAttachments] = createSignal<PendingAttachment[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = createSignal(false);
   const [attachmentError, setAttachmentError] = createSignal('');
@@ -527,15 +282,10 @@ export default function Chat() {
   const [isVoiceRecording, setIsVoiceRecording] = createSignal(false);
   const [voiceError, setVoiceError] = createSignal('');
   const [speakingMessageId, setSpeakingMessageId] = createSignal('');
-  const [currentEventSource, setCurrentEventSource] = createSignal<EventSource | null>(null);
+  const [currentEventSource, setCurrentEventSource] = createSignal<ChatStreamConnection | null>(null);
   const [busyAutomationMessageId, setBusyAutomationMessageId] = createSignal<string | null>(null);
-  const [chatCapabilities, setChatCapabilities] = createSignal<ChatCapabilities>({
-    memory: true,
-    multimodal: true,
-    attachments: true,
-    voice: true,
-    computer_use: false,
-  });
+  const [chatCapabilities, setChatCapabilities] = createSignal<ChatCapabilities>(DEFAULT_CHAT_CAPABILITIES);
+  const conversationHistory = () => chatRuntime.conversationHistory();
 
   // UI Refs
   let messagesEndRef: HTMLDivElement | undefined;
@@ -596,51 +346,11 @@ export default function Chat() {
     }
   };
 
-  const fetchChatHistoryPayload = async (targetSessionId?: string): Promise<ChatHistoryResponse | null> => {
-    const token = getAuthToken();
-    if (!token) return null;
-
-    const endpoint = targetSessionId
-      ? `/api/v1/chat/history?session_id=${encodeURIComponent(targetSessionId)}`
-      : '/api/v1/chat/history';
-
-    const response = await fetch(endpoint, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      return null;
-    }
-    return response.json();
-  };
-
-  const fetchChatCapabilities = async (): Promise<ChatCapabilities | null> => {
-    const token = getAuthToken();
-    if (!token) return null;
-
-    const response = await fetch('/api/v1/chat/capabilities', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const payload = await response.json();
-    return normalizeChatCapabilities(payload?.capabilities);
-  };
-
   const applyChatHistoryPayload = (payload: ChatHistoryResponse | null, targetSessionId?: string) => {
     if (!payload) return;
     if (payload.capabilities) {
       setChatCapabilities(normalizeChatCapabilities(payload.capabilities));
     }
-
-    const sessions = Array.isArray(payload.sessions)
-      ? payload.sessions.filter((item): item is ConversationSession => typeof item?.id === 'string' && item.id.length > 0)
-      : [];
-    setConversationHistory(sessions);
 
     if (!targetSessionId) return;
 
@@ -655,12 +365,11 @@ export default function Chat() {
 
   const refreshConversationHistory = async () => {
     if (!chatCapabilities().memory) {
-      setConversationHistory([]);
       return;
     }
     try {
-      const payload = await fetchChatHistoryPayload();
-      applyChatHistoryPayload(payload);
+      const payload = await chatRuntime.refreshConversationHistory();
+      applyChatHistoryPayload(payload ?? null);
     } catch (error) {
       console.warn('Falha ao atualizar lista de conversas:', error);
     }
@@ -670,7 +379,7 @@ export default function Chat() {
     if (!activeSessionId || !chatCapabilities().memory) return;
 
     try {
-      const payload = await fetchChatHistoryPayload(activeSessionId);
+      const payload = await chatRuntime.loadSessionHistory(activeSessionId);
       applyChatHistoryPayload(payload, activeSessionId);
     } catch (error) {
       console.warn('Falha ao restaurar histórico persistido do chat:', error);
@@ -686,8 +395,6 @@ export default function Chat() {
     localStorage.setItem('chat_session_id', newSession);
     if (chatCapabilities().memory) {
       void refreshConversationHistory();
-    } else {
-      setConversationHistory([]);
     }
   };
 
@@ -718,7 +425,7 @@ export default function Chat() {
         throw new Error(`Falha ao excluir conversa (${response.status})`);
       }
 
-      setConversationHistory(prev => prev.filter(item => item.id !== targetSessionId));
+      chatRuntime.removeConversationFromList(targetSessionId);
       if (targetSessionId === sessionId()) {
         startFreshConversation();
       } else {
@@ -737,14 +444,12 @@ export default function Chat() {
       localStorage.setItem('chat_session_id', storedSession);
     }
     setSessionId(storedSession);
-    const capabilities = await fetchChatCapabilities();
+    const capabilities = await chatRuntime.refreshCapabilities();
     if (capabilities) {
       setChatCapabilities(capabilities);
     }
     if (capabilities?.memory !== false) {
       await loadPersistedHistory(storedSession);
-    } else {
-      setConversationHistory([]);
     }
 
     // Auto-scroll logic
@@ -790,8 +495,12 @@ export default function Chat() {
   });
 
   createEffect(() => {
+    setChatCapabilities(chatRuntime.chatCapabilities());
+  });
+
+  createEffect(() => {
     if (!chatCapabilities().memory && conversationHistory().length > 0) {
-      setConversationHistory([]);
+      void chatRuntime.refreshConversationHistory();
     }
   });
 
@@ -909,24 +618,6 @@ export default function Chat() {
     return ['.png', '.jpg', '.jpeg', '.webp'].some(extension => lowerName.endsWith(extension))
       ? 'image'
       : 'document';
-  };
-
-  const buildAttachmentAwareUserText = (rawText: string, attachmentNames: string[]) => {
-    const baseText = rawText.trim() || 'Analise os arquivos anexados.';
-    if (attachmentNames.length === 0) {
-      return baseText;
-    }
-
-    return `${baseText}\n\nAnexos enviados:\n${attachmentNames.map(name => `- ${name}`).join('\n')}`;
-  };
-
-  const buildAttachmentAwareQuery = (rawText: string, attachmentNames: string[]) => {
-    const baseText = rawText.trim() || DEFAULT_ATTACHMENT_PROMPT;
-    if (attachmentNames.length === 0) {
-      return baseText;
-    }
-
-    return `${baseText}\n\nConsidere os anexos desta sessão: ${attachmentNames.join(', ')}.`;
   };
 
   const updateBasketItem = (itemId: string, field: keyof Omit<BasketBuilderItem, 'id'>, value: string) => {
@@ -1382,25 +1073,34 @@ export default function Chat() {
       imageAsset?: Message['image_asset'];
       audioAsset?: Message['audio_asset'];
       automationRequest?: ChatAutomationState;
+      chartSpec?: Message['chart_spec'];
+      tableData?: Message['data'];
+      dashboardSpec?: Message['dashboard_spec'];
     }) => {
       closeStreamConnection();
       setIsStreaming(false);
       setMessages(prev => prev.map(msg => {
         if (msg.id !== assistantId) return msg;
 
-        const next: Message = {
+        let next: Message = {
           ...msg,
           isOptimistic: false,
           isThinking: false,
           response_id: opts?.markResponse ? (opts.responseId || msg.response_id || crypto.randomUUID()) : msg.response_id,
-          source: typeof opts?.source === 'string' ? opts.source : msg.source,
-          confidence: typeof opts?.confidence === 'number' ? opts.confidence : msg.confidence,
-          mode: typeof opts?.mode === 'string' ? opts.mode : msg.mode,
-          citations: opts?.citations ? normalizeCitations(opts.citations) : msg.citations,
-          image_asset: opts?.imageAsset || msg.image_asset,
-          audio_asset: opts?.audioAsset || msg.audio_asset,
-          automation_request: opts?.automationRequest || msg.automation_request,
         };
+
+        next = mergeStructuredPayloadIntoMessage(next, {
+          source: opts?.source,
+          confidence: opts?.confidence,
+          mode: opts?.mode,
+          citations: opts?.citations,
+          image_asset: opts?.imageAsset,
+          audio_asset: opts?.audioAsset,
+          automation_request: opts?.automationRequest,
+          chart_spec: opts?.chartSpec,
+          table_data: opts?.tableData,
+          dashboard_spec: opts?.dashboardSpec,
+        });
 
         if (opts?.errorText) {
           next.type = 'error';
@@ -1448,16 +1148,13 @@ export default function Chat() {
         query_length: userText.length,
       });
       closeStreamConnection();
-      const eventSource = new EventSource(streamUrl);
-      setCurrentEventSource(eventSource);
+      const streamConnection = openChatStream({
+        url: streamUrl,
+        onEvent: (eventType, data) => {
+          if (currentEventSource() !== streamConnection) return;
 
-      eventSource.onmessage = (event) => {
-        if (currentEventSource() !== eventSource) return;
-        try {
-          const data = JSON.parse(event.data);
-          const eventType = String(data?.type || '').toLowerCase();
           streamEventCount += 1;
-          if (typeof data?.request_id === 'string' && data.request_id.trim()) {
+          if (typeof data.request_id === 'string' && data.request_id.trim()) {
             tracedRequestId = data.request_id;
           }
           if (!firstStreamEventLogged) {
@@ -1465,7 +1162,7 @@ export default function Chat() {
             logStreamTelemetry('first_event', { event_type: eventType || 'unknown' });
           }
 
-          if (data?.done === true || eventType === 'final') {
+          if (data.done === true || eventType === 'final') {
             logStreamTelemetry('completed', {
               event_type: eventType || 'final',
               source: typeof data.source === 'string' ? data.source : undefined,
@@ -1481,6 +1178,9 @@ export default function Chat() {
               imageAsset: normalizeImageAsset(data.image_asset),
               audioAsset: normalizeAudioAsset(data.audio_asset),
               automationRequest: normalizeAutomationState(data.automation_request),
+              chartSpec: normalizeChartSpec(data.chart_spec || data.chart_data),
+              tableData: normalizeTableData(data.table_data || data.data),
+              dashboardSpec: data.dashboard_spec as DashboardSpec | undefined,
             });
             window.setTimeout(() => {
               void refreshConversationHistory();
@@ -1497,7 +1197,7 @@ export default function Chat() {
           }
 
           if (eventType === 'tool_progress') {
-            const { text: stepText, key: stepKey } = buildThinkingStep(data.tool, data.status);
+            const { text: stepText, key: stepKey } = buildThinkingStep((data as any).tool, (data as any).status);
 
             setMessages(prev => prev.map(msg =>
               msg.id === assistantId ? (() => {
@@ -1520,116 +1220,149 @@ export default function Chat() {
                 };
               })() : msg
             ));
+            return;
           }
-          else if (eventType === 'text') {
+
+          if (eventType === 'text') {
             const chunk = typeof data.text === 'string' ? data.text : '';
             if (!chunk) return;
             setMessages(prev => prev.map(msg =>
               msg.id === assistantId ? { ...msg, text: msg.text + chunk, isThinking: false } : msg
             ));
+            return;
           }
-          else if (eventType === 'chart' && data.chart_spec) {
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantId
-                ? {
-                    ...msg,
-                    type: msg.type === 'dashboard' && msg.dashboard_spec ? 'dashboard' : 'chart',
-                    chart_spec: data.chart_spec,
-                    text: msg.text || 'Visualização gerada.\n\n',
-                    isThinking: false
-                  }
-                : msg
-            ));
-          }
-          else if (eventType === 'table' && Array.isArray(data.data)) {
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantId
-                ? {
-                    ...msg,
-                    type: msg.type === 'dashboard' && msg.dashboard_spec
-                      ? 'dashboard'
-                      : msg.chart_spec
-                        ? 'chart'
-                        : 'table',
-                    data: data.data,
-                    text: msg.text || 'Dados tabulares:',
-                    isThinking: false
-                  }
-                : msg
-            ));
-          }
-          else if (eventType === 'dashboard' && data.dashboard_spec) {
-            setMessages(prev => prev.map(msg =>
-              msg.id === assistantId
-                ? {
-                    ...msg,
-                    type: 'dashboard',
-                    dashboard_spec: data.dashboard_spec as DashboardSpec,
-                    source: typeof data.source === 'string' ? data.source : msg.source,
-                    confidence: typeof data.confidence === 'number' ? data.confidence : msg.confidence,
-                    citations: normalizeCitations(data.citations).length > 0 ? normalizeCitations(data.citations) : msg.citations,
-                    text: msg.text || 'Dashboard interativo gerado.\n\n',
-                    isThinking: false
-                  }
-                : msg
-            ));
-          }
-          else if (eventType === 'image') {
-            const imageAsset = normalizeImageAsset(data.image_asset || data.url || data);
-            if (!imageAsset) return;
 
+          if (eventType === 'chart' && (data.chart_spec || data.chart_data)) {
             setMessages(prev => prev.map(msg =>
               msg.id === assistantId
                 ? {
-                    ...msg,
-                    type: 'image',
-                    image_asset: imageAsset,
-                    text: msg.text || 'Imagem gerada.\n\n',
+                    ...applyStructuredStreamEventToMessage(msg, 'chart', {
+                      chart_spec: data.chart_spec || data.chart_data,
+                      source: data.source,
+                      confidence: data.confidence,
+                      mode: data.mode,
+                      citations: data.citations,
+                    }),
+                    isThinking: false
+                  }
+                : msg
+            ));
+            return;
+          }
+
+          if (eventType === 'table' && Array.isArray(data.data || data.table_data)) {
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId
+                ? {
+                    ...applyStructuredStreamEventToMessage(msg, 'table', {
+                      table_data: data.table_data || data.data,
+                      source: data.source,
+                      confidence: data.confidence,
+                      mode: data.mode,
+                      citations: data.citations,
+                    }),
+                    isThinking: false
+                  }
+                : msg
+            ));
+            return;
+          }
+
+          if (eventType === 'dashboard' && data.dashboard_spec) {
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId
+                ? {
+                    ...applyStructuredStreamEventToMessage(msg, 'dashboard', {
+                      dashboard_spec: data.dashboard_spec,
+                      source: data.source,
+                      confidence: data.confidence,
+                      mode: data.mode,
+                      citations: data.citations,
+                    }),
+                    isThinking: false
+                  }
+                : msg
+            ));
+            return;
+          }
+
+          if (eventType === 'image') {
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId
+                ? {
+                    ...applyStructuredStreamEventToMessage(msg, 'image', {
+                      image_asset: data.image_asset || (data as any).url || data,
+                      source: data.source,
+                      confidence: data.confidence,
+                      mode: data.mode,
+                      citations: data.citations,
+                    }),
                     isThinking: false,
                   }
                 : msg
             ));
+            return;
           }
-          else if (eventType === 'audio') {
-            const audioAsset = normalizeAudioAsset(data.audio_asset || data.url || data);
-            if (!audioAsset) return;
 
+          if (eventType === 'audio') {
             setMessages(prev => prev.map(msg =>
               msg.id === assistantId
                 ? {
-                    ...msg,
-                    type: 'audio',
-                    audio_asset: audioAsset,
-                    text: msg.text || 'Áudio gerado.\n\n',
+                    ...applyStructuredStreamEventToMessage(msg, 'audio', {
+                      audio_asset: data.audio_asset || (data as any).url || data,
+                      source: data.source,
+                      confidence: data.confidence,
+                      mode: data.mode,
+                      citations: data.citations,
+                    }),
                     isThinking: false,
                   }
                 : msg
             ));
+            return;
           }
-          else if (eventType === 'error' || data?.error) {
-            const errorText = typeof data?.error === 'string' ? data.error : 'Erro inesperado no stream.';
+
+          if (eventType === 'error' || data.error) {
+            const errorText = typeof data.error === 'string' ? data.error : 'Erro inesperado no stream.';
             logStreamTelemetry('server_error', {
               event_type: eventType || 'error',
               error: errorText,
             });
             finalizeAssistantMessage({ errorText: `⚠️ Não foi possível concluir a análise: ${errorText}` });
           }
-        } catch (err) {
-          console.error('SSE Error', err);
-          logStreamTelemetry('parse_error', {
-            error: err instanceof Error ? err.message : 'invalid_sse_payload',
+        },
+        onError: (error) => {
+          if (currentEventSource() !== streamConnection) return;
+          const isPayloadError = error.message === 'invalid_stream_json' || error.message === 'invalid_stream_payload';
+          const currentAssistantMessage = messages().find(msg => msg.id === assistantId);
+          const hasRenderableAssistantContent = Boolean(
+            currentAssistantMessage &&
+            (
+              (currentAssistantMessage.text || '').trim() ||
+              currentAssistantMessage.chart_spec ||
+              currentAssistantMessage.dashboard_spec ||
+              (Array.isArray(currentAssistantMessage.data) && currentAssistantMessage.data.length > 0) ||
+              currentAssistantMessage.image_asset ||
+              currentAssistantMessage.audio_asset
+            )
+          );
+          logStreamTelemetry(isPayloadError ? 'parse_error' : 'transport_error', {
+            error: error.message,
+            recovered: isPayloadError && hasRenderableAssistantContent,
           });
-          finalizeAssistantMessage({ errorText: '⚠️ Falha ao interpretar resposta do servidor.' });
-        }
-      };
+          if (isPayloadError && hasRenderableAssistantContent) {
+            finalizeAssistantMessage({ markResponse: true });
+            return;
+          }
+          finalizeAssistantMessage({
+            errorText: isPayloadError
+              ? '⚠️ Falha ao interpretar resposta do servidor.'
+              : '⚠️ Conexão interrompida. Verifique o backend e tente novamente.',
+          });
+        },
+      });
 
-      eventSource.onerror = () => {
-        if (currentEventSource() !== eventSource) return;
-        logStreamTelemetry('transport_error');
-        finalizeAssistantMessage({
-          errorText: '⚠️ Conexão interrompida. Verifique o backend e tente novamente.'
-        });
-      };
+      setCurrentEventSource(streamConnection);
 
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : 'falha desconhecida ao iniciar stream';
@@ -1657,7 +1390,7 @@ export default function Chat() {
       }
 
       const userVisibleText = buildAttachmentAwareUserText(text, attachmentNames);
-      const effectiveQuery = buildAttachmentAwareQuery(text, attachmentNames);
+      const effectiveQuery = buildAttachmentAwareQuery(text, attachmentNames, DEFAULT_ATTACHMENT_PROMPT);
 
       await submitPreparedMessage(userVisibleText, effectiveQuery);
     } catch (error) {
@@ -2085,7 +1818,7 @@ export default function Chat() {
                                                 bg-transparent text-slate-700 dark:text-slate-300 leading-7 text-[15px]
                                                 prose-p:leading-7 prose-li:my-0.5 prose-strong:font-bold prose-headings:font-bold prose-headings:text-slate-900 dark:prose-headings:text-slate-100"
                               onClick={handleMarkdownClick}
-                              innerHTML={renderMarkdown(msg.text)}
+                              innerHTML={renderChatMarkdown(msg.text)}
                             />
                           </Show>
 

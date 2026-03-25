@@ -1,18 +1,38 @@
 import logging
-import pandas as pd
-from dotenv import load_dotenv
 from pathlib import Path
 
-# Configuração de logging
-_log_path = Path("logs") / "agent.log"
-_log_path.parent.mkdir(parents=True, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filename=str(_log_path),
-    filemode="a",
-)
-logger = logging.getLogger("base_agent")
+import pandas as pd
+from dotenv import load_dotenv
+
+
+def _configure_base_agent_logger() -> logging.Logger:
+    logger = logging.getLogger("base_agent")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    repo_root = Path(__file__).resolve().parents[4]
+    log_path = repo_root / "logs" / "agent.log"
+
+    handler: logging.Handler
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    except OSError:
+        # Fallback para stdout; falha de logging não pode quebrar import do agente.
+        handler = logging.StreamHandler()
+
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
+
+logger = _configure_base_agent_logger()
 
 # Carrega as variáveis do arquivo .env
 load_dotenv()

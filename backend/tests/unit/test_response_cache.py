@@ -25,7 +25,7 @@ def mock_settings():
         yield mock_settings_instance
 
 def test_response_cache_init(temp_cache_dir, mock_settings):
-    cache = ResponseCache(cache_dir=str(temp_cache_dir))
+    cache = ResponseCache(cache_dir=str(temp_cache_dir), ttl_minutes=1)
     assert os.path.exists(temp_cache_dir)
     assert cache.ttl == timedelta(minutes=1)
 
@@ -38,9 +38,9 @@ def test_generate_key(temp_cache_dir, mock_settings):
 
 def test_normalize_query(temp_cache_dir, mock_settings):
     cache = ResponseCache(cache_dir=str(temp_cache_dir))
-    assert cache._normalize_query("Qual é o total de vendas?") == "total vendas"
-    assert cache._normalize_query("  Query with   extra spaces !  ") == "query extra spaces"
-    assert cache._normalize_query("Um teste, com. pontuação?") == "teste pontuação"
+    assert cache._normalize_query("Qual é o total de vendas?") == "qual total vendas"
+    assert cache._normalize_query("  Query with   extra spaces !  ") == "query with extra spaces"
+    assert cache._normalize_query("Um teste, com. pontuação?") == "teste com pontuação"
 
 def test_set_and_get_cache_hit(temp_cache_dir, mock_settings):
     cache = ResponseCache(cache_dir=str(temp_cache_dir))

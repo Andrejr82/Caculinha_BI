@@ -33,6 +33,22 @@ def test_parse_single_attachment_csv_transactions_table() -> None:
     assert ["cerveja", "fralda"] in parsed["payload"]["transacoes"]
 
 
+def test_parse_single_attachment_prefers_transactions_when_transaction_id_is_explicit() -> None:
+    content = """transaction_id,produto,valor_unitario
+500001,ZIPER,9.99
+500001,FITA CETIM,49.90
+500002,CADERNO,12.90
+500002,CANETA,12.90
+"""
+
+    parsed = parse_single_attachment(content, filename="basket_realista.csv")
+
+    assert parsed is not None
+    assert parsed["kind"] == "transacoes"
+    assert ["FITA CETIM", "ZIPER"] in parsed["payload"]["transacoes"]
+    assert ["CADERNO", "CANETA"] in parsed["payload"]["transacoes"]
+
+
 def test_build_basket_payload_from_documents_groups_document_chunks() -> None:
     documents = [
         {

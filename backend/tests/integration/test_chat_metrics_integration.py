@@ -1,8 +1,17 @@
 import pytest
 import asyncio
+import os
 from backend.app.services.chat_service_v3 import ChatServiceV3
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.services.query_interpreter import IntentType
+
+pytestmark = [pytest.mark.integration, pytest.mark.realdata]
+
+if os.getenv("RUN_REALDATA_TESTS", "0") != "1":
+    pytest.skip(
+        "teste de métricas com parquet real; defina RUN_REALDATA_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
 
 # Mock LLM to avoid API calls during integration tests
 class MockLLMAdapter:

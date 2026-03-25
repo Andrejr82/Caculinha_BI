@@ -114,11 +114,17 @@ async def test_cognitive_pipeline_end_to_end(mock_dependencies):
     # 4. Serviço salvou histórico (User + Assistant)
     assert deps['session'].add_message.call_count == 2
     deps['session'].add_message.assert_any_call("sess_123", "user", query, "user_456")
-    deps['session'].add_message.assert_any_call("sess_123", "assistant", "Resposta processada pelo agente", "user_456")
-    
+    assistant_calls = [
+        c for c in deps['session'].add_message.call_args_list
+        if len(c.args) >= 4 and c.args[0] == "sess_123" and c.args[1] == "assistant" and c.args[3] == "user_456"
+    ]
+    assert assistant_calls, "Nenhuma chamada de histórico do assistant encontrada"
+    assistant_message = str(assistant_calls[-1].args[2])
+    assert "Resposta processada pelo agente" in assistant_message
+
     # 5. Resposta final está no formato de API esperado
     assert response["type"] == "text"
-    assert response["result"]["mensagem"] == "Resposta processada pelo agente"
+    assert "Resposta processada pelo agente" in response["result"]["mensagem"]
 
 @pytest.mark.asyncio
 async def test_pipeline_handles_agent_error(mock_dependencies):

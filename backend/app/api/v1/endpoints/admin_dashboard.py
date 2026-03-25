@@ -79,6 +79,9 @@ class ChatSLOMetrics(BaseModel):
     tokens_out_total: int
     estimated_cost_usd: float
     feedback_useful_rate_pct: float
+    tool_selection_accuracy_pct: float
+    citation_coverage_pct: float
+    no_data_false_positive_pct: float
     slo_status: str
 
 
@@ -280,6 +283,25 @@ async def get_chat_slo_metrics(
     except Exception as e:
         logger.warning("chat_slo_feedback_read_failed: %s", e)
 
+    # Métricas semânticas (Sprint 5).
+    tool_selection_accuracy = metrics.get_gauge("tool_selection_accuracy")
+    if tool_selection_accuracy is None:
+        acc_total = metrics.get_counter("tool_selection_accuracy_total")
+        acc_hits = metrics.get_counter("tool_selection_accuracy_hits_total")
+        tool_selection_accuracy = (acc_hits / acc_total) if acc_total > 0 else 0.0
+
+    citation_coverage = metrics.get_gauge("citation_coverage")
+    if citation_coverage is None:
+        citation_total = metrics.get_counter("citation_coverage_total")
+        citation_hits = metrics.get_counter("citation_coverage_hits_total")
+        citation_coverage = (citation_hits / citation_total) if citation_total > 0 else 0.0
+
+    no_data_false_positive_rate = metrics.get_gauge("no_data_false_positive_rate")
+    if no_data_false_positive_rate is None:
+        no_data_total = metrics.get_counter("no_data_total")
+        no_data_false_positive = metrics.get_counter("no_data_false_positive_total")
+        no_data_false_positive_rate = (no_data_false_positive / no_data_total) if no_data_total > 0 else 0.0
+
     # SLO padrão da Fase 2 (documento de produção enterprise)
     slo_simple_ok = p95_simple_ms <= 3000.0 if p95_simple_ms > 0 else True
     slo_complex_ok = p95_complex_ms <= 8000.0 if p95_complex_ms > 0 else True
@@ -299,6 +321,9 @@ async def get_chat_slo_metrics(
         tokens_out_total=tokens_out,
         estimated_cost_usd=round(estimated_cost_usd, 6),
         feedback_useful_rate_pct=round(feedback_useful_rate_pct, 2),
+        tool_selection_accuracy_pct=round(float(tool_selection_accuracy or 0.0) * 100.0, 2),
+        citation_coverage_pct=round(float(citation_coverage or 0.0) * 100.0, 2),
+        no_data_false_positive_pct=round(float(no_data_false_positive_rate or 0.0) * 100.0, 2),
         slo_status=slo_status,
     )
 

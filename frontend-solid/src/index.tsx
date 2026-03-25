@@ -17,6 +17,7 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Learning = lazy(() => import('./pages/Learning'));
 const PlaygroundOps = lazy(() => import('./pages/PlaygroundOps'));
+const Playground = lazy(() => import('./pages/Playground'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Rupturas = lazy(() => import('./pages/Rupturas'));
@@ -142,6 +143,7 @@ function App() {
         <Route path="/examples" component={() => <RoleRoute component={<Examples />} requiredRole="admin" />} />
         <Route path="/learning" component={() => <RoleRoute component={<Learning />} requiredRole="admin" />} />
         <Route path="/playground" component={() => <PrivateRoute component={<PlaygroundOps />} />} />
+        <Route path="/playground-lab" component={() => <PrivateRoute component={<Playground />} />} />
         <Route path="/code-chat" component={() => <RoleRoute component={<CodeChat />} requiredRole="admin" />} />
         <Route path="/diagnostics" component={() => <RoleRoute component={<Diagnostics />} requiredRole="admin" />} />
         <Route path="/help" component={() => <PrivateRoute component={<Help />} />} />

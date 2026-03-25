@@ -30,6 +30,7 @@ import uuid
 import structlog
 from types import SimpleNamespace
 from pathlib import Path
+from datetime import date, timedelta
 from typing import Dict, Any, Optional, Callable, Awaitable, Union, List
 from dataclasses import dataclass
 from collections import defaultdict, deque
@@ -49,18 +50,22 @@ from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAd
 from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
-from backend.app.core.utils.executive_output import ensure_executive_output
+from backend.app.core.utils.executive_output import build_sales_dimension_report_from_rows, ensure_executive_output
+from backend.app.core.utils.response_validator import validate_response
 from backend.app.core.security.content_safety import sanitize_citations, sanitize_public_url, sanitize_text_label
 from backend.app.core.learning.chat_example_capture import build_chat_example_payload
 from backend.app.core.learning.unified_dataset_builder import build_default_unified_learning_dataset
 from backend.app.core.rag.example_collector import ExampleCollector
 from backend.app.config.settings import settings
 from backend.app.config.database import get_db_context
+from backend.app.infrastructure.redis_client import get_sync_redis_client
 from backend.app.infrastructure.database.models import UserPreference
 from backend.services.metrics import MetricsService
 from backend.app.services.audit_log import get_audit_logger, AuditAction
 from backend.app.services.image_generation import ImageGenerationService
 from backend.app.services.chat_automation_service import ChatAutomationService
+from backend.app.services.basket_analysis_service import BasketAnalysisService
+from backend.app.schemas.basket_analysis import BasketAnalysisRequest
 from backend.app.core.tools.basket_attachment_parser import build_basket_payload_from_documents
 from backend.app.core.tools.basket_tools import (
     analyze_basket_logic,
@@ -144,6 +149,7 @@ class ChatServiceV3:
             parquet_path: Caminho para o parquet (opcional)
         """
         self.session_manager = session_manager
+        self.basket_analysis_service = BasketAnalysisService()
         
         # Inicializar componentes
         logger.info("[DEBUG] [DEBUG] ChatServiceV3.__init__ INICIANDO (Agent-Based)...")
@@ -385,8 +391,29 @@ class ChatServiceV3:
         return "no such table" in str(exc).lower()
 
     @staticmethod
+    def _query_without_attachment_metadata(query: str) -> str:
+        lines = [line.strip() for line in str(query or "").splitlines()]
+        kept_lines: list[str] = []
+        skip_attachment_block = False
+        for line in lines:
+            lowered = line.lower()
+            if lowered.startswith("considere os anexos desta sessão:"):
+                continue
+            if lowered == "anexos enviados:":
+                skip_attachment_block = True
+                continue
+            if skip_attachment_block and lowered.startswith("- "):
+                continue
+            if skip_attachment_block and not lowered:
+                skip_attachment_block = False
+                continue
+            if line:
+                kept_lines.append(line)
+        return " ".join(kept_lines).strip()
+
+    @staticmethod
     def _query_mentions_attachment_context(query: str) -> bool:
-        lowered = str(query or "").lower()
+        lowered = ChatServiceV3._query_without_attachment_metadata(query).lower()
         markers = (
             "anexo",
             "anexado",
@@ -414,7 +441,7 @@ class ChatServiceV3:
 
     @staticmethod
     def _query_mentions_basket_context(query: str) -> bool:
-        lowered = str(query or "").lower()
+        lowered = ChatServiceV3._query_without_attachment_metadata(query).lower()
         markers = (
             "cesta",
             "carrinho",
@@ -436,7 +463,7 @@ class ChatServiceV3:
 
     @staticmethod
     def _query_is_market_basket(query: str) -> bool:
-        lowered = str(query or "").lower()
+        lowered = ChatServiceV3._query_without_attachment_metadata(query).lower()
         return any(
             marker in lowered
             for marker in (
@@ -454,8 +481,30 @@ class ChatServiceV3:
 
     @staticmethod
     def _query_is_promotion_simulation(query: str) -> bool:
-        lowered = str(query or "").lower()
+        lowered = ChatServiceV3._query_without_attachment_metadata(query).lower()
         return any(marker in lowered for marker in ("promo", "desconto", "oferta", "campanha", "leve"))
+
+    @staticmethod
+    def _query_is_generic_attachment_analysis(query: str) -> bool:
+        lowered = ChatServiceV3._query_without_attachment_metadata(query).lower()
+        generic_phrases = (
+            "analise os arquivos anexados",
+            "analise o arquivo anexado",
+            "analise os anexos",
+            "analise o anexo",
+            "analisar os arquivos anexados",
+            "analisar o arquivo anexado",
+            "considere os anexos desta sessao",
+            "considere os anexos desta sessão",
+        )
+        return any(phrase in lowered for phrase in generic_phrases)
+
+    @staticmethod
+    def _entry_is_session_attachment(entry: Dict[str, Any]) -> bool:
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        uploaded_via = str(metadata.get("uploaded_via") or "").strip().lower()
+        has_session_id = bool(str(metadata.get("session_id") or "").strip())
+        return has_session_id or uploaded_via in {"chat_attachment", "chat_image"}
 
     @staticmethod
     def _extract_percentage_from_query(query: str) -> Optional[float]:
@@ -467,6 +516,148 @@ class ChatServiceV3:
         except ValueError:
             return None
 
+    @staticmethod
+    def _extract_category_from_query(query: str) -> Optional[str]:
+        match = re.search(
+            r"(?:categoria|grupo)\s+([a-zA-ZÀ-ÿ0-9 _-]+?)(?:\s+em\s+|\s+na\s+|\s+no\s+|\s+nos?\s+|\s+nas?\s+|\s+por\s+|$)",
+            str(query or ""),
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        value = re.sub(r"\s+", " ", match.group(1)).strip(" .,:;!?-")
+        return value or None
+
+    @staticmethod
+    def _resolve_period_dates(period_filter: Optional[str]) -> tuple[Optional[date], Optional[date]]:
+        if not period_filter:
+            return None, None
+        today = date.today()
+        if period_filter.endswith("d") and period_filter[:-1].isdigit():
+            days = int(period_filter[:-1])
+            return today - timedelta(days=max(days - 1, 0)), today
+        if period_filter.endswith("w") and period_filter[:-1].isdigit():
+            weeks = int(period_filter[:-1])
+            return today - timedelta(days=max(weeks * 7 - 1, 0)), today
+        if period_filter.endswith("m") and period_filter[:-1].isdigit():
+            months = int(period_filter[:-1])
+            return today - timedelta(days=max(months * 30 - 1, 0)), today
+        if period_filter == "mes_atual":
+            return today.replace(day=1), today
+        if period_filter == "hoje":
+            return today, today
+        return None, None
+
+    def _build_dataset_basket_request(self, query: str) -> BasketAnalysisRequest:
+        from backend.app.core.utils.query_router import (
+            extract_period_filter,
+            extract_product_code,
+            extract_segment_filter,
+            extract_top_limit,
+            extract_une_filter,
+        )
+
+        period_filter = extract_period_filter(query)
+        start_date, end_date = self._resolve_period_dates(period_filter)
+        product_code = extract_product_code(query)
+        return BasketAnalysisRequest(
+            start_date=start_date,
+            end_date=end_date,
+            une=extract_une_filter(query),
+            segment=extract_segment_filter(query),
+            category=self._extract_category_from_query(query),
+            target_product=str(product_code) if product_code is not None else None,
+            max_rules=extract_top_limit(query) or 20,
+        )
+
+    @staticmethod
+    def _format_dataset_basket_message(result: Dict[str, Any]) -> str:
+        status = str(result.get("status") or "")
+        mode = str(result.get("analysis_mode") or "")
+        summary = result.get("business_summary") or []
+        limitations = result.get("limitations") or []
+        top_rules = result.get("top_rules") or []
+        parameters = result.get("parameters") if isinstance(result.get("parameters"), dict) else {}
+
+        scope_parts: list[str] = []
+        if parameters.get("une"):
+            scope_parts.append(f"UNE {parameters['une']}")
+        if parameters.get("segment"):
+            scope_parts.append(f"segmento {parameters['segment']}")
+        if parameters.get("category"):
+            scope_parts.append(f"categoria {parameters['category']}")
+        if parameters.get("start_date") or parameters.get("end_date"):
+            scope_parts.append(
+                f"periodo {parameters.get('start_date') or 'inicio aberto'} até {parameters.get('end_date') or 'fim aberto'}"
+            )
+
+        lines: list[str] = []
+        if status == "unsupported":
+            lines.append("Resumo executivo: a base local nao comprovou suporte transacional suficiente para basket analysis confiavel.")
+        elif status == "no_data":
+            lines.append("Resumo executivo: os filtros aplicados nao retornaram transacoes suficientes para gerar regras de associacao.")
+        elif summary:
+            lines.append(f"Resumo executivo: {summary[0]}")
+        else:
+            lines.append("Resumo executivo: a analise foi executada, mas nao encontrou regras relevantes com os thresholds atuais.")
+
+        if scope_parts:
+            lines.append(f"Escopo analisado: {', '.join(scope_parts)}.")
+
+        if top_rules:
+            best_rule = top_rules[0]
+            antecedent = " + ".join(best_rule["antecedent"])
+            consequent = " + ".join(best_rule["consequent"])
+            lines.append(
+                f"Principal regra encontrada: {antecedent} -> {consequent} (support {best_rule['support']:.2%}, confidence {best_rule['confidence']:.2%}, lift {best_rule['lift']:.2f})."
+            )
+            lines.append("Oportunidade de cross-sell: use a regra acima como inferencia analitica, nao como fato absoluto.")
+
+        if mode == "subset_transactional_supported":
+            lines.append("Modo da analise: subset_transactional_supported em subset controlado da base.")
+        elif mode == "unsupported":
+            lines.append("Modo da analise: unsupported.")
+
+        if limitations:
+            lines.append(f"Limitacoes: {limitations[0]}")
+
+        return "\n".join(lines)
+
+    def _run_dataset_basket_pipeline(self, query: str) -> Optional[Dict[str, Any]]:
+        if not self._query_is_market_basket(query):
+            return None
+
+        request_payload = self._build_dataset_basket_request(query)
+        try:
+            result = self.basket_analysis_service.analyze(request_payload)
+        except ValueError:
+            return None
+        response_text = self._format_dataset_basket_message(result)
+        confidence = 0.98
+        if result.get("analysis_mode") == "subset_transactional_supported":
+            confidence = 0.76
+        elif result.get("analysis_mode") == "unsupported":
+            confidence = 0.99
+
+        return {
+            "response": response_text,
+            "table_data": result.get("top_rules") or result.get("top_itemsets") or [],
+            "source": "service.basket_analysis",
+            "confidence": confidence,
+            "mode": "dataset_basket_pipeline",
+            "tool_calls": [
+                {
+                    "name": "basket_analysis_service",
+                    "args": request_payload.model_dump(mode="json", exclude_none=True),
+                }
+            ],
+            "result": {
+                "mensagem": response_text,
+                "basket_analysis": result,
+                "warnings": result.get("limitations") or [],
+            },
+        }
+
     def _run_attachment_basket_pipeline(
         self,
         query: str,
@@ -475,14 +666,21 @@ class ChatServiceV3:
         if not document_context:
             return None
 
-        if self._query_is_market_basket(query):
+        is_market_basket = self._query_is_market_basket(query)
+        is_promotion = self._query_is_promotion_simulation(query)
+        mentions_basket = self._query_mentions_basket_context(query)
+        is_generic_attachment_analysis = self._query_is_generic_attachment_analysis(query)
+
+        if is_market_basket:
             preferred_kind = "transacoes"
-        elif self._query_is_promotion_simulation(query):
+        elif is_promotion:
             preferred_kind = "itens"
-        elif self._query_mentions_basket_context(query):
+        elif mentions_basket:
             preferred_kind = "itens"
-        else:
+        elif is_generic_attachment_analysis:
             preferred_kind = "auto"
+        else:
+            return None
 
         parsed = build_basket_payload_from_documents(document_context, preferred_kind=preferred_kind)
         if not parsed:
@@ -491,7 +689,7 @@ class ChatServiceV3:
         files = parsed.get("files") or []
         warnings = parsed.get("warnings") or []
 
-        if parsed["kind"] == "transacoes" and (self._query_is_market_basket(query) or preferred_kind == "auto"):
+        if parsed["kind"] == "transacoes" and (is_market_basket or is_generic_attachment_analysis):
             tool_result = mine_market_basket_logic(parsed["payload"]["transacoes"])
             top_rules = tool_result.get("regras_associacao") or []
             if top_rules:
@@ -526,7 +724,7 @@ class ChatServiceV3:
         if parsed["kind"] != "itens":
             return None
 
-        if self._query_is_promotion_simulation(query):
+        if is_promotion:
             desconto_pct = self._extract_percentage_from_query(query)
             tool_result = simulate_promotion_logic(
                 itens=parsed["payload"]["itens"],
@@ -706,11 +904,18 @@ class ChatServiceV3:
             logger.warning("Falha ao recuperar documentos internos: %s", exc)
             results = []
 
+        explicit_attachment_context = self._query_mentions_attachment_context(query)
+        if results:
+            filtered_results: List[Dict[str, Any]] = []
+            for item in results:
+                if self._entry_is_session_attachment(item) and not explicit_attachment_context:
+                    continue
+                filtered_results.append(item)
+            results = filtered_results
+
         attachment_candidates: List[Dict[str, Any]] = []
         normalized_session_id = str(session_id or "").strip()
-        should_include_session_docs = bool(normalized_session_id) and (
-            self._query_mentions_attachment_context(query) or not results
-        )
+        should_include_session_docs = bool(normalized_session_id) and explicit_attachment_context
         if should_include_session_docs:
             try:
                 recent_documents = await self.vector_memory_repository.list_recent_documents(
@@ -755,6 +960,10 @@ class ChatServiceV3:
             "Trechos relevantes de documentos internos/base de conhecimento recuperados para a pergunta atual.",
             "Use estes trechos apenas se forem úteis e cite a origem quando fundamentarem a resposta.",
         ]
+        if any(ChatServiceV3._entry_is_session_attachment(entry) for entry in entries):
+            lines.append(
+                "Anexos da sessao sao contexto auxiliar; a fonte primaria continua sendo a base local do projeto, salvo pedido explicito do usuario para analisar o anexo."
+            )
         for index, entry in enumerate(entries, start=1):
             metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
             source_label = (
@@ -814,6 +1023,22 @@ class ChatServiceV3:
         """
         limit = self._get_role_rate_limit_per_minute(normalized_role)
         key = f"{normalized_role}:{str(user_id or '').strip() or 'anonymous'}"
+        redis_client = get_sync_redis_client()
+        if redis_client is not None:
+            now_wall = time.time()
+            window_start = now_wall - 60.0
+            redis_key = f"{settings.REDIS_KEY_PREFIX}:chat_role_rate_limit:{key}"
+            member = f"{now_wall}:{time.monotonic_ns()}"
+            try:
+                redis_client.zremrangebyscore(redis_key, 0, window_start)
+                current_count = int(redis_client.zcard(redis_key) or 0)
+                if current_count >= limit:
+                    return limit
+                redis_client.zadd(redis_key, {member: now_wall})
+                redis_client.expire(redis_key, 60)
+                return None
+            except Exception as exc:
+                logger.warning("[DEBUG] Redis role rate limit falhou; usando fallback local: %s", exc)
         now = time.monotonic()
         window_start = now - 60.0
         with self._role_rate_limit_lock:
@@ -826,11 +1051,15 @@ class ChatServiceV3:
         return None
 
     def _query_expected_capability(self, query: str) -> Optional[str]:
-        q = (query or "").lower()
+        q = self._query_without_attachment_metadata(query).lower()
         if any(k in q for k in ["pesquisa de mercado", "concorrente", "cotação", "cotacao", "preço de mercado", "preco de mercado"]):
             return "market_research"
+        if any(k in q for k in ["exportar", "exporte", "export", "csv", "excel", "xlsx", "planilha", "baixar arquivo"]):
+            return "export"
         if any(k in q for k in ["dashboard", "painel interativo"]):
             return "dashboard"
+        if any(k in q for k in ["tabela", "tabular", "liste", "listar", "lista em tabela", "mostre em tabela"]):
+            return "table"
         if any(k in q for k in ["gráfico", "grafico", "chart", "ranking"]):
             return "visualization"
         if any(k in q for k in [
@@ -855,6 +1084,57 @@ class ChatServiceV3:
             return "data_query"
         return None
 
+    def _response_matches_query_intent(self, query: str, response: Dict[str, Any]) -> bool:
+        expected_capability = self._query_expected_capability(query)
+        if not expected_capability:
+            return True
+
+        actual_capability = self._response_capability(response)
+        if expected_capability == actual_capability:
+            return True
+
+        mode = str(response.get("mode") or "").strip().lower()
+        if mode in {"attachment_basket_pipeline", "dataset_basket_pipeline"}:
+            if self._query_is_market_basket(query) or self._query_is_promotion_simulation(query):
+                return True
+            if self._query_mentions_basket_context(query):
+                return expected_capability == "calculation"
+            return False
+
+        return True
+
+    @staticmethod
+    def _response_has_visual_payload(response: Dict[str, Any]) -> bool:
+        return bool(response.get("chart_data") or response.get("dashboard_spec") or response.get("type") == "dashboard")
+
+    @staticmethod
+    def _response_has_export_payload(response: Dict[str, Any]) -> bool:
+        artifact = response.get("artifact")
+        if isinstance(artifact, dict) and any(artifact.get(key) for key in ("download_url", "filename")):
+            return True
+
+        automation_request = response.get("automation_request")
+        result_payload = response.get("result", {}) if isinstance(response.get("result"), dict) else {}
+        if not isinstance(automation_request, dict):
+            automation_request = result_payload.get("automation_request")
+        if not isinstance(automation_request, dict):
+            return False
+
+        action = str(automation_request.get("action") or "").strip().lower()
+        follow_up_action = str(automation_request.get("follow_up_action") or "").strip().lower()
+        nested_artifact = automation_request.get("artifact")
+        if isinstance(nested_artifact, dict) and any(nested_artifact.get(key) for key in ("download_url", "filename")):
+            return True
+
+        export_markers = ("export", "csv", "spreadsheet", "excel", "xlsx", "report")
+        return (
+            any(marker in action for marker in export_markers)
+            or any(marker in follow_up_action for marker in export_markers)
+        ) and any(
+            automation_request.get(key) not in (None, "", [])
+            for key in ("approval_status", "proposal_id", "title")
+        )
+
     @staticmethod
     def _response_capability(response: Dict[str, Any]) -> str:
         internal_meta = response.get("_internal_meta", {}) if isinstance(response.get("_internal_meta"), dict) else {}
@@ -862,6 +1142,12 @@ class ChatServiceV3:
         if response.get("dashboard_spec") or response.get("type") == "dashboard":
             return "dashboard"
         if response.get("chart_data"):
+            return "visualization"
+        if ChatServiceV3._response_has_export_payload(response):
+            return "export"
+        if "gerar_dashboard_executivo" in source or source == "tool.dashboard":
+            return "dashboard"
+        if "gerar_grafico_universal_v2" in source or "gerar_grafico_universal" in source or source == "tool.chart":
             return "visualization"
         if "pesquisar_mercado_web" in source or "pesquisar_precos_concorrentes" in source:
             return "market_research"
@@ -871,9 +1157,95 @@ class ChatServiceV3:
             or "analisar_cesta_compras" in source
             or "simular_promocao_cesta" in source
             or "minerar_cestas_frequentes" in source
+            or "basket_analysis" in source
         ):
             return "calculation"
+        if isinstance(response.get("table_data"), list) and response.get("table_data"):
+            return "table"
         return "data_query"
+
+    @staticmethod
+    def _response_has_dashboard_payload(response: Dict[str, Any]) -> bool:
+        return bool(response.get("dashboard_spec") or response.get("type") == "dashboard")
+
+    @staticmethod
+    def _response_has_table_payload(response: Dict[str, Any]) -> bool:
+        return bool(isinstance(response.get("table_data"), list) and response.get("table_data"))
+
+    def _response_satisfies_expected_capability(
+        self,
+        expected_capability: str,
+        response: Dict[str, Any],
+    ) -> bool:
+        if expected_capability == "visualization":
+            return self._response_has_visual_payload(response)
+        if expected_capability == "dashboard":
+            return self._response_has_dashboard_payload(response)
+        if expected_capability == "table":
+            return self._response_has_table_payload(response)
+        if expected_capability == "export":
+            return self._response_has_export_payload(response)
+        return True
+
+    async def _attempt_capability_recovery(
+        self,
+        *,
+        query: str,
+        chat_history: List[Dict[str, Any]],
+        agent: Any,
+        current_response: Dict[str, Any],
+        on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        expected_capability = str(self._query_expected_capability(query) or "").strip().lower()
+        if expected_capability not in {"visualization", "dashboard", "table", "export"}:
+            return None
+        if self._response_satisfies_expected_capability(expected_capability, current_response):
+            return None
+        if not hasattr(agent, "_attempt_routed_tool_rescue"):
+            return None
+
+        try:
+            from backend.app.core.utils.intent_classifier import classify_intent
+            from backend.app.core.utils.query_router import route_query
+
+            resolved_query = (
+                agent._resolve_query_with_history_context(query, chat_history)
+                if hasattr(agent, "_resolve_query_with_history_context")
+                else query
+            )
+            intent_result = classify_intent(resolved_query)
+            tool_selection = route_query(
+                intent=intent_result.intent,
+                query=resolved_query,
+                confidence=intent_result.confidence,
+            )
+            if hasattr(agent, "_enrich_tool_selection_for_business"):
+                agent._enrich_tool_selection_for_business(resolved_query, tool_selection, chat_history=chat_history)
+            if hasattr(agent, "_ensure_tool_selection_available"):
+                agent._ensure_tool_selection_available(resolved_query, tool_selection)
+            if hasattr(agent, "_build_clarification_if_needed"):
+                clarification = agent._build_clarification_if_needed(
+                    resolved_query,
+                    tool_selection.tool_name,
+                    tool_selection.confidence,
+                    chat_history=chat_history,
+                )
+                if clarification is not None:
+                    return None
+            recovered = await agent._attempt_routed_tool_rescue(
+                resolved_query,
+                tool_selection,
+                on_progress=on_progress,
+            )
+            if recovered and self._response_satisfies_expected_capability(expected_capability, recovered):
+                return recovered
+        except Exception as exc:
+            logger.warning(
+                "Falha ao executar recuperação orientada à intenção para capability %s: %s",
+                expected_capability,
+                exc,
+            )
+        return None
 
     @staticmethod
     def _is_no_data_message(text: str) -> bool:
@@ -883,12 +1255,23 @@ class ChatServiceV3:
         markers = [
             "não encontrei dados",
             "nao encontrei dados",
-            "sem dados",
+            "não consegui gerar o gráfico",
+            "nao consegui gerar o grafico",
+            "não consegui gerar uma visualização",
+            "nao consegui gerar uma visualizacao",
+            "não consegui gerar um dashboard",
+            "nao consegui gerar um dashboard",
+            "não consegui montar uma tabela",
+            "nao consegui montar uma tabela",
+            "não consegui preparar uma exportação",
+            "nao consegui preparar uma exportacao",
             "sem evidência pública",
             "sem evidencia publica",
             "nenhum dado encontrado",
             "não foi possível gerar",
             "nao foi possivel gerar",
+            "não houve evidência pública suficiente",
+            "nao houve evidencia publica suficiente",
         ]
         return any(marker in normalized for marker in markers)
 
@@ -966,6 +1349,123 @@ class ChatServiceV3:
             false_positive_total = metrics.get_counter("no_data_false_positive_total")
             fp_rate = (false_positive_total / no_data_total) if no_data_total > 0 else 0.0
             metrics.set_gauge("no_data_false_positive_rate", round(fp_rate, 4))
+
+    def _build_response_validation_context(self, query: str, processed_response: Dict[str, Any]) -> Dict[str, Any]:
+        internal_meta = processed_response.get("_internal_meta", {}) if isinstance(processed_response.get("_internal_meta"), dict) else {}
+        source = str(processed_response.get("source") or internal_meta.get("source") or "").strip()
+        mode = str(processed_response.get("mode") or internal_meta.get("mode") or "").strip()
+        citations = processed_response.get("citations")
+        if citations in (None, "", []):
+            citations = internal_meta.get("citations")
+        citations = sanitize_citations(citations)
+        message = str(processed_response.get("result", {}).get("mensagem", "") or "")
+        chart_data = processed_response.get("chart_data")
+        dashboard_spec = processed_response.get("dashboard_spec")
+        table_data = processed_response.get("table_data")
+        has_export_payload = self._response_has_export_payload(processed_response)
+        return {
+            "expected_capability": self._query_expected_capability(query),
+            "actual_capability": self._response_capability(processed_response),
+            "source": source,
+            "mode": mode,
+            "citations_count": len(citations) if isinstance(citations, list) else 0,
+            "has_visual_payload": bool(chart_data or dashboard_spec),
+            "has_dashboard_payload": bool(dashboard_spec),
+            "has_table_payload": bool(isinstance(table_data, list) and table_data),
+            "has_export_payload": has_export_payload,
+            "no_data_detected": self._is_no_data_message(message),
+            "has_evidence": bool((isinstance(citations, list) and citations) or chart_data or dashboard_spec or (isinstance(table_data, list) and table_data) or has_export_payload),
+        }
+
+    def _build_validation_block_response(
+        self,
+        *,
+        query: str,
+        validation_result: Any,
+        validation_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        expected_capability = str(validation_context.get("expected_capability") or "").strip().lower()
+        block_reason = str(getattr(validation_result, "block_reason", "") or "").strip().lower()
+        response_mode = str(validation_context.get("mode") or "").strip().lower()
+
+        if expected_capability == "market_research" and block_reason == "missing_market_evidence":
+            message = (
+                "## Resumo executivo\n"
+                "- Não encontrei evidência pública suficiente para sustentar uma pesquisa de mercado confiável nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A resposta gerada não trouxe citações, links ou sinais verificáveis de mercado para o item solicitado.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a pesquisa informando marca, medida, SKU ou concorrentes desejados.\n"
+                "- Se quiser, peça explicitamente fontes públicas e links na resposta."
+            )
+        elif block_reason == "wrong_specialized_pipeline" or response_mode in {"attachment_basket_pipeline", "dataset_basket_pipeline"}:
+            message = (
+                "## Resumo executivo\n"
+                "- A resposta automática gerada não ficou coerente com o assunto da sua pergunta.\n\n"
+                "## Tabela operacional\n"
+                "- Um pipeline especializado incompatível com a intenção da consulta foi descartado por segurança.\n\n"
+                "## Próximas ações\n"
+                "- Reenvie a pergunta deixando explícito o objetivo principal.\n"
+                "- Se quiser usar o anexo, diga isso explicitamente na pergunta."
+            )
+        elif expected_capability == "table":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui montar uma tabela confiável para este pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A intenção identificada foi tabular, mas a resposta não trouxe `table_data` válido para exibição.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a consulta informando as colunas ou recortes desejados.\n"
+                "- Se preferir, peça explicitamente a tabela por produto, loja, segmento ou período."
+            )
+        elif expected_capability == "export":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui preparar uma exportação confiável para este pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A resposta não trouxe artefato ou metadata válida de exportação para aprovação/download.\n\n"
+                "## Próximas ações\n"
+                "- Refaça o pedido informando o formato desejado, como CSV ou planilha.\n"
+                "- Se a exportação depender de aprovação, peça explicitamente para gerar o arquivo exportável."
+            )
+        elif expected_capability == "dashboard":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui gerar um dashboard confiável para este pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A intenção identificada foi de dashboard, mas a resposta não trouxe `dashboard_spec` válido.\n\n"
+                "## Próximas ações\n"
+                "- Refaça o pedido informando o objetivo do painel e os filtros desejados.\n"
+                "- Se preferir, peça explicitamente um painel executivo por período, loja ou segmento."
+            )
+        elif expected_capability == "visualization":
+            message = (
+                "## Resumo executivo\n"
+                "- Não consegui gerar uma visualização confiável para o pedido nesta rodada.\n\n"
+                "## Tabela operacional\n"
+                "- A intenção identificada foi de gráfico/dashboard, mas a resposta gerada não trouxe payload visual válido.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a consulta informando período, métrica e recorte desejado.\n"
+                "- Se preferir, peça explicitamente o tipo de gráfico esperado."
+            )
+        else:
+            message = (
+                "## Resumo executivo\n"
+                "- A resposta gerada nesta rodada não passou na validação interna de coerência.\n\n"
+                "## Tabela operacional\n"
+                "- O sistema detectou inconsistência entre a intenção da pergunta e o tipo de resposta montada.\n\n"
+                "## Próximas ações\n"
+                "- Refaça a pergunta com o objetivo principal de forma direta.\n"
+                "- Se houver recortes importantes, informe período, produto, loja ou fonte desejada."
+            )
+
+        return {
+            "type": "text",
+            "result": {"mensagem": message},
+            "source": "policy.response_validation",
+            "mode": "validation_block",
+            "confidence": max(0.0, min(0.99, float(getattr(validation_result, "confidence", 0.0) or 0.0))),
+        }
 
     def get_llm_status(self) -> Dict[str, Any]:
         """
@@ -1053,6 +1553,9 @@ class ChatServiceV3:
         Returns:
             Dicionário com resposta (compatível com API existente)
         """
+        raw_query = str(query or "")
+        normalized_query = self._query_without_attachment_metadata(raw_query) or raw_query.strip()
+        query = normalized_query
         logger.info(f"[DEBUG] [DEBUG] process_message INICIANDO: query='{query[:100]}...'")
 
         request_id = str(request_id or uuid4())
@@ -1241,11 +1744,30 @@ class ChatServiceV3:
                     tenant_id="default",
                 )
                 agent_response = self._run_attachment_basket_pipeline(query, document_context)
+                if agent_response is not None and not self._response_matches_query_intent(query, agent_response):
+                    logger.info(
+                        "[DEBUG] Pipeline de cesta por anexo descartado por incompatibilidade com a intencao da pergunta: %s",
+                        agent_response.get("source"),
+                    )
+                    agent_response = None
                 if agent_response is not None:
                     logger.info(
                         "[DEBUG] Pipeline deterministico de cestas acionado com anexos da sessao: %s",
                         agent_response.get("source"),
                     )
+                if agent_response is None:
+                    agent_response = self._run_dataset_basket_pipeline(query)
+                    if agent_response is not None and not self._response_matches_query_intent(query, agent_response):
+                        logger.info(
+                            "[DEBUG] Pipeline analitico de basket descartado por incompatibilidade com a intencao da pergunta: %s",
+                            agent_response.get("source"),
+                        )
+                        agent_response = None
+                    if agent_response is not None:
+                        logger.info(
+                            "[DEBUG] Pipeline analitico de basket acionado na base local: %s",
+                            agent_response.get("source"),
+                        )
                 document_system_message = self._documents_to_system_message(document_context)
                 if agent_response is None and document_system_message:
                     system_messages.append(document_system_message)
@@ -1277,6 +1799,19 @@ class ChatServiceV3:
                     )
                     logger.info(f"[DEBUG] [DEBUG] agent.run_async() RETORNOU: {type(agent_response)}")
                     logger.info(f"[DEBUG] [DEBUG] Resposta do agente: {str(agent_response)[:200]}...")
+                    capability_recovery = await self._attempt_capability_recovery(
+                        query=query,
+                        chat_history=agent_history,
+                        agent=agent,
+                        current_response=agent_response if isinstance(agent_response, dict) else {},
+                        on_progress=emit_progress,
+                    )
+                    if capability_recovery is not None:
+                        logger.info(
+                            "[DEBUG] Recuperação orientada à capability acionada com sucesso: %s",
+                            capability_recovery.get("source"),
+                        )
+                        agent_response = capability_recovery
             
             # TRAP: Se for coroutine, logar erro critico
             if asyncio.iscoroutine(agent_response):
@@ -1403,6 +1938,33 @@ class ChatServiceV3:
                 processed_response=response,
                 normalized_role=normalized_role_for_metrics,
             )
+
+            validation_context = self._build_response_validation_context(query, response)
+            validation_result = validate_response(
+                response,
+                query=query,
+                context=validation_context,
+            )
+            metrics.increment("response_validation_total")
+            if not validation_result.is_valid:
+                metrics.increment("response_validation_failures_total")
+            if getattr(validation_result, "should_block", False):
+                metrics.increment("response_validation_blocks_total")
+                trace_logger.warning(
+                    "chat_response_blocked_by_validator",
+                    request_id=request_id,
+                    session_id=str(session_id),
+                    user_id=str(user_id),
+                    expected_capability=validation_context.get("expected_capability"),
+                    actual_capability=validation_context.get("actual_capability"),
+                    block_reason=getattr(validation_result, "block_reason", None),
+                    issues=getattr(validation_result, "issues", []),
+                )
+                response = self._build_validation_block_response(
+                    query=query,
+                    validation_result=validation_result,
+                    validation_context=validation_context,
+                )
 
             internal_meta = response.get("_internal_meta", {}) if isinstance(response.get("_internal_meta"), dict) else {}
             source_value = response.get("source") or internal_meta.get("source")
@@ -1995,11 +2557,23 @@ class ChatServiceV3:
             logger.warning(f"[WARNING] [DEBUG] response_text VAZIO! agent_response keys: {agent_response.keys()}")
             response_text = "Desculpe, não consegui gerar uma resposta adequada. Por favor, reformule sua pergunta."
             
+        result_data_payload = agent_response.get("result", {})
+        if not isinstance(result_data_payload, dict):
+            result_data_payload = {}
+
         # Dashboard estruturado não recebe wrapping executivo textual adicional.
         is_dashboard_payload = bool(agent_response.get("dashboard_spec"))
 
-        # Padrão executivo: apenas para respostas textuais de negócio.
-        if isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload:
+        table_data = agent_response.get("table_data")
+        if not table_data:
+            table_data = result_data_payload.get("table_data")
+
+        structured_sales_report = None
+        if isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload and isinstance(table_data, list) and table_data:
+            structured_sales_report = build_sales_dimension_report_from_rows(query=query, rows=table_data)
+        if structured_sales_report:
+            response_text = structured_sales_report
+        elif isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload:
             response_text = ensure_executive_output(query=query, message=response_text)
         response_text = self._sanitize_executive_output_for_role(response_text, user_role=user_role)
 
@@ -2008,17 +2582,9 @@ class ChatServiceV3:
         if not chart_data:
             chart_data = agent_response.get("chart_spec")
 
-        result_data_payload = agent_response.get("result", {})
-        if not isinstance(result_data_payload, dict):
-            result_data_payload = {}
-
         dashboard_spec = agent_response.get("dashboard_spec")
         if not dashboard_spec:
             dashboard_spec = result_data_payload.get("dashboard_spec")
-
-        table_data = agent_response.get("table_data")
-        if not table_data:
-            table_data = result_data_payload.get("table_data")
 
         image_asset = agent_response.get("image_asset")
         if image_asset in (None, "", {}):

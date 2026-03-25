@@ -45,6 +45,50 @@ Atualizado em: 2026-02-21
 - Fallback tecnico para persistencia de app: SQLite em `backend/app/data/agentbi.db`.
 - RLS por segmento aplicado no acesso ao parquet (`NOMESEGMENTO`) com base no contexto do usuario.
 
+### Market Basket Analysis
+
+- Endpoint dedicado: `POST /api/v1/analytics/basket-analysis`
+- Alias v2: `POST /api/v2/analytics/basket-analysis`
+- Perguntas de chat como `produtos comprados juntos`, `cross-sell` e `basket analysis` agora passam por um servico analitico proprio.
+- O caminho antigo de basket por anexo/manual continua ativo no chat para payloads e arquivos enviados pelo usuario.
+
+Comportamento conservador:
+
+- `real_transactional`: so quando o validador comprova transaction key real e cobertura minima suficiente.
+- `subset_transactional_supported`: subset controlado com chave transacional apenas hipotetica ou parcial.
+- `unsupported`: retorno padrao quando a base local nao atende aos criterios minimos.
+
+Importante:
+
+- A base principal `admmat.parquet` continua tratada como snapshot analitico.
+- A coluna `NOTA` e tratada como hipotese controlada, nunca como verdade global de cesta sem validacao.
+- Quando o modo for `unsupported`, o sistema explica claramente o que falta no dado.
+
+Exemplo de request:
+
+```json
+{
+  "start_date": null,
+  "end_date": null,
+  "une": null,
+  "segment": null,
+  "category": null,
+  "target_product": null,
+  "min_support": 0.01,
+  "min_confidence": 0.2,
+  "min_lift": 1.0,
+  "max_rules": 20
+}
+```
+
+Exemplo de validacao local:
+
+```bash
+python -m pytest backend/tests/unit/test_basket_analysis_service.py backend/tests/unit/test_chat_service_dataset_basket.py backend/tests/integration/test_basket_analysis_endpoint.py -q
+```
+
+Documentacao complementar: `docs/BASKET_ANALYSIS.md`
+
 ### Seguranca e governanca
 
 - JWT em `Authorization: Bearer`.
@@ -259,6 +303,8 @@ docker-compose.yml
 
 ## Documentacao complementar
 
+- `docs/SYSTEM_OVERVIEW.md`
+- `docs/ONBOARDING_7_DIAS.md`
 - `docs/CHATBI_PESQUISA_CONCORRENCIAL.md`
 - `docs/CHATBI_IMPLEMENTACAO_FASES.md`
 - `docs/PLAYGROUND_BI_RUNBOOK.md`

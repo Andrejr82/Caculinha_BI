@@ -18,6 +18,8 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from backend.app.config.settings import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,45 @@ class MetricsCalculator:
     - Paralelização automática do DuckDB
     - Reutilização de conexão
     """
+
+    @staticmethod
+    def _resolve_default_parquet_path() -> Path:
+        """
+        Resolve caminho do parquet com fallback robusto para diferentes CWDs.
+        """
+        service_file = Path(__file__).resolve()
+        backend_root = service_file.parent.parent.parent  # .../backend
+        repo_root = backend_root.parent
+
+        configured = Path(str(getattr(settings, "PARQUET_FILE_PATH", "") or "").strip())
+        candidates: List[Path] = []
+
+        if configured:
+            if configured.is_absolute():
+                candidates.append(configured)
+            else:
+                candidates.append(backend_root / configured)
+                candidates.append(repo_root / configured)
+
+        candidates.extend(
+            [
+                backend_root / "data" / "parquet" / "admmat.parquet",
+                repo_root / "backend" / "data" / "parquet" / "admmat.parquet",
+                repo_root / "data" / "parquet" / "admmat.parquet",
+            ]
+        )
+
+        seen = set()
+        for candidate in candidates:
+            normalized = str(candidate)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            if candidate.exists():
+                return candidate
+
+        attempted = ", ".join(str(p) for p in candidates)
+        raise FileNotFoundError(f"Arquivo parquet não encontrado. Caminhos tentados: {attempted}")
     
     def __init__(self, parquet_path: Optional[str] = None):
         """
@@ -67,9 +108,7 @@ class MetricsCalculator:
         if parquet_path:
             self.parquet_path = Path(parquet_path)
         else:
-            # Default: data/parquet/admmat.parquet
-            project_root = Path(__file__).resolve().parent.parent.parent.parent
-            self.parquet_path = project_root / "data" / "parquet" / "admmat.parquet"
+            self.parquet_path = self._resolve_default_parquet_path()
         
         if not self.parquet_path.exists():
             raise FileNotFoundError(f"Arquivo parquet não encontrado: {self.parquet_path}")

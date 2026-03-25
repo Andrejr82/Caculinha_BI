@@ -2,6 +2,7 @@ from typing import Annotated, List, Dict, Any, Optional
 from datetime import datetime
 import json
 import os
+import logging
 from pathlib import Path
 import duckdb
 
@@ -19,6 +20,7 @@ from backend.app.core.duckdb_config import get_safe_connection
 from backend.app.core.data_scope_service import data_scope_service
 
 router = APIRouter(prefix="/transfers", tags=["Transfers"])
+logger = logging.getLogger(__name__)
 
 # Path to store transfer requests
 TRANSFER_REQUESTS_DIR = Path("data/transferencias")
@@ -135,7 +137,7 @@ async def validate_transfer(
             # Connection managed by DuckDB (GC)
 
         except Exception as e:
-            print(f"Erro ao calcular score: {e}")
+            logger.warning("Erro ao calcular score de prioridade", exc_info=e)
 
         # Adicionar score ao resultado
         result["score_prioridade"] = score_prioridade
@@ -225,7 +227,7 @@ async def get_transfers_report(
                     if start_date <= transfer_timestamp <= end_date:
                         all_transfers.append(transfer_data)
             except (json.JSONDecodeError, OSError) as e:
-                print(f"Error reading or decoding transfer file {file_path}: {e}")
+                logger.warning("Erro ao ler arquivo de transferencia", exc_info=e)
                 # Optionally, raise HTTPException if corrupt file is critical
 
     # Basic aggregation or sorting could be done here if needed

@@ -4,8 +4,21 @@ Teste de Carga - 30 Usuários Simultâneos
 Usa Locust para simular 30 usuários acessando o sistema simultaneamente.
 """
 
-from locust import HttpUser, task, between
+import os
 import random
+
+import pytest
+
+pytestmark = [pytest.mark.load, pytest.mark.external]
+
+if os.getenv("RUN_LOAD_TESTS", "0") != "1":
+    pytest.skip(
+        "teste de carga manual; defina RUN_LOAD_TESTS=1 para executar com Locust.",
+        allow_module_level=True,
+    )
+
+pytest.importorskip("locust", reason="Locust não instalado para teste de carga.")
+from locust import HttpUser, task, between
 
 
 class BIUser(HttpUser):

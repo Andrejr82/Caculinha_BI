@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: RedisDsn = Field(default="redis://localhost:6379/0")
     REDIS_CACHE_TTL: int = 3600  # 1 hour
+    REDIS_ENABLED: bool = False
+    REDIS_REQUIRED: bool = False
+    REDIS_KEY_PREFIX: str = "caculinha"
+    REDIS_SOCKET_TIMEOUT_SECONDS: float = 2.0
+    REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
 
     # Custom Cache Settings
     CACHE_TTL_MINUTES: int = 360 # 6 hours for LLM responses
@@ -86,6 +91,7 @@ class Settings(BaseSettings):
     LEARNING_FEEDBACK_PATH: str = "data/feedback/"
     LEARNING_EXAMPLES_PATH: str = "data/learning/"
     LEARNING_MAX_EXAMPLES: int = 1000
+    PLAYGROUND_REMOTE_TIMEOUT_SECONDS: int = 18
 
     # Security
     SECRET_KEY: str | None = Field(
@@ -99,6 +105,10 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 100
     RATE_LIMIT_AUTH_PER_MINUTE: int = 5
+    CHAT_RATE_LIMIT_PER_MINUTE_ADMIN: int = 180
+    CHAT_RATE_LIMIT_PER_MINUTE_ANALYST: int = 120
+    CHAT_RATE_LIMIT_PER_MINUTE_VIEWER: int = 40
+    CHAT_RATE_LIMIT_PER_MINUTE_GUEST: int = 20
 
     # Logging
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
@@ -118,6 +128,9 @@ class Settings(BaseSettings):
     LLM_PROVIDER: Literal["google", "groq", "grq", "mock"] = "groq"
     # Ordem opcional de fallback (csv), ex: "groq,google"
     LLM_FALLBACK_PROVIDERS: str = "groq"
+    # Roteamento opcional por tarefa.
+    # Formato: "calculation=groq,google;market_research=google,groq;dashboard=groq,google"
+    LLM_TASK_PROVIDER_ROUTING: str = ""
     PLAYGROUND_MODE: Literal["local_only", "hybrid_optional", "remote_required"] = "local_only"
     PLAYGROUND_CANARY_ENABLED: bool = False
     PLAYGROUND_CANARY_ALLOWED_ROLES: str = "admin"
@@ -125,10 +138,27 @@ class Settings(BaseSettings):
     CHAT_CANARY_ENABLED: bool = False
     CHAT_CANARY_ALLOWED_ROLES: str = "admin,analyst,user"
     CHAT_CANARY_ALLOWED_USERS: str = ""
+    CHAT_CAPABILITY_MEMORY_ENABLED: bool = True
+    CHAT_CAPABILITY_MEMORY_ALLOWED_ROLES: str = "admin,analyst,viewer"
+    CHAT_CAPABILITY_MEMORY_ALLOWED_USERS: str = ""
+    CHAT_CAPABILITY_MULTIMODAL_ENABLED: bool = True
+    CHAT_CAPABILITY_MULTIMODAL_ALLOWED_ROLES: str = "admin,analyst"
+    CHAT_CAPABILITY_MULTIMODAL_ALLOWED_USERS: str = ""
+    CHAT_CAPABILITY_ATTACHMENTS_ENABLED: bool = True
+    CHAT_CAPABILITY_ATTACHMENTS_ALLOWED_ROLES: str = "admin,analyst"
+    CHAT_CAPABILITY_ATTACHMENTS_ALLOWED_USERS: str = ""
+    CHAT_CAPABILITY_VOICE_ENABLED: bool = True
+    CHAT_CAPABILITY_VOICE_ALLOWED_ROLES: str = "admin,analyst"
+    CHAT_CAPABILITY_VOICE_ALLOWED_USERS: str = ""
+    CHAT_CAPABILITY_COMPUTER_USE_ENABLED: bool = False
+    CHAT_CAPABILITY_COMPUTER_USE_ALLOWED_ROLES: str = "admin"
+    CHAT_CAPABILITY_COMPUTER_USE_ALLOWED_USERS: str = ""
+    CHAT_AUTOMATION_ARTIFACTS_PATH: str = "data/chat_automation_artifacts"
     
     # Google Gemini (fallback opcional)
     GEMINI_API_KEY: str | None = None
     LLM_MODEL_NAME: str = "gemini-2.5-pro"
+    IMAGE_ANALYSIS_MODEL_NAME: str = "gemini-2.0-flash"
 
     # Context7 (framework externo / integração opcional)
     CONTEXT7_ENABLED: bool = False
@@ -152,6 +182,13 @@ class Settings(BaseSettings):
     # Data Sources
     PARQUET_DATA_PATH: str = Field(default="data/parquet/admmat.parquet")
     PARQUET_FILE_PATH: str = Field(default="data/parquet/admmat.parquet")  # Alias for compatibility
+    RUNTIME_STORAGE_ROOT: str = "data/runtime"
+    CHAT_STATE_BACKEND: Literal["sqlite", "sqlserver"] = "sqlite"
+    CHAT_STATE_SQLITE_FALLBACK_ENABLED: bool = True
+    CHAT_STATE_DB_PATH: str = "data/runtime/chat_state/agentbi.db"
+    VECTOR_DB_PATH: str = "data/runtime/chat_state/conversation_vectors.duckdb"
+    SESSION_LEGACY_STORAGE_PATH: str = "data/runtime/sessions"
+    ATTACHMENTS_STORAGE_PATH: str = "data/runtime/attachments"
     
     # Business Rules
     ALLOWED_UNES: list[int] = Field(default=[
@@ -200,7 +237,9 @@ class Settings(BaseSettings):
         path_fields = [
             "PARQUET_DATA_PATH", "PARQUET_FILE_PATH", "CACHE_DIR",
             "RAG_FAISS_INDEX_PATH", "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH",
-            "COMPETITIVE_MANUAL_FILE",
+            "COMPETITIVE_MANUAL_FILE", "CHAT_AUTOMATION_ARTIFACTS_PATH",
+            "RUNTIME_STORAGE_ROOT", "CHAT_STATE_DB_PATH", "VECTOR_DB_PATH",
+            "SESSION_LEGACY_STORAGE_PATH", "ATTACHMENTS_STORAGE_PATH",
         ]
         
         for field in path_fields:

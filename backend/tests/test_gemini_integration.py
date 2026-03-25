@@ -6,9 +6,22 @@ Valida que as ferramentas de compras funcionam corretamente com Gemini.
 
 import pytest
 import asyncio
+import os
 from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
-from backend.app.adapters.llm.gemini_adapter import GeminiLLMAdapter
 from backend.app.core.utils.field_mapper import FieldMapper
+
+pytestmark = [pytest.mark.integration, pytest.mark.external]
+
+if os.getenv("RUN_GEMINI_INTEGRATION", "0") != "1":
+    pytest.skip(
+        "teste Gemini manual; defina RUN_GEMINI_INTEGRATION=1 para executar.",
+        allow_module_level=True,
+    )
+
+if not os.getenv("GEMINI_API_KEY"):
+    pytest.skip("GEMINI_API_KEY ausente para teste Gemini.", allow_module_level=True)
+
+from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
 
 
 @pytest.mark.asyncio
@@ -34,7 +47,8 @@ class TestGeminiFunctionCalling:
         
         # Validar
         assert response is not None
-        assert "eoq" in response.lower() or "quantidade" in response.lower()
+        response_text = response if isinstance(response, str) else str(response)
+        assert "eoq" in response_text.lower() or "quantidade" in response_text.lower()
         
         # Verificar que ferramenta foi chamada
         # (implementação depende de como agent rastreia tool calls)
@@ -53,7 +67,8 @@ class TestGeminiFunctionCalling:
         response = await agent.run_async(query, chat_history=[])
         
         assert response is not None
-        assert "previsão" in response.lower() or "forecast" in response.lower()
+        response_text = response if isinstance(response, str) else str(response)
+        assert "previsão" in response_text.lower() or "forecast" in response_text.lower()
     
     async def test_schema_conversion(self):
         """Testa conversão de schema para formato Gemini"""

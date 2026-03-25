@@ -3,6 +3,8 @@ Script de teste para verificar funcionamento dos filtros de Analytics
 """
 import requests
 import json
+import socket
+import pytest
 
 # Configuração
 BASE_URL = "http://localhost:8000/api/v1"
@@ -12,6 +14,10 @@ PASSWORD = "admin123"
 
 def test_filters():
     """Testa o novo sistema de filtros"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        if sock.connect_ex(("127.0.0.1", 8000)) != 0:
+            pytest.skip("Backend local em http://localhost:8000 não está ativo para teste manual.")
 
     print("=" * 60)
     print("TESTE: Sistema de Filtros - Analytics")

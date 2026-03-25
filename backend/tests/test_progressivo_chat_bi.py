@@ -11,6 +11,7 @@ import pytest
 import asyncio
 import sys
 import os
+import uuid
 from pathlib import Path
 
 # Add backend to path
@@ -55,13 +56,13 @@ class TestProgressivo:
         # FIX: SmartLLM usa get_completion(), não chat()
         response = llm.get_completion(messages)
         
-        print(f"✅ LLM Response Type: {type(response)}")
-        print(f"✅ LLM Response: {response}")
+        print(f"LLM Response Type: {type(response)}")
+        print(f"LLM Response: {response}")
         
         assert response is not None
         assert isinstance(response, dict)
         assert "content" in response or "error" not in response
-        print("✅ TESTE 1 PASSOU: LLM funciona!")
+        print("TESTE 1 PASSOU: LLM funciona")
     
     @pytest.mark.asyncio
     async def test_2_agente_isolado(self):
@@ -92,9 +93,9 @@ class TestProgressivo:
         
         response = await agent.run_async(query, history)
         
-        print(f"✅ Agent Response Type: {type(response)}")
-        print(f"✅ Agent Response Keys: {response.keys() if isinstance(response, dict) else 'NOT A DICT'}")
-        print(f"✅ Agent Response: {str(response)[:500]}")
+        print(f"Agent Response Type: {type(response)}")
+        print(f"Agent Response Keys: {response.keys() if isinstance(response, dict) else 'NOT A DICT'}")
+        print(f"Agent Response: {str(response)[:500]}")
         
         assert response is not None
         assert isinstance(response, dict)
@@ -103,12 +104,12 @@ class TestProgressivo:
         has_content = False
         for key in ['response', 'text_override', 'result', 'mensagem']:
             if key in response and response[key]:
-                print(f"✅ Encontrado conteúdo em '{key}': {str(response[key])[:100]}")
+                print(f"Encontrado conteudo em '{key}': {str(response[key])[:100]}")
                 has_content = True
                 break
-        
-        assert has_content, f"❌ NENHUMA CHAVE COM CONTEÚDO! Keys: {response.keys()}"
-        print("✅ TESTE 2 PASSOU: Agente retorna conteúdo!")
+
+        assert has_content, f"Nenhuma chave com conteudo. Keys: {response.keys()}"
+        print("TESTE 2 PASSOU: Agente retorna conteudo")
     
     @pytest.mark.asyncio
     async def test_3_chat_service_simples(self):
@@ -125,7 +126,7 @@ class TestProgressivo:
         service = ChatServiceV3(session_manager=session_manager)
         
         query = "Olá"
-        session_id = "test_session"
+        session_id = str(uuid.uuid4())
         user_id = "test_user"
         
         result = await service.process_message(
@@ -134,9 +135,9 @@ class TestProgressivo:
             user_id=user_id
         )
         
-        print(f"✅ Service Result Type: {type(result)}")
-        print(f"✅ Service Result Keys: {result.keys() if isinstance(result, dict) else 'NOT A DICT'}")
-        print(f"✅ Service Result: {str(result)[:500]}")
+        print(f"Service Result Type: {type(result)}")
+        print(f"Service Result Keys: {result.keys() if isinstance(result, dict) else 'NOT A DICT'}")
+        print(f"Service Result: {str(result)[:500]}")
         
         assert result is not None
         assert isinstance(result, dict)
@@ -144,12 +145,12 @@ class TestProgressivo:
         assert "mensagem" in result["result"]
         
         mensagem = result["result"]["mensagem"]
-        print(f"✅ Mensagem extraída: {mensagem[:200]}")
-        
-        assert mensagem != "", "❌ MENSAGEM VAZIA!"
-        assert len(mensagem.strip()) > 0, "❌ MENSAGEM SÓ TEM WHITESPACE!"
-        
-        print("✅ TESTE 3 PASSOU: ChatServiceV3 funciona!")
+        print(f"Mensagem extraida: {mensagem[:200]}")
+
+        assert mensagem != "", "Mensagem vazia"
+        assert len(mensagem.strip()) > 0, "Mensagem com apenas whitespace"
+
+        print("TESTE 3 PASSOU: ChatServiceV3 funciona")
     
     @pytest.mark.asyncio
     async def test_4_chat_service_query_real(self):
@@ -166,7 +167,7 @@ class TestProgressivo:
         service = ChatServiceV3(session_manager=session_manager)
         
         query = "Qual o estoque do produto 369947?"
-        session_id = "test_session_real"
+        session_id = str(uuid.uuid4())
         user_id = "test_user"
         
         result = await service.process_message(
@@ -175,7 +176,7 @@ class TestProgressivo:
             user_id=user_id
         )
         
-        print(f"✅ Service Result: {str(result)[:1000]}")
+        print(f"Service Result: {str(result)[:1000]}")
         
         assert result is not None
         assert isinstance(result, dict)
@@ -183,15 +184,15 @@ class TestProgressivo:
         assert "mensagem" in result["result"]
         
         mensagem = result["result"]["mensagem"]
-        print(f"✅ Mensagem: {mensagem[:500]}")
-        
-        assert mensagem != "", "❌ MENSAGEM VAZIA PARA QUERY REAL!"
-        assert len(mensagem.strip()) > 0, "❌ MENSAGEM SÓ TEM WHITESPACE!"
+        print(f"Mensagem: {mensagem[:500]}")
+
+        assert mensagem != "", "Mensagem vazia para query real"
+        assert len(mensagem.strip()) > 0, "Mensagem com apenas whitespace"
         
         # Verificar se tem conteúdo relevante
-        assert len(mensagem) > 20, f"❌ MENSAGEM MUITO CURTA: {mensagem}"
-        
-        print("✅ TESTE 4 PASSOU: Query real funciona!")
+        assert len(mensagem) > 20, f"Mensagem muito curta: {mensagem}"
+
+        print("TESTE 4 PASSOU: Query real funciona")
 
 
 # Executar testes

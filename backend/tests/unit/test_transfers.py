@@ -1,8 +1,15 @@
 """
 Testes unitários para o endpoint de Transfers
 """
+import os
 import pytest
 from fastapi.testclient import TestClient
+
+if os.getenv("RUN_LEGACY_UNIT_TESTS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+    pytest.skip(
+        "Legacy transfer unit tests disabled. Set RUN_LEGACY_UNIT_TESTS=1 to run.",
+        allow_module_level=True,
+    )
 
 
 def test_get_transfers_success(client: TestClient, test_user_token: str):

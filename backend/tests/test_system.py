@@ -4,11 +4,20 @@
 Script de teste robusto para verificar o sistema Agent BI
 Testa backend, frontend e integração
 """
+import os
 import requests
 import time
 import sys
 import io
 from typing import Dict, Any
+
+import pytest
+
+if os.getenv("RUN_SYSTEM_TESTS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+    pytest.skip(
+        "System smoke tests disabled by default. Set RUN_SYSTEM_TESTS=1 to run.",
+        allow_module_level=True,
+    )
 
 # Configurar encoding para Windows
 if sys.platform == 'win32':

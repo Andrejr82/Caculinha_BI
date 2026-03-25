@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from backend.app.config.settings import settings
+from backend.app.infrastructure.redis_client import get_sync_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,86 @@ class SemanticCache:
         import re
         return set(re.findall(r'\b\d{3,}\b', text))
 
+    def _extract_business_filters(self, text: str) -> Dict[str, Tuple[str, ...]]:
+        """
+        Extrai filtros de negócio explícitos para evitar fuzzy-match incorreto.
+
+        Exemplos:
+        - "segmento informatica" != "segmento papelaria"
+        - "produto 369947" != "produto 59294"
+        - "loja 520" != "loja 1685"
+        """
+        import re
+
+        tokens = re.findall(r"[a-z0-9à-ÿ]+", text.lower())
+        if not tokens:
+            return {}
+
+        marker_aliases = {
+            "segmento": "segmento",
+            "segmentos": "segmento",
+            "categoria": "categoria",
+            "categorias": "categoria",
+            "grupo": "grupo",
+            "grupos": "grupo",
+            "fabricante": "fabricante",
+            "fabricantes": "fabricante",
+            "marca": "marca",
+            "marcas": "marca",
+            "produto": "produto",
+            "produtos": "produto",
+            "loja": "loja",
+            "lojas": "loja",
+            "une": "loja",
+            "unes": "loja",
+            "unidade": "loja",
+            "unidades": "loja",
+        }
+        skip_tokens = {
+            "do", "da", "de", "dos", "das", "no", "na", "nos", "nas", "em", "por", "para",
+            "cada", "todas", "todos", "toda", "todo", "com", "sem", "ultimos", "ultimas",
+            "últimos", "últimas", "ultimo", "último", "ultima", "última", "dias", "dia",
+            "mes", "mês", "meses", "semanas", "semana",
+        }
+        boundary_tokens = skip_tokens | {
+            "venda", "vendas", "faturamento", "estoque", "margem", "grafico", "gráfico",
+            "dashboard", "tabela", "export", "exportar", "planilha", "ranking", "resumo",
+            "analise", "análise", "loja", "lojas", "une", "unes", "unidade", "unidades",
+            "segmento", "segmentos", "categoria", "categorias", "grupo", "grupos",
+            "fabricante", "fabricantes", "marca", "marcas", "produto", "produtos",
+        }
+
+        extracted: Dict[str, set[str]] = {}
+        index = 0
+        while index < len(tokens):
+            canonical = marker_aliases.get(tokens[index])
+            if not canonical:
+                index += 1
+                continue
+
+            probe = index + 1
+            while probe < len(tokens) and tokens[probe] in skip_tokens:
+                probe += 1
+
+            value_tokens = []
+            while probe < len(tokens):
+                current = tokens[probe]
+                if current in boundary_tokens:
+                    break
+                value_tokens.append(current)
+                probe += 1
+
+            if value_tokens:
+                extracted.setdefault(canonical, set()).add(" ".join(value_tokens))
+
+            index = max(probe, index + 1)
+
+        return {
+            key: tuple(sorted(values))
+            for key, values in extracted.items()
+            if values
+        }
+
     def _find_similar_entry(self, normalized_query: str, user_id: Optional[str] = None) -> Tuple[Optional[str], float]:
         """
         Busca entrada similar no índice usando similaridade de strings.
@@ -117,6 +198,7 @@ class SemanticCache:
 
         # [OK] FIX: Extrair números da query ANTES de comparar
         query_numbers = self._extract_critical_numbers(normalized_query)
+        query_filters = self._extract_business_filters(normalized_query)
 
         # OTIMIZAÇÃO: Verificar apenas entradas recentes para performance
         recent_items = sorted(
@@ -138,10 +220,15 @@ class SemanticCache:
 
             # [OK] FIX CRÍTICO: Se a query tem números, o cache DEVE ter os MESMOS números
             cached_numbers = self._extract_critical_numbers(cached_norm)
+            cached_filters = self._extract_business_filters(cached_norm)
 
             if query_numbers or cached_numbers:
                 if query_numbers != cached_numbers:
                     continue  # REJEITA - números diferentes = dados diferentes
+
+            if query_filters or cached_filters:
+                if query_filters != cached_filters:
+                    continue  # REJEITA - filtros de negócio diferentes = resposta diferente
 
             # Quick fail por tamanho
             if abs(len(normalized_query) - len(cached_norm)) > len(normalized_query) * 0.3:
@@ -195,6 +282,17 @@ class SemanticCache:
         normalized = self._normalize_query(query)
 
         logger.debug(f"Cache GET - Query: '{query}' | User: {user_id} | Key: {key}")
+
+        redis_client = get_sync_redis_client()
+        if redis_client is not None:
+            try:
+                cached_payload = redis_client.get(self._redis_response_key(key))
+                if cached_payload:
+                    self.hits += 1
+                    logger.info(f"Redis semantic cache HIT para: {query[:50]}... (user={user_id})")
+                    return json.loads(cached_payload)
+            except Exception as e:
+                logger.warning(f"Erro ao ler semantic cache do Redis: {e}")
 
         if key not in self._index:
             # Fuzzy matching com verificação de números críticos
@@ -270,6 +368,16 @@ class SemanticCache:
         # Salvar resposta em arquivo
         cache_file = self.cache_dir / f"{key}.json"
         try:
+            redis_client = get_sync_redis_client()
+            if redis_client is not None:
+                try:
+                    redis_client.setex(
+                        self._redis_response_key(key),
+                        int(self.ttl_seconds),
+                        json.dumps(response, ensure_ascii=False),
+                    )
+                except Exception as redis_exc:
+                    logger.warning(f"Erro ao salvar semantic cache no Redis: {redis_exc}")
             with open(cache_file, 'w', encoding='utf-8') as f:
                 json.dump(response, f, ensure_ascii=False, indent=2)
 
@@ -328,6 +436,9 @@ class SemanticCache:
             "hit_rate": f"{hit_rate:.1f}%",
             "cache_dir": str(self.cache_dir),
         }
+
+    def _redis_response_key(self, key: str) -> str:
+        return f"{settings.REDIS_KEY_PREFIX}:semantic_cache:{key}"
 
 
 # Instância global do cache

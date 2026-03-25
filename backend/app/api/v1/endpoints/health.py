@@ -10,8 +10,10 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, status
 import structlog
+from sqlalchemy.engine import make_url
 
 from backend.app.config.settings import get_settings
+from backend.app.infrastructure.redis_client import get_sync_redis_client
 
 router = APIRouter()
 logger = structlog.get_logger("agentbi.health")
@@ -89,7 +91,9 @@ async def check_dependencies() -> Dict[str, Any]:
     overall_status = "healthy"
 
     # Check 1: Database connectivity (if enabled)
-    if settings.USE_SQL_SERVER:
+    database_url = str(getattr(settings, "DATABASE_URL", "") or "").strip()
+    chat_state_uses_sqlserver = str(getattr(settings, "CHAT_STATE_BACKEND", "") or "").strip().lower() == "sqlserver"
+    if settings.USE_SQL_SERVER or chat_state_uses_sqlserver:
         db_check = await check_database()
         checks["database"] = db_check
         if db_check["status"] != "healthy":
@@ -97,7 +101,7 @@ async def check_dependencies() -> Dict[str, Any]:
     else:
         checks["database"] = {
             "status": "disabled",
-            "message": "SQL Server disabled, using Parquet fallback"
+            "message": "SQL Server disabled, using local fallback for chat state"
         }
 
     # Check 2: Data adapter (Parquet/Hybrid)
@@ -106,7 +110,13 @@ async def check_dependencies() -> Dict[str, Any]:
     if data_check["status"] != "healthy":
         overall_status = "degraded"
 
-    # Check 3: Environment configuration
+    # Check 3: Redis runtime
+    redis_check = check_redis()
+    checks["redis"] = redis_check
+    if redis_check["status"] == "unhealthy":
+        overall_status = "degraded"
+
+    # Check 4: Environment configuration
     env_check = check_environment()
     checks["environment"] = env_check
     if env_check["status"] != "healthy":
@@ -116,6 +126,8 @@ async def check_dependencies() -> Dict[str, Any]:
         "status": overall_status,
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
+        "analytics_source": "parquet",
+        "chat_state_backend": settings.CHAT_STATE_BACKEND,
         "timestamp": datetime.utcnow().isoformat(),
         "checks": checks
     }
@@ -129,9 +141,40 @@ async def check_database() -> Dict[str, Any]:
         Status dictionary for database
     """
     try:
+        database_url = str(getattr(settings, "DATABASE_URL", "") or "").strip()
+        chat_state_uses_sqlserver = str(getattr(settings, "CHAT_STATE_BACKEND", "") or "").strip().lower() == "sqlserver"
+
+        if chat_state_uses_sqlserver and database_url.startswith("mssql+pytds://"):
+            import pytds
+
+            def _sync_check() -> None:
+                url = make_url(database_url)
+                conn = pytds.connect(
+                    dsn=url.host,
+                    port=url.port or 1433,
+                    database=url.database,
+                    user=url.username,
+                    password=url.password,
+                    autocommit=True,
+                    cafile=None,
+                )
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT 1")
+                    cursor.fetchone()
+                finally:
+                    conn.close()
+
+            async with asyncio.timeout(2):
+                await asyncio.to_thread(_sync_check)
+
+            return {
+                "status": "healthy",
+                "message": "Database connected via pytds",
+            }
+
         from backend.app.config.database import engine
 
-        # Try to connect with short timeout
         async with asyncio.timeout(2):
             async with engine.connect() as conn:
                 await conn.execute("SELECT 1")
@@ -168,18 +211,46 @@ async def check_data_adapter() -> Dict[str, Any]:
             return {
                 "status": "healthy",
                 "source": "parquet",
+                "path": str(parquet_path),
                 "message": f"Parquet file accessible: {parquet_path.name}"
             }
         else:
             return {
                 "status": "unhealthy",
                 "source": "parquet",
+                "path": str(parquet_path),
                 "message": f"Parquet file not found: {settings.PARQUET_DATA_PATH}"
             }
     except Exception as e:
         return {
             "status": "unhealthy",
             "message": f"Data adapter error: {str(e)}"
+        }
+
+
+def check_redis() -> Dict[str, Any]:
+    try:
+        if not settings.REDIS_ENABLED:
+            return {
+                "status": "disabled",
+                "message": "Redis disabled for this environment",
+            }
+
+        client = get_sync_redis_client()
+        if client is None:
+            return {
+                "status": "unhealthy",
+                "message": "Redis enabled but no client available",
+            }
+        client.ping()
+        return {
+            "status": "healthy",
+            "message": "Redis connected",
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "message": f"Redis error: {str(e)}"
         }
 
 

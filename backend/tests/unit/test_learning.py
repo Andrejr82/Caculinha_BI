@@ -4,6 +4,7 @@ Testes unitários para o endpoint de Learning
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.infrastructure.database.models import User
+from backend.app.api.v1.endpoints import learning as learning_endpoint
 
 
 def test_get_insights_success(client: TestClient, test_user_token: str):
@@ -68,3 +69,36 @@ def test_get_insights_with_admin(client: TestClient, test_admin_token: str):
     assert response.status_code == 200
     data = response.json()
     assert "insights" in data
+
+
+def test_get_unified_dataset_status_success(client: TestClient, test_admin_token: str, monkeypatch):
+    monkeypatch.setattr(
+        learning_endpoint,
+        "get_unified_dataset_status",
+        lambda rebuild_if_missing=False, base_dir=None: {
+            "exists": True,
+            "dataset_version": "v2.0.0",
+            "records_total": 12,
+            "completeness": {
+                "runtime_ready": True,
+                "production_ready": False,
+                "missing_production_sources": ["feedback"],
+            },
+        },
+    )
+
+    response = client.get(
+        "/api/v1/learning/unified-dataset-status",
+        headers={"Authorization": f"Bearer {test_admin_token}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["status"]["dataset_version"] == "v2.0.0"
+    assert payload["status"]["completeness"]["runtime_ready"] is True
+
+
+def test_get_unified_dataset_status_unauthorized(client: TestClient):
+    response = client.get("/api/v1/learning/unified-dataset-status")
+    assert response.status_code == 401

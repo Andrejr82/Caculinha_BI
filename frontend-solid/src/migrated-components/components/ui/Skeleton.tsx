@@ -13,11 +13,12 @@ interface SkeletonProps extends JSX.HTMLAttributes<HTMLDivElement> {}
  * ```
  */
 export function Skeleton(props: SkeletonProps) {
+  const { class: className, ...rest } = props;
   return (
     <div
       data-slot="skeleton"
-      class={cn("bg-accent animate-pulse rounded-md", props.class)}
-      {...props}
+      class={cn("bg-accent animate-pulse rounded-md", className)}
+      {...rest}
     />
   );
 }

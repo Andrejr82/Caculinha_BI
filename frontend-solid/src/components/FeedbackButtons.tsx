@@ -28,13 +28,13 @@ export const FeedbackButtons: Component<FeedbackButtonsProps> = (props) => {
       >
         👎
       </button>
-      {/* <button 
+      <button 
         onClick={() => handleFeedbackClick('partial')}
         class="text-blue-500 hover:text-blue-700"
         title="Respostas parcialmente útil"
       >
         🤏
-      </button> */}
+      </button>
     </div>
   );
 };

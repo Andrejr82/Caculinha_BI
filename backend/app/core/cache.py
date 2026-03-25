@@ -7,10 +7,14 @@ import time
 import json
 import os
 import hashlib
+import sys
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
 from backend.app.config.settings import settings
+
+sys.modules.setdefault("app.core.cache", sys.modules[__name__])
+sys.modules.setdefault("backend.app.core.cache", sys.modules[__name__])
 
 class AgentGraphCache:
     """
@@ -19,9 +23,17 @@ class AgentGraphCache:
     (T6.1.1 from TASK_LIST)
     """
 
-    def __init__(self, cache_dir: str = "data/cache_agent_graph", ttl_minutes: int = settings.AGENT_GRAPH_CACHE_TTL_MINUTES):
+    def __init__(
+        self,
+        cache_dir: str = "data/cache_agent_graph",
+        ttl_minutes: Optional[int] = None,
+        settings_obj=None,
+    ):
+        self._settings = settings_obj or settings
         self.cache_dir = cache_dir
         os.makedirs(self.cache_dir, exist_ok=True)
+        if ttl_minutes is None:
+            ttl_minutes = int(getattr(self._settings, "AGENT_GRAPH_CACHE_TTL_MINUTES", 360))
         self.ttl = timedelta(minutes=ttl_minutes)
         self.in_memory_cache: Dict[str, Dict[str, Any]] = {} # {key: {value: graph_data, timestamp: datetime, version: str}}
         print(f"AgentGraphCache initialized in {self.cache_dir} with TTL {self.ttl}")
@@ -44,8 +56,8 @@ class AgentGraphCache:
         # prompt templates, and relevant configuration files.
         version_data = {
             "agent_code_version": "1.0", # Placeholder: could be hash of agent source code
-            "settings_llm_model": settings.LLM_MODEL_NAME,
-            "settings_rag_model": settings.RAG_EMBEDDING_MODEL,
+            "settings_llm_model": getattr(self._settings, "LLM_MODEL_NAME", ""),
+            "settings_rag_model": getattr(self._settings, "RAG_EMBEDDING_MODEL", ""),
         }
         return hashlib.sha256(json.dumps(version_data, sort_keys=True).encode("utf-8")).hexdigest()
 

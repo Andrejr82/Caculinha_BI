@@ -5,10 +5,29 @@ Seguindo AAA Pattern (Arrange, Act, Assert)
 import sys
 import os
 from pathlib import Path
+import pytest
 
 # Adicionar backend ao path
 backend_path = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_path))
+
+
+def _resolve_parquet_path() -> str:
+    from backend.app.config.settings import settings
+
+    configured = Path(settings.PARQUET_FILE_PATH)
+    candidates = [
+        configured,
+        Path.cwd() / configured,
+        Path.cwd() / "backend" / "data" / "parquet" / "admmat.parquet",
+        Path.cwd() / "data" / "parquet" / "admmat.parquet",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate).replace("\\", "/")
+
+    pytest.skip("Arquivo parquet não disponível para este ambiente de teste.")
 
 def test_limite_padrao_e_100():
     """
@@ -35,7 +54,7 @@ def test_limite_padrao_e_100():
     
     # Assert
     assert limite_param.default == 100, f"Limite padrão deveria ser 100, mas é {limite_param.default}"
-    print("✅ PASS: Limite padrão é 100")
+    print("PASS: limite padrao e 100")
 
 
 def test_limite_maximo_e_500():
@@ -58,7 +77,7 @@ def test_limite_maximo_e_500():
     # Assert
     assert "if limite > 500:" in source, "Limite máximo deveria ser 500"
     assert "limite = 500" in source, "Deve ajustar para 500 quando exceder"
-    print("✅ PASS: Limite máximo é 500")
+    print("PASS: limite maximo e 500")
 
 
 def test_conversao_string_para_int():
@@ -78,7 +97,7 @@ def test_conversao_string_para_int():
     # Assert
     assert "isinstance(limite, str)" in source, "Deve verificar se limite é string"
     assert "int(limite)" in source, "Deve converter string para int"
-    print("✅ PASS: Conversão de string para int implementada")
+    print("PASS: conversao de string para int implementada")
 
 def test_produto_369947_dados_reais():
     """
@@ -92,9 +111,10 @@ def test_produto_369947_dados_reais():
     adapter = get_duckdb_adapter()
     
     # Act
-    query = """
+    parquet_path = _resolve_parquet_path()
+    query = f"""
     SELECT COUNT(DISTINCT UNE) as total_unes
-    FROM read_parquet('data/parquet/admmat.parquet')
+    FROM read_parquet('{parquet_path}')
     WHERE PRODUTO = 369947 AND VENDA_30DD > 0
     """
     
@@ -104,7 +124,7 @@ def test_produto_369947_dados_reais():
     # Assert
     assert total_unes >= 35, f"Esperava >= 35 UNEs, encontrou {total_unes}"
     assert total_unes <= 40, f"Esperava <= 40 UNEs, encontrou {total_unes}"
-    print(f"✅ PASS: Produto 369947 tem {total_unes} UNEs com vendas")
+    print(f"PASS: produto 369947 tem {total_unes} UNEs com vendas")
 
 def test_limite_antigo_removido():
     """
@@ -121,8 +141,8 @@ def test_limite_antigo_removido():
     source = inspect.getsource(func)
     
     # Assert
-    assert "if limite > 50:" not in source, "❌ Limite antigo de 50 ainda presente!"
-    print("✅ PASS: Limite antigo de 50 foi removido")
+    assert "if limite > 50:" not in source, "Limite antigo de 50 ainda presente"
+    print("PASS: limite antigo de 50 foi removido")
 
 if __name__ == "__main__":
     print("=== UNIT TESTS: consultar_dados_flexivel ===\n")

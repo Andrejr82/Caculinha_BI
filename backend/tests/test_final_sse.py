@@ -4,11 +4,25 @@ Teste Final - Validação de Linguagem Natural com Parser SSE Correto
 import requests
 import json
 import re
+import os
+from pathlib import Path
+import pytest
 
 BASE_URL = "http://localhost:8000"
 
-# Ler token válido
-with open("tests/test_token.txt", "r") as f:
+pytestmark = [pytest.mark.manual, pytest.mark.external]
+
+if os.getenv("RUN_MANUAL_SSE_TESTS", "0") != "1":
+    pytest.skip(
+        "teste manual SSE; defina RUN_MANUAL_SSE_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
+
+token_path = Path(__file__).resolve().parent / "test_token.txt"
+if not token_path.exists():
+    pytest.skip("teste manual SSE: token de teste não encontrado.", allow_module_level=True)
+
+with open(token_path, "r", encoding="utf-8") as f:
     token = f.read().strip()
 
 print("=" * 60)

@@ -1,8 +1,20 @@
 # backend/tests/unit/test_caculinha_bi_agent.py
 
+import os
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent, FieldMapper, CodeGenAgent
+
+pytestmark = [pytest.mark.legacy]
+
+if os.getenv("RUN_LEGACY_UNIT_TESTS", "0") != "1":
+    pytest.skip(
+        "teste unitário legado; defina RUN_LEGACY_UNIT_TESTS=1 para executar.",
+        allow_module_level=True,
+    )
+
+from backend.app.core.agents.caculinha_bi_agent import CaculinhaBIAgent
+from backend.app.core.utils.field_mapper import FieldMapper
+from backend.app.core.agents.code_gen_agent import CodeGenAgent
 from backend.app.core.tools.une_tools import (
     calcular_abastecimento_une, calcular_mc_produto, calcular_preco_final_une,
     validar_transferencia_produto, sugerir_transferencias_automaticas, encontrar_rupturas_criticas

@@ -19,7 +19,7 @@ def test_sanitize_response_for_role_restricts_internal_sections_for_user():
     sanitized = _sanitize_response_for_role(raw, "user")
 
     assert "Detalhamento por loja/UNE restrito para este perfil." in sanitized
-    assert "Conteudo tecnico restrito para este perfil." in sanitized
+    assert "SQL/Python" not in sanitized
     assert "SELECT * FROM admmat" not in sanitized
     assert "Template oficial" not in sanitized
     assert "UNE lider: [restrito]" in sanitized
@@ -38,4 +38,18 @@ def test_sanitize_response_for_role_keeps_detail_for_admin():
     sanitized = _sanitize_response_for_role(raw, "admin")
 
     assert "| Loja (UNE) | Venda (R$) |" in sanitized
-    assert "SELECT * FROM admmat LIMIT 50;" in sanitized
+    assert "SQL/Python" not in sanitized
+    assert "SELECT * FROM admmat LIMIT 50;" not in sanitized
+
+
+def test_sanitize_response_for_role_removes_active_html_payloads():
+    raw = (
+        "Resumo com link suspeito <a href=\"javascript:alert(1)\" onclick=\"alert(2)\">clique</a>\n"
+        "<script>alert('xss')</script>"
+    )
+
+    sanitized = _sanitize_response_for_role(raw, "admin")
+
+    assert "javascript:" not in sanitized.lower()
+    assert "onclick" not in sanitized.lower()
+    assert "<script" not in sanitized.lower()

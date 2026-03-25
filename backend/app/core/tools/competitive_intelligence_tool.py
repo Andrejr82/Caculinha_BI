@@ -127,6 +127,44 @@ def _build_sources(items: List[Dict[str, Any]], limit: int = 20) -> List[Dict[st
     return sources
 
 
+def _build_citations_from_sources(
+    sources: List[Dict[str, Any]],
+    limit: int = 8,
+) -> List[Dict[str, Any]]:
+    citations: List[Dict[str, Any]] = []
+    for src in (sources or [])[: max(1, limit)]:
+        if not isinstance(src, dict):
+            continue
+        citations.append(
+            {
+                "source": str(src.get("fonte") or "fonte_publica"),
+                "domain": str(src.get("dominio") or "n/a"),
+                "url": str(src.get("url") or "").strip(),
+                "competitor": str(src.get("concorrente") or "n/a"),
+            }
+        )
+    return citations
+
+
+def _compute_market_confidence(
+    total_items: int,
+    providers_used: List[str],
+    provider_errors: List[str],
+    *,
+    fallback_benchmark: bool = False,
+) -> float:
+    score = 0.35
+    score += min(0.30, max(0, int(total_items)) * 0.04)
+    score += min(0.20, len(providers_used or []) * 0.06)
+    if fallback_benchmark:
+        score -= 0.12
+    if provider_errors:
+        score -= min(0.12, len(provider_errors) * 0.04)
+    if any("timeout_total_excedido" in str(err).lower() for err in (provider_errors or [])):
+        score -= 0.10
+    return round(max(0.05, min(score, 0.98)), 2)
+
+
 def _competitor_label(value: Any) -> str:
     label = str(value or "").strip()
     if not label:
@@ -455,6 +493,47 @@ def _extract_product_query(raw: str) -> str:
     # Remove conectivos finais
     q_low = re.sub(r"\s+", " ", q_low).strip(" .,-")
     return q_low or q
+
+
+def _tokenize_market_query(value: str) -> List[str]:
+    """Tokenização leve para checagem de aderência semântica do item."""
+    text = _normalize_text(value)
+    if not text:
+        return []
+    tokens = re.findall(r"[a-z0-9]+(?:x[a-z0-9]+)?", text)
+    stopwords = {
+        "de", "da", "do", "das", "dos", "para", "com", "sem", "por", "em", "no", "na",
+        "produto", "mercado", "preco", "preço", "pesquisa", "cotacao", "cotação", "benchmark",
+        "rj", "mg", "es", "br",
+    }
+    out: List[str] = []
+    for token in tokens:
+        if token in stopwords:
+            continue
+        if token.isdigit() and len(token) < 3:
+            continue
+        if token not in out:
+            out.append(token)
+    return out
+
+
+def _market_relevance_score(product_query: str, product_title: str) -> float:
+    """
+    Score [0..1] de aderência entre termo pesquisado e título retornado.
+    Regras simples para bloquear resultados claramente irrelevantes.
+    """
+    query_tokens = _tokenize_market_query(product_query)
+    if not query_tokens:
+        return 1.0
+
+    title_norm = _normalize_text(product_title or "")
+    if not title_norm:
+        return 0.0
+
+    token_hits = sum(1 for token in query_tokens if token in title_norm)
+    token_ratio = token_hits / max(len(query_tokens), 1)
+    exact_bonus = 0.25 if _normalize_text(product_query) in title_norm else 0.0
+    return max(0.0, min(1.0, token_ratio + exact_bonus))
 
 
 def _item_matches_competitor(item: Dict[str, Any], competitors: List[str]) -> bool:
@@ -1240,6 +1319,10 @@ def pesquisar_precos_concorrentes(
         return {
             "status": "error",
             "error": "Pesquisa concorrencial está desabilitada no ambiente.",
+            "source": "tool.pesquisar_precos_concorrentes",
+            "confidence": 0.0,
+            "mode": "error",
+            "citations": [],
         }
 
     query = (descricao_produto or "").strip()
@@ -1247,6 +1330,10 @@ def pesquisar_precos_concorrentes(
         return {
             "status": "error",
             "error": "Informe o produto/descrição para pesquisa concorrencial.",
+            "source": "tool.pesquisar_precos_concorrentes",
+            "confidence": 0.0,
+            "mode": "error",
+            "citations": [],
         }
 
     allowed_states = {s.strip().upper() for s in (settings.COMPETITIVE_ALLOWED_STATES or "").split(",") if s.strip()}
@@ -1255,6 +1342,10 @@ def pesquisar_precos_concorrentes(
         return {
             "status": "error",
             "error": f"Estado '{state}' fora do escopo configurado ({', '.join(sorted(allowed_states))}).",
+            "source": "tool.pesquisar_precos_concorrentes",
+            "confidence": 0.0,
+            "mode": "error",
+            "citations": [],
         }
 
     limit = _parse_limit(limite)
@@ -1568,6 +1659,19 @@ def pesquisar_precos_concorrentes(
 
     total = len(validated)
     if total == 0:
+        empty_sources = _build_sources(collected)
+        empty_citations = _build_citations_from_sources(empty_sources)
+        empty_confidence = _compute_market_confidence(
+            total_items=0,
+            providers_used=providers_used,
+            provider_errors=provider_errors[:3],
+            fallback_benchmark=fallback_mode_used,
+        )
+        empty_mode = "deterministic_no_evidence"
+        if fallback_mode_used:
+            empty_mode = "deterministic_fallback"
+        if any("timeout_total_excedido" in str(err).lower() for err in provider_errors[:3]):
+            empty_mode = "deterministic_degraded_timeout"
         hints = _target_without_public_price_hint(target_competitors)
         if hints:
             msg = (
@@ -1599,12 +1703,16 @@ def pesquisar_precos_concorrentes(
                 "domain_whitelist": _allowed_domains(),
                 "fallback_seed_local": False,
             },
-            "fontes_consultadas": _build_sources(collected),
+            "fontes_consultadas": empty_sources,
             "consultado_em": datetime.utcnow().isoformat() + "Z",
             "metodo_consulta": "externo_sem_seed_local",
             "metodo_detalhado": "providers: " + ",".join(priority),
             "concorrentes_alvo": target_competitors,
             "fallback_benchmark_aplicado": fallback_mode_used,
+            "source": "tool.pesquisar_precos_concorrentes",
+            "confidence": empty_confidence,
+            "mode": empty_mode,
+            "citations": empty_citations,
         }
 
     # Ordena por preço quando numérico
@@ -1620,6 +1728,16 @@ def pesquisar_precos_concorrentes(
     )
     avg_price_values = [p for p in [_price_key(i) for i in validated] if p != float("inf")]
     avg_price = round(sum(avg_price_values) / len(avg_price_values), 2) if avg_price_values else None
+    sources_payload = _build_sources(validated)
+    confidence = _compute_market_confidence(
+        total_items=len(validated),
+        providers_used=providers_used,
+        provider_errors=provider_errors[:3],
+        fallback_benchmark=fallback_mode_used,
+    )
+    mode = "deterministic_fallback" if fallback_mode_used else "deterministic_tool"
+    if any("timeout_total_excedido" in str(err).lower() for err in provider_errors[:3]):
+        mode = "deterministic_degraded_timeout"
 
     return {
         "status": "success",
@@ -1635,7 +1753,7 @@ def pesquisar_precos_concorrentes(
             "discard_reasons": discarded[:5],
             "domain_whitelist": _allowed_domains(),
         },
-        "fontes_consultadas": _build_sources(validated),
+        "fontes_consultadas": sources_payload,
         "consultado_em": datetime.utcnow().isoformat() + "Z",
         "metodo_consulta": "fallback_externo_playwright_crawler_websearch_social_mercadolivre_serpapi_bellart_manual",
         "metodo_detalhado": "providers: " + ",".join(priority),
@@ -1647,6 +1765,10 @@ def pesquisar_precos_concorrentes(
             "segmento": segmento,
             "query": query,
         },
+        "source": "tool.pesquisar_precos_concorrentes",
+        "confidence": confidence,
+        "mode": mode,
+        "citations": _build_citations_from_sources(sources_payload),
     }
 
 
@@ -2044,6 +2166,10 @@ def pesquisar_mercado_web(
         return {
             "status": "error",
             "error": "Informe o produto/termo para pesquisa de mercado.",
+            "source": "tool.pesquisar_mercado_web",
+            "confidence": 0.0,
+            "mode": "error",
+            "citations": [],
         }
 
     # Limpar query de comandos conversacionais
@@ -2096,12 +2222,20 @@ def pesquisar_mercado_web(
     validated: List[Dict[str, Any]] = []
     discarded_count = 0
     seen_urls: set[str] = set()
+    query_tokens = _tokenize_market_query(clean_query)
+    min_relevance = 0.45 if len(query_tokens) >= 3 else 0.35
     for item in all_results:
         url = str(item.get("url") or "").strip()
         produto = str(item.get("produto") or "").strip()
         if not produto:
             discarded_count += 1
             continue
+
+        relevance = _market_relevance_score(clean_query, produto)
+        if relevance < min_relevance:
+            discarded_count += 1
+            continue
+
         # Deduplicar por URL
         if url and url in seen_urls:
             discarded_count += 1
@@ -2120,6 +2254,7 @@ def pesquisar_mercado_web(
             "estado": "",
             "cidade": "",
             "target_competitor": competitor,
+            "relevance_score": round(float(relevance), 3),
         })
         if len(validated) >= collection_cap:
             break
@@ -2137,6 +2272,17 @@ def pesquisar_mercado_web(
         sources_used.append("competitor_web_fallback")
     if coverage_errors:
         source_errors.extend(coverage_errors[:3])
+
+    if validated:
+        filtered_validated: List[Dict[str, Any]] = []
+        for item in validated:
+            relevance = float(item.get("relevance_score") or _market_relevance_score(clean_query, str(item.get("produto") or "")))
+            if relevance < min_relevance:
+                discarded_count += 1
+                continue
+            item["relevance_score"] = round(relevance, 3)
+            filtered_validated.append(item)
+        validated = filtered_validated
 
     # --- Ordenar por preço (itens com preço primeiro) ---
     def _sort_key(item: Dict[str, Any]) -> tuple:
@@ -2177,6 +2323,18 @@ def pesquisar_mercado_web(
         }
 
     elapsed = round(time.monotonic() - started_at, 1)
+    sources_payload = _build_sources(validated if validated else all_results)
+    confidence = _compute_market_confidence(
+        total_items=len(validated),
+        providers_used=sources_used,
+        provider_errors=source_errors[:3],
+        fallback_benchmark=False,
+    )
+    mode = "deterministic_tool"
+    if not validated:
+        mode = "deterministic_no_evidence"
+    if any("timeout_total_excedido" in str(err).lower() for err in source_errors[:3]):
+        mode = "deterministic_degraded_timeout"
 
     if not validated:
         return {
@@ -2195,7 +2353,7 @@ def pesquisar_mercado_web(
                 "discard_reasons": [],
                 "tipo": "mercado_aberto",
             },
-            "fontes_consultadas": sources_used,
+            "fontes_consultadas": sources_payload,
             "consultado_em": datetime.utcnow().isoformat() + "Z",
             "metodo_consulta": "pesquisa_mercado_web",
             "metodo_detalhado": f"providers: {','.join(sources_used) or 'nenhum'}",
@@ -2210,6 +2368,10 @@ def pesquisar_mercado_web(
             "termo_pesquisado": clean_query,
             "estatisticas_preco": stats or None,
             "tempo_busca_segundos": elapsed,
+            "source": "tool.pesquisar_mercado_web",
+            "confidence": confidence,
+            "mode": mode,
+            "citations": _build_citations_from_sources(sources_payload),
         }
 
     return {
@@ -2225,7 +2387,7 @@ def pesquisar_mercado_web(
             "discard_reasons": [],
             "tipo": "mercado_aberto",
         },
-        "fontes_consultadas": sources_used,
+        "fontes_consultadas": sources_payload,
         "consultado_em": datetime.utcnow().isoformat() + "Z",
         "metodo_consulta": "pesquisa_mercado_web",
         "metodo_detalhado": f"providers: {','.join(sources_used)}",
@@ -2236,4 +2398,8 @@ def pesquisar_mercado_web(
         "termo_pesquisado": clean_query,
         "estatisticas_preco": stats or None,
         "tempo_busca_segundos": elapsed,
+        "source": "tool.pesquisar_mercado_web",
+        "confidence": confidence,
+        "mode": mode,
+        "citations": _build_citations_from_sources(sources_payload),
     }

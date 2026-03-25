@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -92,9 +93,13 @@ def test_playground_chat_returns_local_fallback_without_remote_key(client, monke
     async def _remote_access(_user, _db):
         return False, "Canário desabilitado para este usuário."
 
+    async def _playground_access(_user, _db):
+        return True, "Acesso habilitado para teste."
+
     monkeypatch.setattr(playground_endpoint.settings, "GEMINI_API_KEY", None)
     monkeypatch.setattr(playground_endpoint, "_get_sql_access_state", _sql_access_state)
     monkeypatch.setattr(playground_endpoint, "_resolve_remote_llm_access", _remote_access)
+    monkeypatch.setattr(playground_endpoint, "_get_playground_access_state", _playground_access)
     app.dependency_overrides[dependencies.get_current_active_user] = _override_user
     app.dependency_overrides[playground_endpoint.get_db] = _override_db
     try:
@@ -123,15 +128,96 @@ def test_playground_stream_returns_sse_without_500(client, monkeypatch):
     async def _remote_access(_user, _db):
         return False, "Canário desabilitado para este usuário."
 
+    async def _playground_access(_user, _db):
+        return True, "Acesso habilitado para teste."
+
     monkeypatch.setattr(playground_endpoint.settings, "GEMINI_API_KEY", None)
     monkeypatch.setattr(playground_endpoint, "_get_sql_access_state", _sql_access_state)
     monkeypatch.setattr(playground_endpoint, "_resolve_remote_llm_access", _remote_access)
+    monkeypatch.setattr(playground_endpoint, "_get_playground_access_state", _playground_access)
     app.dependency_overrides[dependencies.get_current_active_user] = _override_user
     app.dependency_overrides[playground_endpoint.get_db] = _override_db
     try:
         response = client.post("/api/v1/playground/stream", json={"message": "consulta qualquer", "history": [], "stream": True})
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
+        assert '"type": "done"' in response.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_playground_chat_returns_local_fallback_on_remote_timeout(client, monkeypatch):
+    async def _override_user():
+        return FakeUser(role="user")
+
+    fake_db = FakeDbSession()
+
+    async def _override_db():
+        return fake_db
+
+    async def _sql_access_state(_user, _db):
+        return False, "Permissão não concedida.", None
+
+    async def _remote_access(_user, _db):
+        return True, "Canário habilitado para este usuário."
+
+    async def _playground_access(_user, _db):
+        return True, "Acesso habilitado para teste."
+
+    async def _timeout_call(*_args, **_kwargs):
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr(playground_endpoint, "_get_sql_access_state", _sql_access_state)
+    monkeypatch.setattr(playground_endpoint, "_resolve_remote_llm_access", _remote_access)
+    monkeypatch.setattr(playground_endpoint, "_get_playground_access_state", _playground_access)
+    monkeypatch.setattr(playground_endpoint, "_run_playground_remote_call", _timeout_call)
+    app.dependency_overrides[dependencies.get_current_active_user] = _override_user
+    app.dependency_overrides[playground_endpoint.get_db] = _override_db
+    try:
+        response = client.post("/api/v1/playground/chat", json={"message": "consulta qualquer", "history": [], "stream": False})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["model_info"]["model"] == "local-fallback"
+        assert body["model_info"]["timeout_fallback"] is True
+        assert body["metadata"]["source"] == "local-fallback"
+        assert body["metadata"]["intent"] == "fallback.timeout"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_playground_stream_degrades_to_local_fallback_on_remote_timeout(client, monkeypatch):
+    async def _override_user():
+        return FakeUser(role="user")
+
+    fake_db = FakeDbSession()
+
+    async def _override_db():
+        return fake_db
+
+    async def _sql_access_state(_user, _db):
+        return False, "Permissão não concedida.", None
+
+    async def _remote_access(_user, _db):
+        return True, "Canário habilitado para este usuário."
+
+    async def _playground_access(_user, _db):
+        return True, "Acesso habilitado para teste."
+
+    async def _timeout_call(*_args, **_kwargs):
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr(playground_endpoint, "_get_sql_access_state", _sql_access_state)
+    monkeypatch.setattr(playground_endpoint, "_resolve_remote_llm_access", _remote_access)
+    monkeypatch.setattr(playground_endpoint, "_get_playground_access_state", _playground_access)
+    monkeypatch.setattr(playground_endpoint, "_run_playground_remote_call", _timeout_call)
+    app.dependency_overrides[dependencies.get_current_active_user] = _override_user
+    app.dependency_overrides[playground_endpoint.get_db] = _override_db
+    try:
+        response = client.post("/api/v1/playground/stream", json={"message": "consulta qualquer", "history": [], "stream": True})
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        assert '"type": "degraded"' in response.text
+        assert "Tempo limite do provedor remoto atingido" in response.text
         assert '"type": "done"' in response.text
     finally:
         app.dependency_overrides.clear()

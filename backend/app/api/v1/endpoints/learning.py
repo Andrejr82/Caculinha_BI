@@ -13,6 +13,7 @@ from backend.app.core.data_scope_service import data_scope_service
 from backend.app.infrastructure.database.models import User
 from backend.app.config.settings import settings
 from backend.app.core.learning.continuous_learner import get_continuous_learner
+from backend.app.core.learning.unified_dataset_builder import get_unified_dataset_status
 from backend.app.core.rag.hybrid_retriever import get_hybrid_retriever
 
 logger = logging.getLogger(__name__)
@@ -379,6 +380,29 @@ async def get_golden_dataset_stats(
 
     except Exception as e:
         logger.error(f"Erro ao obter stats do golden dataset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/unified-dataset-status")
+async def get_unified_dataset_runtime_status(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    rebuild_if_missing: bool = False,
+) -> Dict[str, Any]:
+    """
+    Retorna o estado do dataset unificado usado por prompt/RAG.
+
+    O relatório diferencia:
+    - runtime_ready: pronto para uso técnico
+    - production_ready: possui também corpus real de feedback/exemplos
+    """
+    try:
+        status_payload = get_unified_dataset_status(rebuild_if_missing=rebuild_if_missing)
+        return {
+            "success": True,
+            "status": status_payload,
+        }
+    except Exception as e:
+        logger.error(f"Erro ao obter status do dataset unificado: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
