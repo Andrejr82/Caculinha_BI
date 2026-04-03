@@ -6,7 +6,7 @@ Plataforma de BI conversacional para varejo com backend FastAPI, frontend SolidJ
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-green.svg)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Atualizado em: 2026-03-28
+Atualizado em: 2026-04-03
 
 ## Convenções de dependências
 
@@ -14,8 +14,9 @@ Atualizado em: 2026-03-28
 - Frontend: Bun como gerenciador padrão, com lock oficial em `frontend-solid/bun.lock`.
 - `frontend-solid/package-lock.json` não faz mais parte do fluxo padrão.
 
-## Estado do saneamento
+## Estado do saneamento e Segurança
 
+- 🛡️ **Hardening de Segurança (03 de Abril de 2026):** Todas as credenciais de banco de dados (`UID`/`PWD`) foram removidas do código-fonte (scripts operacionais e endpoints). O sistema agora exige obrigatoriamente a configuração das variáveis `DB_ALT_*` ou `PYODBC_CONNECTION_STRING` no ambiente.
 - O repositório passou por saneamento estrutural em 28 de março de 2026.
 - O plano executado está em `docs/PLANO_SANEAMENTO_2026-03-28.md`.
 - A auditoria inicial foi preservada em quarentena restaurável em `legacy_quarantine/cleanup-2026-04-02/docs/historico/AUDITORIA_PROFUNDA_PROJETO_2026-03-27.md`.
