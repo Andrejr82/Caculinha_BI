@@ -1,7 +1,10 @@
 # backend/app/core/utils/field_mapper.py
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 class FieldMapper:
     """
@@ -41,7 +44,7 @@ class FieldMapper:
                 break
         
         if not found_path:
-            print(f"Info: Catalog file not found. Using column_mapping.py as authoritative source (97 colunas).")
+            logger.info("Catalog file not found. Using column_mapping.py as authoritative source.")
             return self._get_catalog_from_column_mapping()
 
         try:
@@ -50,10 +53,10 @@ class FieldMapper:
                 if isinstance(data, dict):
                     return {k.lower(): v for k, v in data.items()}
                 else:
-                    print(f"Warning: Catalog file {found_path} has unexpected structure. Using column_mapping.py.")
+                    logger.warning("Catalog file %s has unexpected structure. Using column_mapping.py.", found_path)
                     return self._get_catalog_from_column_mapping()
         except Exception as e:
-            print(f"Warning: Error loading catalog from {found_path}: {e}. Using column_mapping.py.")
+            logger.warning("Error loading catalog from %s: %s. Using column_mapping.py.", found_path, e)
             return self._get_catalog_from_column_mapping()
 
     def _get_catalog_from_column_mapping(self) -> Dict[str, str]:
@@ -91,7 +94,10 @@ class FieldMapper:
                 "descricao": "NOME",
                 
                 # Classificação
+                "segmento": "NOMESEGMENTO",
                 "segmento de mercado": "NOMESEGMENTO",
+                "categoria": "NOMECATEGORIA",
+                "grupo": "NOMEGRUPO",
                 "marca": "NOMEFABRICANTE",
                 
                 # Estoque
@@ -142,11 +148,11 @@ class FieldMapper:
             
             catalog.update(semantic_aliases)
             
-            print(f"FieldMapper: Loaded {len(catalog)} mappings from column_mapping.py")
+            logger.info("FieldMapper loaded %s mappings from column_mapping.py", len(catalog))
             return catalog
             
         except ImportError as e:
-            print(f"CRITICAL: Failed to import column_mapping.py: {e}. Using minimal fallback.")
+            logger.error("Failed to import column_mapping.py: %s. Using minimal fallback.", e)
             return self._get_minimal_fallback_catalog()
     
     def _get_minimal_fallback_catalog(self) -> Dict[str, str]:
@@ -208,37 +214,3 @@ class FieldMapper:
             return known_fields[0]
         return None
 
-if __name__ == '__main__':
-    # Create a dummy catalog_focused.json for testing
-    dummy_catalog_path = "data/catalog_focused.json"
-    dummy_catalog_content = {
-        "unidade de negocio": "une_id",
-        "produto": "produto_id",
-        "segmento": "segmento",
-        "quantidade estoque": "estoque_origem"
-    }
-    # Ensure 'data' directory exists for this test
-    import os
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    with open(dummy_catalog_path, 'w', encoding='utf-8') as f:
-        json.dump(dummy_catalog_content, f, indent=4)
-
-    print("--- Testing FieldMapper ---")
-    mapper = FieldMapper()
-    
-    print(f"Map 'Unidade de Negocio': {mapper.map_term('Unidade de Negocio')}")
-    print(f"Map 'PRODUTO': {mapper.map_term('PRODUTO')}")
-    print(f"Map 'segmento': {mapper.map_term('segmento')}")
-    print(f"Map 'quantidade em estoque': {mapper.map_term('quantidade em estoque')}") # Should map to estoque_origem if it recognizes a close match
-
-    print(f"Known fields: {mapper.get_known_fields()}")
-    print(f"DB fields: {mapper.get_db_fields()}")
-
-    print(f"Suggest for 'unidade': {mapper.suggest_correction('unidade')}")
-    print(f"Suggest for 'produt': {mapper.suggest_correction('produt')}")
-    print(f"Suggest for 'non_existent_field': {mapper.suggest_correction('non_existent_field')}")
-
-    # Clean up dummy file
-    os.remove(dummy_catalog_path)
-    print(f"Cleaned up dummy catalog: {dummy_catalog_path}")

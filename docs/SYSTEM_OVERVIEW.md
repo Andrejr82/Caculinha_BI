@@ -323,7 +323,9 @@ Esse script faz o trabalho chato:
 Backend:
 
 ```powershell
-pip install -r backend/requirements.txt
+python -m venv backend/.venv
+backend/.venv/Scripts/python -m pip install --upgrade pip
+backend/.venv/Scripts/python -m pip install -r backend/requirements.txt
 $env:WATCHFILES_FORCE_POLLING='true'
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend --reload-include *.py --reload-include .env
 ```
@@ -332,7 +334,7 @@ Frontend:
 
 ```powershell
 cd frontend-solid
-bun install
+bun install --frozen-lockfile
 bun run dev -- --host 127.0.0.1 --port 3000
 ```
 

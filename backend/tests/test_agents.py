@@ -73,7 +73,7 @@ class TestVectorizationAgent:
     async def test_embed_text_fallback(self, vectorization_agent):
         embedding = await vectorization_agent.embed_text("Hello world")
         assert embedding is not None
-        assert len(embedding) == 768  # Default dimension
+        assert len(embedding) == vectorization_agent.dimension
     
     @pytest.mark.asyncio
     async def test_embed_empty(self, vectorization_agent):

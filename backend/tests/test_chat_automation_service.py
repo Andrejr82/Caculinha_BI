@@ -80,6 +80,21 @@ def test_detect_automation_intent_ignores_analytical_dashboard_generation_reques
     assert response is None
 
 
+def test_detect_automation_intent_ignores_analytical_sales_report_chat_request():
+    service = ChatAutomationService()
+
+    query = "gere um relatório de vendas do segmento tecidos na une scr"
+    response = service.build_proposal_response(
+        query=query,
+        request_id="req-automation-analytical-sales-report",
+        session_id="session-sales-report",
+        current_user=_make_user(),
+    )
+
+    assert service.detect_automation_intent(query) is False
+    assert response is None
+
+
 def test_detect_automation_intent_keeps_navigation_dashboard_request():
     service = ChatAutomationService()
 

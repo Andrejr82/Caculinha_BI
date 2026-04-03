@@ -235,3 +235,38 @@ async def test_process_message_blocks_image_generation_when_multimodal_capabilit
     assert "não estão habilitados" in response["result"]["mensagem"]
     agent.run_async.assert_not_called()
     service.image_generation_service.generate_image.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_message_keeps_analytical_sales_report_query_out_of_computer_use_policy_block():
+    session_manager = Mock(spec=SessionManager)
+    session_manager.get_history.return_value = []
+    session_manager.list_sessions.return_value = []
+    service = ChatServiceV3(session_manager=session_manager)
+    service._load_user_preferences = AsyncMock(return_value={})
+    service._retrieve_cross_session_memory = AsyncMock(return_value=[])
+    service._index_memory_message = AsyncMock()
+
+    agent = Mock()
+    agent.run_async = AsyncMock(
+        return_value={
+            "response": "## Resumo executivo\n- Relatório analítico entregue no chat.\n\n## Próximas ações\n- Revisar a UNE SCR.",
+            "source": "tool.consultar_dados_flexivel",
+            "mode": "deterministic_tool",
+            "confidence": 0.91,
+        }
+    )
+    service._agents_by_role["analyst"] = agent
+
+    response = await service.process_message(
+        query="gere um relatório de vendas do segmento tecidos na une scr",
+        session_id="sess-analytical-report",
+        user_id="user-1",
+        user_role="analyst",
+        user_capabilities={"memory": True, "multimodal": True, "computer_use": False},
+    )
+
+    assert response["mode"] != "policy_block"
+    assert response["source"] == "tool.consultar_dados_flexivel"
+    assert "Relatório analítico entregue no chat." in response["result"]["mensagem"]
+    agent.run_async.assert_awaited_once()

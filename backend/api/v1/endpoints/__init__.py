@@ -1,2 +1,0 @@
-"""Legacy endpoint compatibility package."""
-

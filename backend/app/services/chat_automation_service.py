@@ -95,6 +95,10 @@ def _strip_attachment_context(query: str) -> str:
     return _clean_query(" ".join(kept_lines))
 
 
+def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
+    return any(token in text for token in tokens)
+
+
 def _resource_name(surface: str) -> str:
     return _RESOURCE_BY_SURFACE.get(surface, _RESOURCE_BY_SURFACE["chat"])
 
@@ -522,7 +526,8 @@ class ChatAutomationService:
                 "target_label": recipient,
             }
 
-        report_terms = ("planilha", "csv", "relatório", "relatorio", "export")
+        artifact_terms = ("planilha", "csv", "excel", "xlsx", "arquivo", "anexo", "download", "export")
+        report_terms = ("relatório", "relatorio")
         report_action_terms = (
             "gerar",
             "gere",
@@ -541,7 +546,28 @@ class ChatAutomationService:
             "atualizar",
             "atualize",
         )
-        if any(token in lowered for token in report_terms) and any(token in lowered for token in report_action_terms):
+        report_file_action_terms = (
+            "exportar",
+            "exporte",
+            "baixar",
+            "baixe",
+            "preencher",
+            "preencha",
+            "atualizar",
+            "atualize",
+            "anexar",
+            "anexe",
+            "salvar",
+            "salve",
+        )
+        has_artifact_term = _contains_any(lowered, artifact_terms)
+        has_report_term = _contains_any(lowered, report_terms)
+        has_report_action = _contains_any(lowered, report_action_terms)
+        has_report_file_action = _contains_any(lowered, report_file_action_terms)
+        if (
+            (has_artifact_term and has_report_action)
+            or (has_report_term and has_report_file_action)
+        ):
             segment = self._extract_segment(clean_query)
             filename = validate_upload_filename(f"{_slugify(self._build_subject(clean_query, prefix='relatorio-operacional'))}.csv")
             action = "export.csv" if "csv" in lowered or "export" in lowered else "spreadsheet.create_report"

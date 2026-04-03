@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.app.api.middleware.auth import JWT_SECRET, JWT_ALGORITHM
 
-ADMIN_EMAIL = "user@agentbi.com"
+ADMIN_USERNAME = "admin_user"
 
 @pytest.fixture(scope="module")
 def client():
@@ -118,7 +118,7 @@ ADMIN_ROUTES = [
 @pytest.mark.parametrize("method,path", ADMIN_ROUTES)
 def test_admin_routes_accessible_to_admin(client, method, path):
     """Admin routes should return 200 for admin users."""
-    token = create_token(role="admin", username=ADMIN_EMAIL)
+    token = create_token(role="admin", username=ADMIN_USERNAME)
     headers = {"Authorization": f"Bearer {token}"}
     
     if method == "GET":
@@ -142,7 +142,7 @@ def test_admin_routes_blocked_for_non_admin(client, method, path):
 
 
 # =============================================================================
-# FRONTEND-EXPECTED ROUTES (from routes_diff.md analysis)
+# FRONTEND-EXPECTED ROUTES (contrato estático revisado manualmente)
 # =============================================================================
 
 FRONTEND_EXPECTED_ROUTES = [
@@ -161,7 +161,7 @@ FRONTEND_EXPECTED_ROUTES = [
 @pytest.mark.parametrize("method,path", FRONTEND_EXPECTED_ROUTES)
 def test_frontend_expected_routes_not_404(client, method, path):
     """Routes expected by frontend should NOT return 404."""
-    token = create_token(role="admin", username=ADMIN_EMAIL)
+    token = create_token(role="admin", username=ADMIN_USERNAME)
     headers = {"Authorization": f"Bearer {token}"}
     
     if method == "GET":
@@ -173,5 +173,5 @@ def test_frontend_expected_routes_not_404(client, method, path):
     {method} {path} returned 404
     
     This route is expected by the frontend but is not registered.
-    Check backend/api/v1/router.py and ensure the endpoint exists.
+    Check backend/app/api/router_setup.py or backend/app/api/v1/router.py and ensure the endpoint exists.
     """

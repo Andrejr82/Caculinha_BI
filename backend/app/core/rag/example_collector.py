@@ -46,7 +46,7 @@ class ExampleCollector:
                     if str(entry.get("example_id") or "") == str(example_id):
                         return True
         except OSError as e:
-            print(f"Error reading example file for dedupe {file_path}: {e}")
+            logger.warning("Error reading example file for dedupe %s: %s", file_path, e)
         return False
 
     def add_example(
@@ -167,32 +167,3 @@ class ExampleCollector:
         
         return all_examples
 
-# Example usage
-if __name__ == '__main__':
-    from backend.app.config.settings import Settings
-    temp_settings = Settings()
-
-    # Ensure examples directory exists for testing
-    os.makedirs(temp_settings.LEARNING_EXAMPLES_PATH, exist_ok=True)
-
-    collector = ExampleCollector(examples_dir=temp_settings.LEARNING_EXAMPLES_PATH)
-
-    user1_id = "test_user_1"
-    
-    # Add some examples
-    collector.add_example(user1_id, "Vendas totais por produto", "df.groupby('product').sum()", {"result": "ok"}, "sales_analysis")
-    collector.add_example(user1_id, "Top 5 clientes", "df.groupby('client').count().sort()", {"result": "ok"}, "customer_segmentation")
-    collector.add_example(user1_id, "Média de preço por categoria", "df.groupby('category').mean('price')", {"result": "ok"}, "pricing_analysis")
-
-    print("\n--- Testing get_all_examples ---")
-    all_examples = collector.get_all_examples()
-    print(f"All examples ({len(all_examples)} records):")
-    for entry in all_examples:
-        print(f"  [{entry['timestamp']}] User {entry['user_id']}: {entry['query']} -> {entry['intent']}")
-
-    # Clean up dummy files
-    for filename in os.listdir(temp_settings.LEARNING_EXAMPLES_PATH):
-        if filename.startswith("examples_"):
-            os.remove(os.path.join(temp_settings.LEARNING_EXAMPLES_PATH, filename))
-    print("\nCleaned up dummy example files.")
-    print("\nExampleCollector tests passed!")

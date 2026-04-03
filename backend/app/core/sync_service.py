@@ -23,13 +23,18 @@ class SyncService:
             if settings.PYODBC_CONNECTION_STRING:
                 conn_str = settings.PYODBC_CONNECTION_STRING
             else:
-                # Fallback para montagem manual (baseado no script antigo, mas usando vars do ambiente se disponiveis)
-                driver = "ODBC Driver 17 for SQL Server"
-                server = os.getenv("DB_SERVER", r"FAMILIA\SQLJR,1433")
-                database = os.getenv("DB_NAME", "Projeto_Caculinha")
-                uid = os.getenv("DB_USER", "AgenteVirtual")
-                pwd = os.getenv("DB_PASS", "Cacula@2020")
-                
+                # Fallback para montagem manual via variáveis de ambiente
+                driver   = "ODBC Driver 17 for SQL Server"
+                server   = os.getenv("DB_ALT_SERVER",   r"FAMILIA\SQLJR,1433")
+                database = os.getenv("DB_ALT_DATABASE", "Projeto_Caculinha")
+                uid      = os.getenv("DB_ALT_USER",     "AgenteVirtual")
+                pwd      = os.getenv("DB_ALT_PASSWORD", "")
+
+                if not pwd:
+                    raise ValueError(
+                        "DB_ALT_PASSWORD n\u00e3o definido. Configure PYODBC_CONNECTION_STRING ou DB_ALT_PASSWORD no .env."
+                    )
+
                 conn_str = (
                     f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};"
                     f"UID={uid};PWD={pwd};TrustServerCertificate=yes;"

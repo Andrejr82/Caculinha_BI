@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show, For } from "solid-js";
-import { PlotlyChart } from "../components/PlotlyChart";
+import { useSearchParams } from "@solidjs/router";
+import { ForecastLineChart, type ForecastLineChartModel } from "../components/ForecastLineChart";
 import { dashboardApi, rupturasApi, analyticsApi } from "../lib/api";
 import type { Component } from "solid-js";
 import "../styles/micro-interactions.css";
@@ -36,6 +37,7 @@ interface EOQResult {
 }
 
 const Forecasting: Component = () => {
+  const [searchParams] = useSearchParams();
   // State
   const [produtoId, setProdutoId] = createSignal("");
   const [selectedProduct, setSelectedProduct] = createSignal<any | null>(null);
@@ -62,7 +64,7 @@ const Forecasting: Component = () => {
   const [showScopeDetails, setShowScopeDetails] = createSignal(false);
 
   // Chart
-  const [chartSpec, setChartSpec] = createSignal<any>({});
+  const [forecastChart, setForecastChart] = createSignal<ForecastLineChartModel | null>(null);
   const [analysisLoading, setAnalysisLoading] = createSignal(false);
   const [error, setError] = createSignal("");
   const [metadataError, setMetadataError] = createSignal("");
@@ -144,6 +146,16 @@ const Forecasting: Component = () => {
 
   onMount(async () => {
     await loadMetadata();
+    const initialSegmento = typeof searchParams.segmento === "string" ? searchParams.segmento : "";
+    const initialUne = typeof searchParams.une === "string" ? searchParams.une : "";
+
+    if (initialUne) {
+      setSelectedLoja(initialUne);
+    }
+
+    if (initialSegmento) {
+      await loadGrupos(initialSegmento);
+    }
   });
 
   const loadGrupos = async (segmento: string) => {
@@ -180,104 +192,18 @@ const Forecasting: Component = () => {
     }
   };
 
-  const renderPlotlyChart = (data: ForecastData) => {
+  const buildForecastChart = (data: ForecastData) => {
     const dates = Array.from({ length: data.forecast.length }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() + i);
       return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     });
-
-    const isSeasonalRisk = data.seasonal_context?.urgency !== "Low";
-
-    setChartSpec({
-      data: [
-        // Faixa de Confiança (Área Cinza)
-        {
-          x: dates,
-          y: data.upper_bound,
-          type: 'scatter',
-          mode: 'lines',
-          line: { width: 0 },
-          name: 'Max',
-          showlegend: false,
-          hoverinfo: 'skip'
-        },
-        {
-          x: dates,
-          y: data.lower_bound,
-          type: 'scatter',
-          mode: 'lines',
-          fill: 'tonexty',
-          fillcolor: 'rgba(0, 0, 0, 0.05)', // Black 5%
-          line: { width: 0 },
-          name: 'Confiança',
-          showlegend: false,
-          hoverinfo: 'skip'
-        },
-        // Previsão (Linha grossa preta)
-        {
-          x: dates,
-          y: data.forecast_ajustado,
-          type: 'scatter',
-          mode: 'lines+markers',
-          name: 'Previsão',
-          line: {
-            color: '#171717', // Neutral-900
-            width: 3,
-            shape: 'spline' // Curve suave
-          },
-          marker: {
-            size: 6,
-            color: '#171717'
-          },
-          hovertemplate: '<b>%{y:.0f}</b> un<extra></extra>'
-        },
-        // Tendência Base (Linha Laranja pontilhada)
-        {
-          x: dates,
-          y: data.forecast,
-          type: 'scatter',
-          mode: 'lines',
-          name: 'Tendência Base',
-          line: {
-            color: '#F97316', // Orange-500
-            width: 2,
-            dash: 'dash'
-          },
-          hovertemplate: '%{y:.0f} un<extra></extra>'
-        }
-      ],
-      layout: {
-        font: { family: 'Inter, sans-serif' },
-        hovermode: 'x unified',
-        margin: { l: 40, r: 20, t: 30, b: 40 },
-        showlegend: true,
-        legend: { orientation: 'h', y: 1.1, x: 0 },
-        xaxis: {
-          showgrid: false,
-          tickfont: { size: 11, color: '#737373' },
-          linecolor: '#E5E5E5'
-        },
-        yaxis: {
-          gridcolor: '#F5F5F5',
-          zeroline: false,
-          tickfont: { size: 11, color: '#737373' },
-        },
-        // Anotação Sazonal
-        annotations: isSeasonalRisk ? [
-          {
-            xref: 'paper', yref: 'paper',
-            x: 0.98, y: 0.95,
-            text: `⚠️ ${data.seasonal_context?.season?.toUpperCase()}`,
-            showarrow: false,
-            font: { color: '#C2410C', size: 10, weight: 'bold' },
-            bgcolor: '#FFEDD5',
-            borderpad: 4,
-            rx: 2
-          }
-        ] : []
-      },
-      config: { responsive: true, displayModeBar: false }
+    setForecastChart({
+      labels: dates,
+      upperBound: data.upper_bound,
+      lowerBound: data.lower_bound,
+      adjustedForecast: data.forecast_ajustado,
+      baseForecast: data.forecast,
     });
   };
 
@@ -295,7 +221,7 @@ const Forecasting: Component = () => {
     setForecastData(null);
     setEOQData(null);
     setAllocationData(null);
-    setChartSpec({});
+    setForecastChart(null);
 
     try {
       // 1. Forecast with Store Filter (UNE)
@@ -308,7 +234,7 @@ const Forecasting: Component = () => {
       const fData = response.data;
       if (fData.error) throw new Error(fData.error);
       setForecastData(fData);
-      renderPlotlyChart(fData);
+      buildForecastChart(fData);
 
       // 2. EOQ (Only if Scope is Global/Rede - EOQ per store is too granular usually)
       if (!selectedLoja()) {
@@ -359,6 +285,11 @@ const Forecasting: Component = () => {
           <div>
             <h2 class="text-xs font-black uppercase tracking-widest text-slate-500">Parâmetros de Análise</h2>
             <p class="text-xs text-slate-500 mt-1">Defina escopo, segmento e grupo para montar a previsão comercial.</p>
+            <Show when={selectedSegmento() || selectedLoja()}>
+              <div class="mt-3 inline-flex rounded-full bg-orange-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-orange-700" data-testid="forecasting-scope-pill">
+                Escopo: {selectedSegmento() || 'Todos os segmentos'} {selectedLoja() ? `• UNE ${selectedLoja()}` : '• Rede completa'}
+              </div>
+            </Show>
           </div>
 
           <Show when={metadataError()}>
@@ -380,6 +311,7 @@ const Forecasting: Component = () => {
                 Escopo (Loja)
               </label>
               <select
+                data-testid="forecasting-une-filter"
                 class="w-full bg-white border border-slate-200 text-sm font-medium py-2.5 px-3 rounded-lg focus:border-orange-500 focus:ring-0 outline-none transition-all"
                 value={selectedLoja()}
                 onChange={(e) => setSelectedLoja(e.currentTarget.value)}
@@ -395,6 +327,7 @@ const Forecasting: Component = () => {
                 Segmento Comercial
               </label>
               <select
+                data-testid="forecasting-segment-filter"
                 class="w-full bg-white border border-slate-200 text-sm font-medium py-2.5 px-3 rounded-lg focus:border-orange-500 focus:ring-0 outline-none transition-all"
                 value={selectedSegmento()}
                 onChange={(e) => loadGrupos(e.currentTarget.value)}
@@ -433,11 +366,12 @@ const Forecasting: Component = () => {
                 <span class="text-xs text-slate-500 uppercase tracking-widest">{selectedSegmento() ? "Nenhum resultado" : "Aguardando Filtros"}</span>
               </div>
             }>
-              <div class="divide-y divide-slate-50">
+              <div class="divide-y divide-slate-50" data-testid="forecasting-product-list">
                 <For each={productsList()}>
                   {(prod) => (
                     <button
                       onClick={() => handleProductSelect(prod)}
+                      data-testid="forecasting-product-item"
                       class={`w-full text-left p-4 hover:bg-slate-50 transition-all group relative ${selectedProduct()?.id === prod.id ? 'bg-orange-50/60' : ''}`}
                     >
                       {/* Active Indicator Line */}
@@ -560,7 +494,13 @@ const Forecasting: Component = () => {
                 </div>
 
                 {/* Chart Container - Fixed Height */}
-                <div class="h-[400px] w-full border border-slate-100 rounded-xl relative bg-white overflow-hidden">
+                <div class="h-[400px] w-full border border-slate-100 rounded-xl relative bg-white overflow-hidden" data-testid="forecasting-chart-panel">
+                  <Show when={forecastData()?.seasonal_context?.urgency !== "Low"}>
+                    <div class="absolute left-3 top-3 z-10 inline-flex rounded-full bg-orange-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-orange-700">
+                      {forecastData()?.seasonal_context?.season?.replace('_', ' ')}
+                    </div>
+                  </Show>
+
                   {/* Scope Tooltip Logic */}
                   <div class="absolute top-0 right-0 z-10">
                     <button
@@ -589,13 +529,8 @@ const Forecasting: Component = () => {
                     </Show>
                   </div>
 
-                  <Show when={Object.keys(chartSpec()).length > 0} fallback={<div class="w-full h-full flex items-center justify-center text-neutral-300">Carregando gráfico...</div>}>
-                    <PlotlyChart
-                      chartSpec={chartSpec}
-                      height="400px"
-                      expandedContent={null}
-                      naked={true}
-                    />
+                  <Show when={forecastChart()} fallback={<div class="w-full h-full flex items-center justify-center text-neutral-300">Carregando gráfico...</div>}>
+                    <ForecastLineChart data={forecastChart} />
                   </Show>
                 </div>
               </div>

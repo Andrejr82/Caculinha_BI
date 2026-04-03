@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from decimal import Decimal
 from datetime import datetime, date
+from uuid import uuid4
 
 # Import core dependencies
 from backend.app.api.dependencies import get_current_active_user, get_token_from_header_or_query, issue_stream_token, get_db
@@ -188,9 +189,10 @@ def _has_specific_competitor(query: str) -> bool:
 def _should_use_market_web_fast_path(query: str) -> bool:
     """
     Regras de roteamento para pesquisa de mercado:
-    - market_web: apenas pedido explícito de Mercado Livre.
-    - competitive_research: pesquisa genérica de mercado, concorrente específico
-      (fora ML) ou pedido explícito para "concorrentes".
+    - market_web: pesquisa aberta genérica ou pedido explícito de Mercado Livre.
+      Hoje essa ferramenta já consulta múltiplos providers públicos.
+    - competitive_research: concorrente específico (fora ML) ou pedido
+      explícito para "concorrentes".
     """
     q = (query or "").lower()
     ml_aliases = ["mercado livre", "mercadolivre", "meli"]
@@ -221,8 +223,8 @@ def _should_use_market_web_fast_path(query: str) -> bool:
     if mentions_competitor_terms:
         return False
 
-    # Pesquisa de mercado genérica -> multi-concorrente.
-    return False
+    # Pesquisa de mercado genérica -> mercado web aberto multi-provider.
+    return True
 
 
 def _extract_market_product_hint(query: str) -> str:
@@ -481,9 +483,12 @@ def _lookup_internal_price(product_hint: str) -> Dict[str, Any]:
             return {}
 
         sql = (
-            "SELECT NOME, LIQUIDO_38, ULTIMA_ENTRADA_CUSTO_CD "
+            "SELECT "
+            "  NOME, "
+            "  TRY_CAST(REPLACE(COALESCE(LIQUIDO_38, ''), ',', '.') AS DOUBLE) AS LIQUIDO_38_NUM, "
+            "  TRY_CAST(REPLACE(COALESCE(ULTIMA_ENTRADA_CUSTO_CD, ''), ',', '.') AS DOUBLE) AS ULTIMA_ENTRADA_CUSTO_CD_NUM "
             "FROM read_parquet(?) "
-            "WHERE LIQUIDO_38 > 0 "
+            "WHERE TRY_CAST(REPLACE(COALESCE(LIQUIDO_38, ''), ',', '.') AS DOUBLE) > 0 "
         )
         params: List[Any] = [parquet_path]
         for term in terms:
@@ -712,7 +717,33 @@ def _market_contract_from_payload(payload: Dict[str, Any], default_source: str) 
 
 
 async def _run_competitive_market_fast_path(query: str, return_payload: bool = False) -> Any:
+    async def _try_market_web_fallback(reason: str) -> Any:
+        if pesquisar_mercado_web is None or _has_specific_competitor(query):
+            return None
+        logger.info("Competitive fast-path %s; aplicando fallback market_web.", reason)
+        try:
+            try:
+                fallback_result = await _run_market_research_fast_path(query, return_payload=return_payload)
+            except TypeError:
+                # Compatibilidade com testes/mocks legados sem o novo parâmetro.
+                fallback_result = await _run_market_research_fast_path(query)
+        except Exception as exc:
+            logger.warning("Fallback market_web falhou apos %s: %s", reason, exc)
+            return None
+
+        if isinstance(fallback_result, dict):
+            fallback_text = str(fallback_result.get("text") or "").strip()
+            if fallback_text:
+                return fallback_result
+            return None
+        if isinstance(fallback_result, str) and fallback_result.strip():
+            return fallback_result
+        return None
+
     if pesquisar_precos_concorrentes is None:
+        fallback_result = await _try_market_web_fallback("indisponibilidade_competitive_tool")
+        if fallback_result is not None:
+            return fallback_result
         fallback_text = _competitive_no_evidence_business_message(query)
         if return_payload:
             return {
@@ -746,6 +777,9 @@ async def _run_competitive_market_fast_path(query: str, return_payload: bool = F
         raw = await asyncio.wait_for(asyncio.to_thread(_invoke_tool), timeout=_market_fast_path_timeout_seconds())
     except asyncio.TimeoutError:
         logger.warning("Competitive fast-path timeout para query: %s", query)
+        fallback_result = await _try_market_web_fallback("timeout")
+        if fallback_result is not None:
+            return fallback_result
         fallback_text = _competitive_no_evidence_business_message(query)
         if return_payload:
             return {
@@ -760,6 +794,9 @@ async def _run_competitive_market_fast_path(query: str, return_payload: bool = F
         return fallback_text
     except Exception as exc:
         logger.error("Competitive fast-path error: %s", exc, exc_info=True)
+        fallback_result = await _try_market_web_fallback("erro")
+        if fallback_result is not None:
+            return fallback_result
         fallback_text = _competitive_no_evidence_business_message(query)
         if return_payload:
             return {
@@ -792,21 +829,9 @@ async def _run_competitive_market_fast_path(query: str, return_payload: bool = F
         and pesquisar_mercado_web is not None
         and not _has_specific_competitor(query)
     ):
-        logger.info("Competitive fast-path sem evidência; aplicando fallback market_web.")
-        try:
-            try:
-                fallback_result = await _run_market_research_fast_path(query, return_payload=return_payload)
-            except TypeError:
-                # Compatibilidade com testes/mocks legados sem o novo parâmetro.
-                fallback_result = await _run_market_research_fast_path(query)
-            if isinstance(fallback_result, dict):
-                fallback_text = str(fallback_result.get("text") or "").strip()
-                if fallback_text:
-                    return fallback_result
-            elif isinstance(fallback_result, str) and fallback_result.strip():
-                return fallback_result
-        except Exception as exc:
-            logger.warning("Fallback market_web falhou: %s", exc)
+        fallback_result = await _try_market_web_fallback("sem_evidencia_publica")
+        if fallback_result is not None:
+            return fallback_result
 
     text = _build_competitive_structured_business_message(query, payload)
     if return_payload:
@@ -1030,6 +1055,201 @@ def _build_chat_cache_key(session_id: Optional[str], query: str) -> str:
     return f"{_CHAT_CACHE_VERSION}:{data_fingerprint}:{session_component}:{query}"
 
 
+_CHAT_MODE_LABELS = {
+    "executive_overview": "resumo executivo",
+    "sales_by_store": "vendas por loja",
+    "critical_stock": "ruptura e reposicao",
+    "promotion_margin": "promocao e margem",
+    "market_benchmark": "benchmark de mercado",
+    "seasonal_plan": "planejamento sazonal",
+}
+
+_CHAT_MODE_INSTRUCTIONS = {
+    "executive_overview": [
+        "responda como sumario executivo para decisao gerencial",
+        "priorize 3 a 5 achados materialmente relevantes",
+        "feche com acoes praticas e riscos imediatos",
+    ],
+    "sales_by_store": [
+        "compare desempenho entre lojas ou UNEs",
+        "destaque top performers, piores desempenhos e outliers",
+        "se houver dados suficientes, sugira investigacao por mix, ruptura ou precificacao",
+    ],
+    "critical_stock": [
+        "priorize ruptura, cobertura de estoque e urgencia de reposicao",
+        "quantifique impacto potencial em venda perdida quando possivel",
+        "sugira transferencia, compra ou ajuste de abastecimento com prioridade clara",
+    ],
+    "promotion_margin": [
+        "trate margem como restricao obrigatoria",
+        "avalie desconto, elasticidade esperada e risco de erosao de margem",
+        "recomende promover, ajustar desconto ou abortar a acao com justificativa objetiva",
+    ],
+    "market_benchmark": [
+        "compare preco interno, faixa de mercado e posicionamento competitivo",
+        "destaque desvios relevantes versus concorrencia",
+        "recomende ajuste de preco, manutencao ou monitoramento com base nos dados",
+    ],
+    "seasonal_plan": [
+        "considere sazonalidade comercial e preparo antecipado",
+        "projete demanda, estoque e risco de ruptura ou sobra",
+        "responda com plano operacional por periodo e prioridade",
+    ],
+}
+
+
+def _sanitize_playbook_context(raw_value: Any) -> Dict[str, str]:
+    if not isinstance(raw_value, dict):
+        return {}
+    sanitized: Dict[str, str] = {}
+    for key in ("product", "segment", "une", "period", "objective"):
+        value = raw_value.get(key)
+        text = str(value or "").strip()
+        if text:
+            sanitized[key] = text[:240]
+    return sanitized
+
+
+def _parse_playbook_context_param(raw_value: Optional[str]) -> Dict[str, str]:
+    if raw_value in (None, ""):
+        return {}
+    try:
+        decoded = json.loads(str(raw_value))
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return _sanitize_playbook_context(decoded)
+
+
+def _sanitize_guided_action(raw_value: Any) -> Dict[str, Any]:
+    if not isinstance(raw_value, dict):
+        return {}
+
+    sanitized: Dict[str, Any] = {}
+    for key in (
+        "actionId",
+        "actionLabel",
+        "source",
+        "playbookId",
+        "prompt",
+        "executionPolicy",
+        "outputPreference",
+        "missingDataBehavior",
+    ):
+        value = raw_value.get(key)
+        text = str(value or "").strip()
+        if text:
+            sanitized[key] = text[:240]
+
+    if isinstance(raw_value.get("directSend"), bool):
+        sanitized["directSend"] = bool(raw_value["directSend"])
+
+    tool_hints = raw_value.get("toolHints")
+    if isinstance(tool_hints, list):
+        normalized_hints = [
+            str(item).strip()[:80]
+            for item in tool_hints
+            if str(item or "").strip()
+        ]
+        if normalized_hints:
+            sanitized["toolHints"] = normalized_hints[:8]
+
+    return sanitized
+
+
+def _parse_guided_action_param(raw_value: Optional[str]) -> Dict[str, Any]:
+    if raw_value in (None, ""):
+        return {}
+    try:
+        decoded = json.loads(str(raw_value))
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return _sanitize_guided_action(decoded)
+
+
+def _build_guided_chat_query(
+    query: str,
+    chat_mode: Optional[str],
+    playbook_context: Optional[Dict[str, Any]],
+    guided_action: Optional[Dict[str, Any]] = None,
+) -> str:
+    base_query = str(query or "").strip()
+    mode = str(chat_mode or "").strip().lower()
+    context = _sanitize_playbook_context(playbook_context or {})
+    action = _sanitize_guided_action(guided_action or {})
+    if not mode and not context and not action:
+        return base_query
+
+    label = _CHAT_MODE_LABELS.get(mode, mode or "modo guiado")
+    context_lines: List[str] = []
+    if context.get("product"):
+        context_lines.append(f"- produto_foco: {context['product']}")
+    if context.get("segment"):
+        context_lines.append(f"- segmento_foco: {context['segment']}")
+    if context.get("une"):
+        context_lines.append(f"- lojas_ou_une: {context['une']}")
+    if context.get("period"):
+        context_lines.append(f"- periodo: {context['period']}")
+    if context.get("objective"):
+        context_lines.append(f"- objetivo: {context['objective']}")
+
+    action_lines: List[str] = []
+    if action.get("actionLabel"):
+        action_lines.append(f"- acao: {action['actionLabel']}")
+    if action.get("source"):
+        action_lines.append(f"- origem: {action['source']}")
+    if action.get("playbookId"):
+        action_lines.append(f"- playbook: {_CHAT_MODE_LABELS.get(str(action['playbookId']), str(action['playbookId']))}")
+    if action.get("outputPreference"):
+        action_lines.append(f"- formato_preferido: {action['outputPreference']}")
+    if action.get("executionPolicy"):
+        action_lines.append(f"- politica_execucao: {action['executionPolicy']}")
+    if isinstance(action.get("directSend"), bool):
+        action_lines.append(f"- envio_direto: {'sim' if action['directSend'] else 'nao'}")
+    if action.get("toolHints"):
+        action_lines.append(f"- tools_sugeridas: {', '.join(action['toolHints'])}")
+    if action.get("missingDataBehavior"):
+        action_lines.append(f"- politica_lacunas: {action['missingDataBehavior']}")
+
+    sections: List[str] = [
+        "Contexto operacional adicional para orientar esta resposta:",
+        f"- modo analitico: {label}",
+        "- preserve foco em decisao, acao e linguagem de negocio",
+        "- use apenas dados reais observados no sistema",
+        "- nao invente numeros, percentuais, precos ou fatos nao observados",
+        "- quando houver calculo deterministico ou tool especifica, prefira esse caminho a uma resposta puramente narrativa",
+        "- se faltar insumo critico para uma conclusao, diga exatamente o minimo que falta e continue com o que ja pode ser respondido",
+    ]
+    mode_instructions = _CHAT_MODE_INSTRUCTIONS.get(mode, [])
+    if mode_instructions:
+        sections.append("Diretrizes do modo:")
+        sections.extend(f"- {item}" for item in mode_instructions)
+    if context_lines:
+        sections.append("Contexto informado:")
+        sections.extend(context_lines)
+    if action_lines:
+        sections.append("Acao orientada:")
+        sections.extend(action_lines)
+
+    if not base_query:
+        return "\n".join(sections).strip()
+    return "\n".join([*sections, "Pergunta do usuario:", base_query]).strip()
+
+
+def _extract_semantic_chat_query(query: str) -> str:
+    text = str(query or "").strip()
+    if not text:
+        return ""
+
+    for marker in ("Pergunta do usuario:", "Pergunta do usuário:", "[PERGUNTA_USUARIO]"):
+        if marker in text:
+            _, _, tail = text.partition(marker)
+            cleaned = str(tail or "").strip()
+            if cleaned:
+                return cleaned
+
+    return text
+
+
 def _should_bypass_cache_for_query(query: str) -> bool:
     """
     Perguntas de mercado/concorrência usam dados externos voláteis e não devem
@@ -1171,32 +1391,27 @@ async def initialize_agents_async():
             # We must use asyncio.to_thread because initialization involves
             # heavy sync operations (loading vector stores, DuckDB connections)
             def _sync_init():
-                import sys
-                print("[DEBUG] [TRAP] Entering _sync_init...", file=sys.stderr)
+                logger.debug("ChatServiceV3 startup: entering synchronous initialization")
                 try:
-                    print("[DEBUG] [TRAP] Init SessionManager...", file=sys.stderr)
+                    logger.debug("ChatServiceV3 startup: initializing SessionManager")
                     local_session_manager = SessionManager(
                         storage_dir=settings.SESSION_LEGACY_STORAGE_PATH,
                         db_path=settings.CHAT_STATE_DB_PATH,
                     )
                     
-                    print("[DEBUG] [TRAP] Init ChatServiceV3...", file=sys.stderr)
+                    logger.debug("ChatServiceV3 startup: initializing ChatServiceV3")
                     local_service = ChatServiceV3(session_manager=local_session_manager)
                     
-                    print("[DEBUG] [TRAP] ChatServiceV3 Success!", file=sys.stderr)
+                    logger.info("ChatServiceV3 startup: initialization completed successfully")
                     return local_session_manager, local_service
-                except Exception as e:
-                    import traceback
-                    print(f"[ERROR] [TRAP] CRASH IN _sync_init: {e}", file=sys.stderr)
-                    traceback.print_exc()
-                    raise e
+                except Exception:
+                    logger.exception("ChatServiceV3 startup: synchronous initialization failed")
+                    raise
                     
             session_manager, chat_service_v3 = await asyncio.to_thread(_sync_init)
             
             logger.info("[OK] [STARTUP] ChatServiceV3 (Metrics-First) initialized successfully.")
         except Exception as e:
-            import sys
-            print(f"[ERROR] [TRAP] Async Init Failed: {e}", file=sys.stderr)
             logger.error(f"[ERROR] Failed to initialize ChatServiceV3: {e}", exc_info=True)
             # We don't raise here to avoid crashing the whole app, 
             # but Chat endpoints will fail if this didn't work.
@@ -1228,6 +1443,10 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 class ChatRequest(BaseModel):
     query: str
+    session_id: Optional[str] = None
+    chat_mode: Optional[str] = None
+    playbook_context: Optional[Dict[str, Any]] = None
+    guided_action: Optional[Dict[str, Any]] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -1270,6 +1489,12 @@ class AutomationRejectRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+
+class ChatTableExportRequest(BaseModel):
+    rows: List[Dict[str, Any]] = Field(default_factory=list)
+    filename: Optional[str] = Field(default=None, max_length=120)
+    caption: Optional[str] = Field(default=None, max_length=160)
 
 
 @router.get("/market-research/download/{search_id}")
@@ -1361,6 +1586,90 @@ async def download_market_results(
     )
 
 
+def _sanitize_chat_export_filename(raw_value: Optional[str], fallback: str = "chat_tabela") -> str:
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "_", str(raw_value or "").strip()).strip("._-")
+    return (normalized[:80] or fallback).lower()
+
+
+def _coerce_chat_export_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return value
+
+
+@router.post("/table-export")
+async def export_chat_table(
+    payload: ChatTableExportRequest,
+    format: str = "xlsx",
+    current_user: Annotated[User, Depends(get_current_active_user)] = None,
+):
+    rows = [row for row in payload.rows if isinstance(row, dict)]
+    if not rows:
+        raise HTTPException(status_code=400, detail="Nenhuma linha válida foi informada para exportação.")
+
+    headers: List[str] = []
+    for row in rows:
+        for key in row.keys():
+            label = str(key or "").strip()
+            if label and label not in headers:
+                headers.append(label)
+
+    if not headers:
+        raise HTTPException(status_code=400, detail="A tabela não possui colunas válidas para exportação.")
+
+    filename_base = _sanitize_chat_export_filename(payload.filename or payload.caption or "chat_tabela")
+    output = io.BytesIO()
+    normalized_format = str(format or "xlsx").strip().lower()
+
+    if normalized_format == "xlsx":
+        import openpyxl
+        from openpyxl.styles import Alignment, Font
+
+        workbook = openpyxl.Workbook()
+        worksheet = workbook.active
+        worksheet.title = (payload.caption or "Tabela chat")[:31]
+
+        worksheet.append(headers)
+        for cell in worksheet[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+        for row in rows:
+            worksheet.append([_coerce_chat_export_cell(row.get(header)) for header in headers])
+
+        workbook.save(output)
+        output.seek(0)
+        filename = f"{filename_base}.xlsx"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    elif normalized_format == "csv":
+        import csv
+
+        content = io.StringIO()
+        writer = csv.writer(content, delimiter=";", lineterminator="\n")
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow([_coerce_chat_export_cell(row.get(header)) for header in headers])
+
+        output.write(content.getvalue().encode("utf-8-sig"))
+        output.seek(0)
+        filename = f"{filename_base}.csv"
+        media_type = "text/csv"
+    else:
+        raise HTTPException(status_code=400, detail="Formato de exportação inválido. Use csv ou xlsx.")
+
+    return StreamingResponse(
+        output,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/stream-token")
 async def create_stream_token(
     request: Request,
@@ -1434,6 +1743,9 @@ async def stream_chat(
     session_id: str,
     request: Request,
     token: Annotated[str, Depends(get_token_from_header_or_query)],
+    chat_mode: Optional[str] = None,
+    playbook_context: Optional[str] = None,
+    guided_action: Optional[str] = None,
 ):
     """
     Streaming endpoint using Server-Sent Events (SSE)
@@ -1459,6 +1771,9 @@ async def stream_chat(
             content={"detail": "Sessao invalida ou expirada. Faca login novamente."},
         )
 
+    parsed_playbook_context = _parse_playbook_context_param(playbook_context)
+    parsed_guided_action = _parse_guided_action_param(guided_action)
+    effective_query = _build_guided_chat_query(q, chat_mode, parsed_playbook_context, parsed_guided_action)
     last_event_id = request.headers.get("Last-Event-ID")
     logger.info(f"==> SSE STREAM REQUEST: {q} (Session: {session_id}) (Last-Event-ID: {last_event_id}) <==")
     stream_request_id = str(_uuid4())
@@ -1470,6 +1785,9 @@ async def stream_chat(
         user_id=str(getattr(current_user, "id", "")),
         role=str(getattr(current_user, "role", "")),
         query_excerpt=str(q)[:160],
+        guided_mode=str(chat_mode or ""),
+        guided_context=parsed_playbook_context,
+        guided_action=parsed_guided_action,
         last_event_id=last_event_id,
     )
 
@@ -1654,7 +1972,8 @@ async def stream_chat(
                     {
                         "type": "text",
                         "result": {"mensagem": response_text},
-                    }
+                    },
+                    metadata_query=effective_query,
                 )
                 return # SAÍDA ANTECIPADA - Evita carregar o agente pesado
 
@@ -1677,8 +1996,8 @@ async def stream_chat(
                 resolved_market_query = _resolve_competitive_market_followup_query(q, session_history)
                 resolved_market_clean = resolved_market_query.strip().lower()
 
-                # Por padrão, usa pesquisa concorrencial multi-fonte para evitar viés em um único marketplace.
-                # Pesquisa de mercado genérica só usa market_web quando Mercado Livre é pedido explicitamente.
+                # Pesquisa de mercado genérica usa pesquisa aberta multi-provider.
+                # Pesquisa concorrencial fica reservada para concorrentes explícitos.
                 use_market_web = _should_use_market_web_fast_path(resolved_market_clean)
                 tool_label = 'tool.market_research' if use_market_web else 'tool.competitive_research'
                 default_source = "tool.pesquisar_mercado_web" if use_market_web else "tool.pesquisar_precos_concorrentes"
@@ -1719,7 +2038,12 @@ async def stream_chat(
                         "result": {"mensagem": response_text},
                         **market_contract,
                     },
-                    metadata_query=resolved_market_query,
+                    metadata_query=_build_guided_chat_query(
+                        resolved_market_query,
+                        chat_mode,
+                        parsed_playbook_context,
+                        parsed_guided_action,
+                    ),
                 )
                 return
 
@@ -1755,7 +2079,8 @@ async def stream_chat(
                     {
                         "type": "text",
                         "result": {"mensagem": deterministic_msg},
-                    }
+                    },
+                    metadata_query=effective_query,
                 )
                 return
             # ---------------------------------------------------------------------
@@ -1789,10 +2114,10 @@ async def stream_chat(
             metrics = MetricsService()
 
             # Cache policy: consultas de mercado/concorrência não reutilizam cache.
-            bypass_cache = _should_bypass_cache_for_query(q)
+            bypass_cache = _should_bypass_cache_for_query(effective_query)
 
             # NOVO: Verificar Semantic Cache primeiro (com user_id)
-            cache_key_query = _build_chat_cache_key(session_id, q)
+            cache_key_query = _build_chat_cache_key(session_id, effective_query)
             metrics.increment("chat_cache_lookups_total")
             cached_response = None if bypass_cache else cache_get(cache_key_query, user_id=user_cache_id)
             if cached_response and not _is_degraded_or_error_response(cached_response):
@@ -1809,7 +2134,10 @@ async def stream_chat(
                 # Mesmo em cache-hit, manter histórico consistente para follow-ups.
                 try:
                     if chat_service_v3 is not None:
-                        user_metadata = chat_service_v3.build_session_message_metadata(query=q, role="user")
+                        user_metadata = chat_service_v3.build_session_message_metadata(
+                            query=effective_query,
+                            role="user",
+                        )
                         chat_service_v3.session_manager.add_message(
                             session_id,
                             "user",
@@ -1827,7 +2155,7 @@ async def stream_chat(
                         if not cached_text:
                             cached_text = str(cached_response)
                         assistant_metadata = chat_service_v3.build_session_message_metadata(
-                            query=q,
+                            query=effective_query,
                             response=cached_response if isinstance(cached_response, dict) else None,
                             role="assistant",
                         )
@@ -1884,7 +2212,7 @@ async def stream_chat(
                 agent_task = asyncio.create_task(
                     asyncio.wait_for(
                         chat_service_v3.process_message(
-                            query=q, 
+                            query=effective_query,
                             session_id=session_id, 
                             user_id=current_user.id,
                             user_role=current_user.role,
@@ -1998,18 +2326,17 @@ async def stream_chat(
                     }
                 }
             
-            # Logging detalhado da resposta do agente (nível informativo)
-            logger.info(f"[DEBUG] DEBUG - AGENT RESPONSE TYPE: {type(agent_response)}")
-            logger.info(f"[DEBUG] DEBUG - AGENT RESPONSE KEYS: {agent_response.keys() if isinstance(agent_response, dict) else 'NOT A DICT'}")
-            logger.info(f"[DEBUG] DEBUG - AGENT RESPONSE RAW: {str(agent_response)[:1000]}")
-            
-            logger.info(f"Agent response received: {agent_response}")
             if isinstance(agent_response, dict):
                 _update_final_event_metadata(agent_response)
 
-            validation_context = _build_stream_validation_context(q, agent_response) if isinstance(agent_response, dict) else {}
+            semantic_query = _extract_semantic_chat_query(effective_query)
+            validation_context = (
+                _build_stream_validation_context(semantic_query, agent_response)
+                if isinstance(agent_response, dict)
+                else {}
+            )
             # Validação de qualidade da resposta (guardrail enterprise)
-            validation = validate_response(agent_response, q, context=validation_context)
+            validation = validate_response(agent_response, semantic_query, context=validation_context)
             if isinstance(agent_response, dict) and getattr(validation, "should_block", False):
                 trace_logger.warning(
                     "chat_stream_response_blocked_by_validator",
@@ -2022,7 +2349,7 @@ async def stream_chat(
                     issues=getattr(validation, "issues", []),
                 )
                 agent_response = _build_stream_validation_block_response(
-                    query=q,
+                    query=semantic_query,
                     validation_result=validation,
                     validation_context=validation_context,
                 )
@@ -2441,7 +2768,6 @@ async def send_chat_message(
 ) -> dict:
     from backend.app.core.context import set_current_user_context
 
-    # Legacy - calling agent without history for now, or could pass session_id if we updated request model
     logger.warning("Legacy chat endpoint used.")
     if not _is_chat_allowed_for_user(current_user):
         raise HTTPException(
@@ -2449,39 +2775,35 @@ async def send_chat_message(
             detail="ChatBI em canary fechado para este perfil. Solicite liberacao do acesso.",
         )
 
-    # [DEBUG] FIX: Ensure initialization
     if chat_service_v3 is None:
-        logger.info("[RETRY] Lazy initializing agents on first request...")
+        logger.info("Lazy initializing chat service for POST /chat endpoint")
         await initialize_agents_async()
-    
-    # We still use the global old variable if needed or refactor completely.
-    # Ideally, we should use chat_service_v3, but the legacy code expects 'caculinha_bi_agent'.
-    # For now, let's assume ChatServiceV3 initializes the agent internally and we can access it
-    # OR we just fail gracefully since this endpoint is legacy.
-    
-    # Hack: Attempt to get the agent from the service if possible, or re-init (bad).
-    # Given this is legacy and likely unused by the new frontend, we just try to init.
-    
-    # Note: caculinha_bi_agent is imported but not managed by initialize_agents_async directly in this scope
-    # unless we expose it. But for the demo, let's focus on the streaming endpoint.
-    
-    if chat_service_v3 is None:
-         raise HTTPException(status_code=500, detail="Servico de chat ainda nao inicializado.")
 
-    # Garantir contexto de segurança também no endpoint POST.
+    if chat_service_v3 is None:
+        raise HTTPException(status_code=500, detail="Servico de chat ainda nao inicializado.")
+
     set_current_user_context(current_user)
     user_capabilities = get_chat_capabilities_for_user(current_user)
+    session_id = str(request.session_id or uuid4())
+    effective_query = _build_guided_chat_query(
+        request.query,
+        request.chat_mode,
+        request.playbook_context,
+        request.guided_action,
+    )
 
-    # Assuming no history for legacy non-session calls
-    # We will use the NEW service instead of the old agent directly to ensure consistency
     result = await chat_service_v3.process_message(
-        query=request.query,
-        session_id="legacy",
+        query=effective_query,
+        session_id=session_id,
         user_id=current_user.id,
         user_role=current_user.role,
         user_capabilities=user_capabilities,
     )
-    return {"response": str(result), "full_agent_response": result}
+    return {
+        "response": str(result),
+        "full_agent_response": result,
+        "session_id": session_id,
+    }
 
 
 @router.get("/history")

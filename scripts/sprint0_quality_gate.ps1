@@ -52,32 +52,30 @@ $results += Write-Check "workspace_clean" $dirtyOk $dirtyDetail
 # 3) Mandatory files
 $mustExist = @(
     "README.md",
-    "backend/app/api/v1/endpoints/playground.py",
-    "frontend-solid/src/pages/Playground.tsx",
+    "backend/main.py",
+    "backend/requirements.txt",
+    "backend/.env.example",
     ".github/workflows/ci.yml",
     "scripts/chatbi_canary_rollback_drill.ps1",
-    "docs/CHATBI_SPRINT6_GO_LIVE_RUNBOOK.md",
-    "docs/CHATBI_PLAYBOOK_TREINAMENTO_DASHBOARD.md",
+    "docs/SYSTEM_OVERVIEW.md",
+    "docs/BASKET_ANALYSIS.md",
+    "docs/CHATBI_PESQUISA_CONCORRENCIAL.md",
     "backend/tests/llmops/test_domain_eval_gate.py",
-    "backend/tests/llmops/test_capability_targets.py"
+    "backend/tests/llmops/test_capability_targets.py",
+    "pytest.ini",
+    "frontend-solid/package.json"
 )
 foreach ($path in $mustExist) {
     $exists = Test-Path -Path $path
     $results += Write-Check "file_exists:$path" $exists "Verificação de presença de arquivo crítico."
 }
 
-# 4b) ADR coverage for decision traceability
-$adrRequired = @(
-    "docs/adr/ADR-001-fallback-local-playground.md",
-    "docs/adr/ADR-002-router-rules-first.md",
-    "docs/adr/ADR-003-risk-guardrails-playground.md",
-    "docs/adr/ADR-004-rbac-capability-scoping.md",
-    "docs/adr/ADR-005-dashboard-chat-first.md"
-)
-foreach ($adrPath in $adrRequired) {
-    $exists = Test-Path -Path $adrPath
-    $results += Write-Check "adr_exists:$adrPath" $exists "Rastreabilidade arquitetural obrigatória."
-}
+# 4) Test config and frontend
+$pytestExists = Test-Path "pytest.ini"
+$results += Write-Check "pytest_config" $pytestExists "pytest.ini presente."
+
+$npmPkgExists = Test-Path "frontend-solid/package.json"
+$results += Write-Check "frontend_package_json" $npmPkgExists "package.json do frontend presente."
 
 # 5) CI quality gate signal
 $ciPath = ".github/workflows/ci.yml"
@@ -93,13 +91,6 @@ if (Test-Path $ciPath) {
     $ciDetail = "continue-on-error=true: $continueOnErrorCount | repo_gate: $hasRepoGate | domain_gate: $hasDomainGate | capability_gate: $hasCapabilityGate"
 }
 $results += Write-Check "ci_blocking_quality_gate" $ciOk $ciDetail
-
-# 6) Test config existence
-$pytestExists = Test-Path "pytest.ini"
-$results += Write-Check "pytest_config" $pytestExists "pytest.ini presente."
-
-$npmPkgExists = Test-Path "frontend-solid/package.json"
-$results += Write-Check "frontend_package_json" $npmPkgExists "package.json do frontend presente."
 
 $allPassed = @($results | Where-Object { $_.status -eq "FAIL" }).Count -eq 0
 

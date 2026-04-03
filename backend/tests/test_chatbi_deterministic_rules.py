@@ -1442,7 +1442,7 @@ async def test_run_async_executes_llm_tool_calls_in_parallel(monkeypatch):
         _SlowTool("pesquisar_precos_concorrentes"),
         _SlowTool("pesquisar_mercado_web"),
     ]
-    agent.gemini_tools = []
+    agent.tool_declarations = []
     agent.enable_rag = False
     agent.retriever = None
     agent.code_gen_agent = None
@@ -1536,7 +1536,7 @@ def test_run_sync_rescues_contextual_plan_query_without_repeating_previous_dump(
 
     agent = _agent_stub()
     agent.bi_tools = [_DummyTool()]
-    agent.gemini_tools = []
+    agent.tool_declarations = []
     agent.enable_rag = False
     agent.retriever = None
     agent.code_gen_agent = None
@@ -1594,7 +1594,7 @@ def test_run_sync_rescues_contextual_action_followup_with_generic_wording(monkey
 
     agent = _agent_stub()
     agent.bi_tools = [_DummyTool()]
-    agent.gemini_tools = []
+    agent.tool_declarations = []
     agent.enable_rag = False
     agent.retriever = None
     agent.code_gen_agent = None

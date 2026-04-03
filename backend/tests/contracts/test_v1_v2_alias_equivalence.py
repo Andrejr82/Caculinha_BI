@@ -48,7 +48,6 @@ def test_v2_alias_equivalent_to_v1():
     pairs = [
         ("/api/v1/health", "/api/v2/health"),
         ("/api/v1/chat/stream?q=ping&token=invalid&session_id=s1", "/api/v2/chat/stream?q=ping&token=invalid&session_id=s1"),
-        ("/api/v1/code-chat/stream?q=ping&token=invalid", "/api/v2/code-chat/stream?q=ping&token=invalid"),
     ]
 
     for v1_path, v2_path in pairs:

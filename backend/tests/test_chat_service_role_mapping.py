@@ -6,15 +6,15 @@ from backend.app.core.utils.session_manager import SessionManager
 from backend.app.services.chat_service_v3 import ChatServiceV3
 
 
-def test_normalize_role_maps_user_to_viewer():
+def test_normalize_role_maps_user_to_analyst():
     session_manager = Mock(spec=SessionManager)
     service = ChatServiceV3(session_manager=session_manager)
 
-    assert service._normalize_role("user") == "viewer"
+    assert service._normalize_role("user") == "analyst"
 
 
 @pytest.mark.asyncio
-async def test_process_message_uses_viewer_agent_for_user_role():
+async def test_process_message_uses_analyst_agent_for_user_role():
     session_manager = Mock(spec=SessionManager)
     session_manager.get_history.return_value = []
     session_manager.add_message = Mock()
@@ -31,4 +31,4 @@ async def test_process_message_uses_viewer_agent_for_user_role():
             user_role="user",
         )
 
-    get_agent_mock.assert_called_once_with("viewer")
+    get_agent_mock.assert_called_once_with("analyst")

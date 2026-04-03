@@ -1,4 +1,5 @@
 import { createSignal, onMount, Show, For, createEffect } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
 import { PlotlyChart } from "../components/PlotlyChart";
 import { dashboardApi } from "../lib/api";
 import type { Component } from "solid-js";
@@ -23,6 +24,7 @@ interface GroupMetrics {
 }
 
 const Suppliers: Component = () => {
+    const [searchParams] = useSearchParams();
     // Dados principais
     const [segments, setSegments] = createSignal<SegmentMetrics[]>([]);
     const [groups, setGroups] = createSignal<GroupMetrics[]>([]);
@@ -46,6 +48,11 @@ const Suppliers: Component = () => {
     onMount(async () => {
         await loadSegments();
         await loadSegmentOptions();
+        const initialSegment = typeof searchParams.segmento === "string" ? searchParams.segmento.trim() : "";
+        if (initialSegment) {
+            setSelectedSegment(initialSegment);
+            setActiveTab("groups");
+        }
     });
 
     // Carregar quando segmento selecionado mudar
@@ -217,6 +224,11 @@ const Suppliers: Component = () => {
                 <div>
                     <h1 class="text-3xl font-bold text-gray-800">Torre de Controle de Suprimentos</h1>
                     <p class="text-gray-500 mt-1">Monitoramento estratégico de risco de ruptura e performance de categorias em tempo real</p>
+                    <Show when={selectedSegment()}>
+                        <div class="mt-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700" data-testid="suppliers-scope-pill">
+                            Escopo ativo: {selectedSegment()}
+                        </div>
+                    </Show>
                 </div>
                 <button
                     onClick={loadSegments}
@@ -258,6 +270,7 @@ const Suppliers: Component = () => {
                         Selecione um Segmento para ver os Grupos
                     </label>
                     <select
+                        data-testid="suppliers-segment-filter"
                         value={selectedSegment()}
                         onChange={(e) => setSelectedSegment(e.currentTarget.value)}
                         class="w-full md:w-80 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

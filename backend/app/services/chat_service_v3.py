@@ -50,7 +50,16 @@ from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAd
 from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.utils.session_manager import SessionManager
 from backend.app.core.utils.field_mapper import FieldMapper
-from backend.app.core.utils.executive_output import build_sales_dimension_report_from_rows, ensure_executive_output
+from backend.app.core.utils.executive_output import (
+    build_sales_dimension_report_from_rows,
+    classify_business_response_shape,
+    ensure_executive_output,
+    is_business_query,
+)
+from backend.app.core.prompts.business_contracts import (
+    BUSINESS_CONTRACT_RESPONSE_FORMAT,
+    normalize_business_contract,
+)
 from backend.app.core.utils.response_validator import validate_response
 from backend.app.core.security.content_safety import sanitize_citations, sanitize_public_url, sanitize_text_label
 from backend.app.core.learning.chat_example_capture import build_chat_example_payload
@@ -65,6 +74,7 @@ from backend.app.services.audit_log import get_audit_logger, AuditAction
 from backend.app.services.image_generation import ImageGenerationService
 from backend.app.services.chat_automation_service import ChatAutomationService
 from backend.app.services.basket_analysis_service import BasketAnalysisService
+from backend.app.services.promotion_planner_service import PromotionPlannerService
 from backend.app.schemas.basket_analysis import BasketAnalysisRequest
 from backend.app.core.tools.basket_attachment_parser import build_basket_payload_from_documents
 from backend.app.core.tools.basket_tools import (
@@ -150,21 +160,16 @@ class ChatServiceV3:
         """
         self.session_manager = session_manager
         self.basket_analysis_service = BasketAnalysisService()
+        self.promotion_planner_service = PromotionPlannerService()
         
         # Inicializar componentes
-        logger.info("[DEBUG] [DEBUG] ChatServiceV3.__init__ INICIANDO (Agent-Based)...")
-        
         # LLM adapter
-        logger.info("[DEBUG] [DEBUG] Criando LLM adapter...")
         self.llm = LLMFactory.get_adapter(use_smart=True)
-        logger.info(f"[DEBUG] [DEBUG] LLM adapter criado: {type(self.llm)}")
         
         # Field mapper para o agente
-        logger.info("[DEBUG] [DEBUG] Criando FieldMapper...")
         self.field_mapper = FieldMapper()
         
         # CodeGenAgent (usado pelo CaculinhaBIAgent para cálculos complexos)
-        logger.info("[DEBUG] [DEBUG] Criando CodeGenAgent...")
         try:
             self.code_gen_agent = CodeGenAgent()
         except Exception as e:
@@ -172,7 +177,6 @@ class ChatServiceV3:
             self.code_gen_agent = None
         
         # [OK] NOVO: Usar CaculinhaBIAgent em vez de componentes separados
-        logger.info("[DEBUG] [DEBUG] Criando CaculinhaBIAgent (default=analyst)...")
         self.agent = CaculinhaBIAgent(
             llm=self.llm,
             code_gen_agent=self.code_gen_agent,
@@ -182,7 +186,6 @@ class ChatServiceV3:
         )
         # Cache de agentes por role para evitar recriação por request
         self._agents_by_role: Dict[str, CaculinhaBIAgent] = {"analyst": self.agent}
-        logger.info(f"[DEBUG] [DEBUG] CaculinhaBIAgent criado com sucesso: {type(self.agent)}")
 
         self.vectorization_agent: Optional[VectorizationAgent] = None
         self.vector_memory_repository: Optional[DuckDBVectorAdapter] = None
@@ -193,9 +196,16 @@ class ChatServiceV3:
         self._memory_index_lock = asyncio.Lock()
         self._memory_indexed_sessions: set[str] = set()
         try:
-            vector_db_path = Path(SessionManager.default_db_path()).with_name("conversation_vectors.duckdb")
+            vector_dimension = 384
             self.vectorization_agent = VectorizationAgent()
-            self.vector_memory_repository = DuckDBVectorAdapter(db_path=str(vector_db_path))
+            vector_dimension = int(getattr(self.vectorization_agent, "dimension", 384) or 384)
+            vector_db_path = Path(SessionManager.default_db_path()).with_name(
+                f"conversation_vectors_{vector_dimension}d.duckdb"
+            )
+            self.vector_memory_repository = DuckDBVectorAdapter(
+                db_path=str(vector_db_path),
+                dimension=vector_dimension,
+            )
             self.memory_rag_agent = RAGAgent(
                 vector_repository=self.vector_memory_repository,
                 vectorization_agent=self.vectorization_agent,
@@ -392,7 +402,14 @@ class ChatServiceV3:
 
     @staticmethod
     def _query_without_attachment_metadata(query: str) -> str:
-        lines = [line.strip() for line in str(query or "").splitlines()]
+        text = str(query or "").strip()
+        for marker in ("Pergunta do usuario:", "Pergunta do usuário:", "[PERGUNTA_USUARIO]"):
+            if marker in text:
+                _, _, tail = text.partition(marker)
+                text = str(tail or "").strip()
+                break
+
+        lines = [line.strip() for line in text.splitlines()]
         kept_lines: list[str] = []
         skip_attachment_block = False
         for line in lines:
@@ -470,12 +487,12 @@ class ChatServiceV3:
                 "itens juntos",
                 "saem juntos",
                 "comprados juntos",
-                "cross-sell",
-                "cross sell",
                 "afinidade",
                 "lift",
                 "associacao",
                 "associação",
+                "itens combinam com",
+                "combinam com",
             )
         )
 
@@ -483,6 +500,10 @@ class ChatServiceV3:
     def _query_is_promotion_simulation(query: str) -> bool:
         lowered = ChatServiceV3._query_without_attachment_metadata(query).lower()
         return any(marker in lowered for marker in ("promo", "desconto", "oferta", "campanha", "leve"))
+
+    @staticmethod
+    def _query_is_promotion_planning(query: str) -> bool:
+        return PromotionPlannerService.should_plan(query)
 
     @staticmethod
     def _query_is_generic_attachment_analysis(query: str) -> bool:
@@ -567,8 +588,42 @@ class ChatServiceV3:
             segment=extract_segment_filter(query),
             category=self._extract_category_from_query(query),
             target_product=str(product_code) if product_code is not None else None,
+            target_terms=self._extract_basket_anchor_terms(query),
             max_rules=extract_top_limit(query) or 20,
         )
+
+    @staticmethod
+    def _extract_basket_anchor_terms(query: str) -> list[str]:
+        lowered = ChatServiceV3._query_without_attachment_metadata(query)
+        patterns = [
+            r"itens?\s+combinam\s+com\s+(.+?)(?:\s+em\s+uma?\s+a[çc][aã]o|\s+para\s+uma?\s+a[çc][aã]o|$)",
+            r"o\s+que\s+(?:combina|vende)\s+com\s+(.+?)(?:\?|$)",
+            r"cross[-\s]?sell\s+de\s+(.+?)(?:\?|$)",
+        ]
+        raw_chunk = None
+        for pattern in patterns:
+            match = re.search(pattern, lowered, re.IGNORECASE)
+            if match:
+                raw_chunk = match.group(1)
+                break
+        if not raw_chunk:
+            return []
+        normalized = re.sub(r"\s+e\s+", ",", raw_chunk, flags=re.IGNORECASE)
+        parts = [part.strip(" .,:;!?-") for part in normalized.split(",")]
+        blocked = {"item", "itens", "produto", "produtos", "acao promocional", "ação promocional"}
+        anchors: list[str] = []
+        seen: set[str] = set()
+        for part in parts:
+            if not part:
+                continue
+            lowered_part = part.casefold()
+            if lowered_part in blocked or len(lowered_part) < 2:
+                continue
+            if lowered_part in seen:
+                continue
+            seen.add(lowered_part)
+            anchors.append(part)
+        return anchors
 
     @staticmethod
     def _format_dataset_basket_message(result: Dict[str, Any]) -> str:
@@ -586,6 +641,8 @@ class ChatServiceV3:
             scope_parts.append(f"segmento {parameters['segment']}")
         if parameters.get("category"):
             scope_parts.append(f"categoria {parameters['category']}")
+        if parameters.get("target_terms"):
+            scope_parts.append(f"itens-alvo {', '.join(parameters['target_terms'])}")
         if parameters.get("start_date") or parameters.get("end_date"):
             scope_parts.append(
                 f"periodo {parameters.get('start_date') or 'inicio aberto'} até {parameters.get('end_date') or 'fim aberto'}"
@@ -657,6 +714,19 @@ class ChatServiceV3:
                 "warnings": result.get("limitations") or [],
             },
         }
+
+    def _run_promotion_planner_pipeline(
+        self,
+        query: str,
+        current_user: Any | None = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not self._query_is_promotion_planning(query):
+            return None
+        try:
+            return self.promotion_planner_service.build_plan(query, user=current_user)
+        except Exception as exc:
+            logger.warning("[DEBUG] Promotion planner falhou e sera ignorado: %s", exc)
+            return None
 
     def _run_attachment_basket_pipeline(
         self,
@@ -1139,6 +1209,7 @@ class ChatServiceV3:
     def _response_capability(response: Dict[str, Any]) -> str:
         internal_meta = response.get("_internal_meta", {}) if isinstance(response.get("_internal_meta"), dict) else {}
         source = str(response.get("source") or internal_meta.get("source") or "").lower()
+        mode = str(response.get("mode") or internal_meta.get("mode") or "").lower()
         if response.get("dashboard_spec") or response.get("type") == "dashboard":
             return "dashboard"
         if response.get("chart_data"):
@@ -1153,11 +1224,16 @@ class ChatServiceV3:
             return "market_research"
         if (
             "sandbox.code_gen_agent" in source
+            or "tool.calculation_sandbox" in source
             or "calcular_eoq" in source
             or "analisar_cesta_compras" in source
             or "simular_promocao_cesta" in source
             or "minerar_cestas_frequentes" in source
             or "basket_analysis" in source
+            or "promotion_planner" in source
+            or response.get("calculation")
+            or mode == "deterministic_sandbox"
+            or mode == "promotion_planner"
         ):
             return "calculation"
         if isinstance(response.get("table_data"), list) and response.get("table_data"):
@@ -1474,7 +1550,7 @@ class ChatServiceV3:
         if hasattr(self.llm, "get_provider_status"):
             return self.llm.get_provider_status()
         raw_provider = (getattr(settings, "LLM_PROVIDER", "") or "").strip().lower()
-        provider_aliases = {"grq": "groq", "gemini": "google"}
+        provider_aliases = {"grq": "groq", "gemini": "groq", "google": "groq"}
         provider = provider_aliases.get(raw_provider, raw_provider or "unknown")
         model_name = getattr(settings, "GROQ_MODEL_NAME", None) if provider == "groq" else getattr(settings, "LLM_MODEL_NAME", None)
         return {
@@ -1485,10 +1561,117 @@ class ChatServiceV3:
                     "provider": provider,
                     "available": True,
                     "model": model_name,
-                    "capabilities": {"chat": True, "tools": False, "streaming": False, "json_mode": False},
+                    "capabilities": {"chat": True, "tools": True, "streaming": False, "json_mode": True},
                 }
             ],
         }
+
+    @staticmethod
+    def _render_executive_contract_markdown(contract: Dict[str, Any]) -> Optional[str]:
+        if not isinstance(contract, dict):
+            return None
+        headline = str(contract.get("headline") or "").strip()
+        summary = str(contract.get("summary") or "").strip()
+        findings = contract.get("key_findings")
+        actions = contract.get("recommended_actions")
+        if not headline and not summary and not findings and not actions:
+            return None
+
+        summary_lines: List[str] = []
+        if headline:
+            summary_lines.append(f"- {headline}")
+        if summary:
+            summary_lines.append(f"- {summary}")
+        if isinstance(findings, list):
+            for item in findings[:4]:
+                text = str(item or "").strip()
+                if text:
+                    summary_lines.append(f"- {text}")
+
+        table_lines = [
+            "| Indicador | Leitura |",
+            "|---|---|",
+        ]
+        if headline:
+            table_lines.append(f"| Manchete | {headline} |")
+        if summary:
+            table_lines.append(f"| Sintese | {summary} |")
+        if isinstance(findings, list):
+            for index, item in enumerate(findings[:2], start=1):
+                text = str(item or "").strip()
+                if text:
+                    table_lines.append(f"| Achado {index} | {text} |")
+
+        action_lines: List[str] = []
+        if isinstance(actions, list):
+            for item in actions[:4]:
+                text = str(item or "").strip()
+                if text:
+                    action_lines.append(f"- {text}")
+
+        return (
+            "## Resumo executivo\n"
+            f"{chr(10).join(summary_lines) if summary_lines else '- Analise concluida.'}\n\n"
+            "## Tabela operacional\n"
+            f"{chr(10).join(table_lines)}\n\n"
+            "## Próximas ações\n"
+            f"{chr(10).join(action_lines) if action_lines else '- Validar o proximo passo operacional com base no resultado acima.'}"
+        )
+
+    def _generate_structured_executive_summary(
+        self,
+        *,
+        query: str,
+        message: str,
+        table_data: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        text = str(message or "").strip()
+        if not text:
+            return text
+
+        response_shape = classify_business_response_shape(query)
+        recognized_template = response_shape["template_id"] != "geral_executivo"
+        if not is_business_query(query) and not recognized_template:
+            return text
+
+        payload: Dict[str, Any] = {
+            "query": query,
+            "current_message": text,
+            "template_id": response_shape["template_id"],
+            "processo": response_shape["processo"],
+        }
+        if isinstance(table_data, list) and table_data:
+            payload["table_row_count"] = len(table_data)
+            first_row = table_data[0] if isinstance(table_data[0], dict) else {}
+            if isinstance(first_row, dict) and first_row:
+                payload["table_columns"] = list(first_row.keys())[:8]
+            payload["table_sample_rows"] = table_data[:5]
+
+        system_instruction = (
+            "Voce transforma respostas de BI em resumo executivo para varejo. "
+            "Responda APENAS em JSON valido com as chaves: "
+            "headline, summary, key_findings, recommended_actions. "
+            "headline e summary devem ser strings. key_findings e recommended_actions devem ser listas de strings. "
+            "Nao invente numeros e mantenha foco em decisao operacional."
+        )
+        user_message = f"Monte o contrato executivo com base neste payload: {json.dumps(payload, ensure_ascii=False)}"
+
+        try:
+            raw_output = self.llm.generate_with_history(
+                [{"role": "user", "content": user_message}],
+                system_instruction=system_instruction,
+                task_type="analysis",
+                json_mode=True,
+                response_format=BUSINESS_CONTRACT_RESPONSE_FORMAT,
+            )
+            parsed = normalize_business_contract(raw_output)
+            structured_markdown = self._render_executive_contract_markdown(parsed)
+            if structured_markdown:
+                return structured_markdown
+        except Exception as exc:
+            logger.warning("Falha ao gerar contrato executivo em JSON mode: %s", exc)
+
+        return text
 
     @staticmethod
     def _estimate_tokens(text: Optional[str]) -> int:
@@ -1556,8 +1739,6 @@ class ChatServiceV3:
         raw_query = str(query or "")
         normalized_query = self._query_without_attachment_metadata(raw_query) or raw_query.strip()
         query = normalized_query
-        logger.info(f"[DEBUG] [DEBUG] process_message INICIANDO: query='{query[:100]}...'")
-
         request_id = str(request_id or uuid4())
         request_started_at = time.perf_counter()
         metrics = MetricsService()
@@ -1669,8 +1850,6 @@ class ChatServiceV3:
             
             role = normalized_role_for_metrics
             agent = self._get_agent_for_role(role)
-            logger.info(f"[DEBUG] [DEBUG] Agente disponível para role '{role}': {agent is not None}")
-
             computer_use_enabled = bool(resolved_capabilities.get("computer_use", False))
             image_generation_query = self._is_image_generation_query(query)
             automation_actor = SimpleNamespace(
@@ -1687,7 +1866,6 @@ class ChatServiceV3:
                     "confidence": 0.93,
                     "mode": "policy_block",
                 }
-                logger.info("[DEBUG] [DEBUG] Geração de imagem bloqueada por capability multimodal.")
             elif image_generation_query:
                 image_asset = await self.image_generation_service.generate_image(query)
                 agent_response = {
@@ -1697,7 +1875,6 @@ class ChatServiceV3:
                     "confidence": 0.79,
                     "mode": "image_generation",
                 }
-                logger.info("[DEBUG] [DEBUG] Resposta visual gerada localmente para prompt de imagem.")
             elif self.chat_automation_service.detect_automation_intent(query):
                 if not computer_use_enabled:
                     agent_response = self.chat_automation_service.build_capability_block_response()
@@ -1732,7 +1909,6 @@ class ChatServiceV3:
                 
                 # 3. Executar agente
                 agent_history = self._convert_history_format(chat_history)
-                logger.info(f"[DEBUG] [DEBUG] Histórico convertido: {len(agent_history)} mensagens")
                 system_messages: list[Dict[str, str]] = []
                 preference_system_message = self._preferences_to_system_message(user_preferences)
                 if preference_system_message:
@@ -1743,14 +1919,34 @@ class ChatServiceV3:
                     session_id=session_id,
                     tenant_id="default",
                 )
-                agent_response = self._run_attachment_basket_pipeline(query, document_context)
+                try:
+                    from backend.app.core.context import get_current_user_context
+
+                    promotion_user = get_current_user_context()
+                except Exception:
+                    promotion_user = None
+                if promotion_user is None:
+                    promotion_user = SimpleNamespace(
+                        id=user_id,
+                        role=user_role,
+                        username=str(user_id),
+                        segments_list=["*"],
+                    )
+                agent_response = self._run_promotion_planner_pipeline(query, current_user=promotion_user)
+                if agent_response is not None:
+                    logger.info(
+                        "[DEBUG] Pipeline deterministico de planejamento promocional acionado: %s",
+                        agent_response.get("source"),
+                    )
+                if agent_response is None:
+                    agent_response = self._run_attachment_basket_pipeline(query, document_context)
                 if agent_response is not None and not self._response_matches_query_intent(query, agent_response):
                     logger.info(
-                        "[DEBUG] Pipeline de cesta por anexo descartado por incompatibilidade com a intencao da pergunta: %s",
+                        "[DEBUG] Pipeline especializado descartado por incompatibilidade com a intencao da pergunta: %s",
                         agent_response.get("source"),
                     )
                     agent_response = None
-                if agent_response is not None:
+                if agent_response is not None and agent_response.get("source") != "service.promotion_planner":
                     logger.info(
                         "[DEBUG] Pipeline deterministico de cestas acionado com anexos da sessao: %s",
                         agent_response.get("source"),
@@ -1789,16 +1985,12 @@ class ChatServiceV3:
 
                 if agent_response is None:
                     # Executar agente de forma assíncrona
-                    logger.info(f"[DEBUG] [DEBUG] Chamando agent.run_async()...")
-
                     # FIX: run_async é nativamente async, não usar threads para ele
                     agent_response = await agent.run_async(
                         query,
                         agent_history, # Pass converted history directly
                         on_progress=emit_progress # Pass progress callback if supported
                     )
-                    logger.info(f"[DEBUG] [DEBUG] agent.run_async() RETORNOU: {type(agent_response)}")
-                    logger.info(f"[DEBUG] [DEBUG] Resposta do agente: {str(agent_response)[:200]}...")
                     capability_recovery = await self._attempt_capability_recovery(
                         query=query,
                         chat_history=agent_history,
@@ -1821,8 +2013,10 @@ class ChatServiceV3:
             
             await emit_progress("Analisando pergunta", "done")
             
+            semantic_query = self._query_without_attachment_metadata(query)
+
             # 4. Processar resposta do agente
-            response = self._process_agent_response(agent_response, query=query, user_role=user_role)
+            response = self._process_agent_response(agent_response, query=semantic_query, user_role=user_role)
             response["request_id"] = request_id
             response["ab_variants"] = ab_variants
             existing_citations = response.get("citations")
@@ -1855,21 +2049,21 @@ class ChatServiceV3:
                     metrics.increment("chat_tool_calls_total", labels={"tool": tool_name})
 
             response_text = response.get("result", {}).get("mensagem", "")
-            tokens_in = self._estimate_tokens(query)
+            tokens_in = self._estimate_tokens(semantic_query)
             tokens_out = self._estimate_tokens(response_text)
             latency_seconds = max(0.0, time.perf_counter() - request_started_at)
             response["latency_seconds"] = latency_seconds
 
             # 5. Salvar no histórico
             assistant_metadata = self.build_session_message_metadata(
-                query=query,
+                query=semantic_query,
                 response=response,
                 role="assistant",
                 request_id=request_id,
             )
             if memory_enabled:
-                user_metadata = self.build_session_message_metadata(query=query, role="user", request_id=request_id)
-                self.session_manager.add_message(session_id, "user", query, user_id, metadata=user_metadata)
+                user_metadata = self.build_session_message_metadata(query=semantic_query, role="user", request_id=request_id)
+                self.session_manager.add_message(session_id, "user", semantic_query, user_id, metadata=user_metadata)
                 self.session_manager.add_message(
                     session_id, 
                     "assistant", 
@@ -1889,7 +2083,7 @@ class ChatServiceV3:
                     await self._index_memory_message(
                         session_id,
                         user_id,
-                        {"role": "user", "content": query, "id": request_id, "metadata": user_metadata},
+                        {"role": "user", "content": semantic_query, "id": request_id, "metadata": user_metadata},
                     )
                     await self._index_memory_message(
                         session_id,
@@ -1917,7 +2111,7 @@ class ChatServiceV3:
                     )
 
             self._capture_learning_example(
-                query=query,
+                query=semantic_query,
                 user_id=user_id,
                 response=response,
                 assistant_text=response_text,
@@ -1934,15 +2128,15 @@ class ChatServiceV3:
 
             self._record_semantic_quality_metrics(
                 metrics=metrics,
-                query=query,
+                query=semantic_query,
                 processed_response=response,
                 normalized_role=normalized_role_for_metrics,
             )
 
-            validation_context = self._build_response_validation_context(query, response)
+            validation_context = self._build_response_validation_context(semantic_query, response)
             validation_result = validate_response(
                 response,
-                query=query,
+                query=semantic_query,
                 context=validation_context,
             )
             metrics.increment("response_validation_total")
@@ -1961,7 +2155,7 @@ class ChatServiceV3:
                     issues=getattr(validation_result, "issues", []),
                 )
                 response = self._build_validation_block_response(
-                    query=query,
+                    query=semantic_query,
                     validation_result=validation_result,
                     validation_context=validation_context,
                 )
@@ -2124,8 +2318,8 @@ class ChatServiceV3:
         role_map = {
             "admin": "admin",
             "analyst": "analyst",
-            # Hardening: perfil "user" opera com escopo restrito de ferramentas (viewer).
-            "user": "viewer",
+            # Runtime principal do ChatBI trata perfis "user" como analíticos por padrão.
+            "user": "analyst",
             "compras": "analyst",
             "coordenador": "analyst",
             "coordinator": "analyst",
@@ -2522,35 +2716,28 @@ class ChatServiceV3:
             "chart_data": {...} (opcional)
         }
         """
-        logger.info(f"[DEBUG] [DEBUG] _process_agent_response INPUT: {str(agent_response)[:500]}...")
-        
         # FIX 2026-01-27: Extração robusta de response_text com múltiplos fallbacks
         response_text = None
         
         # Tentativa 1: Chave "response" (formato padrão do agente)
         if "response" in agent_response and agent_response["response"]:
             response_text = agent_response["response"]
-            logger.info(f"[DEBUG] [DEBUG] response_text extraído de 'response': {response_text[:100]}...")
         
         # Tentativa 2: Chave "text_override"
         elif "text_override" in agent_response and agent_response["text_override"]:
             response_text = agent_response["text_override"]
-            logger.info(f"[DEBUG] [DEBUG] response_text extraído de 'text_override': {response_text[:100]}...")
         
         # Tentativa 3: Chave "result" (se for string)
         elif "result" in agent_response:
             result_data = agent_response["result"]
             if isinstance(result_data, str) and result_data:
                 response_text = result_data
-                logger.info(f"[DEBUG] [DEBUG] response_text extraído de 'result' (string): {response_text[:100]}...")
             elif isinstance(result_data, dict) and "mensagem" in result_data:
                 response_text = result_data["mensagem"]
-                logger.info(f"[DEBUG] [DEBUG] response_text extraído de 'result.mensagem': {response_text[:100]}...")
         
         # Tentativa 4: Chave "mensagem" direta
         elif "mensagem" in agent_response and agent_response["mensagem"]:
             response_text = agent_response["mensagem"]
-            logger.info(f"[DEBUG] [DEBUG] response_text extraído de 'mensagem': {response_text[:100]}...")
         
         # Fallback final: Se ainda vazio, usar mensagem padrão
         if not response_text or (isinstance(response_text, str) and not response_text.strip()):
@@ -2563,17 +2750,38 @@ class ChatServiceV3:
 
         # Dashboard estruturado não recebe wrapping executivo textual adicional.
         is_dashboard_payload = bool(agent_response.get("dashboard_spec"))
+        preserve_operational_markdown = (
+            agent_response.get("source") == "service.promotion_planner"
+            or agent_response.get("mode") == "promotion_planner"
+        )
 
         table_data = agent_response.get("table_data")
         if not table_data:
             table_data = result_data_payload.get("table_data")
 
         structured_sales_report = None
-        if isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload and isinstance(table_data, list) and table_data:
+        if (
+            isinstance(response_text, str)
+            and response_text.strip()
+            and not is_dashboard_payload
+            and not preserve_operational_markdown
+            and isinstance(table_data, list)
+            and table_data
+        ):
             structured_sales_report = build_sales_dimension_report_from_rows(query=query, rows=table_data)
         if structured_sales_report:
             response_text = structured_sales_report
-        elif isinstance(response_text, str) and response_text.strip() and not is_dashboard_payload:
+        elif (
+            isinstance(response_text, str)
+            and response_text.strip()
+            and not is_dashboard_payload
+            and not preserve_operational_markdown
+        ):
+            response_text = self._generate_structured_executive_summary(
+                query=query,
+                message=response_text,
+                table_data=table_data if isinstance(table_data, list) else None,
+            )
             response_text = ensure_executive_output(query=query, message=response_text)
         response_text = self._sanitize_executive_output_for_role(response_text, user_role=user_role)
 
@@ -2596,11 +2804,6 @@ class ChatServiceV3:
         automation_request = agent_response.get("automation_request")
         if automation_request in (None, "", {}):
             automation_request = result_data_payload.get("automation_request")
-        
-        if chart_data:
-            logger.info(f"[DEBUG] [DEBUG] chart_data encontrado: {str(chart_data)[:200]}...")
-        if dashboard_spec:
-            logger.info("[DEBUG] [DEBUG] dashboard_spec encontrado para renderizacao no frontend")
         
         result = {
             "type": "dashboard" if dashboard_spec else "text",
@@ -2644,7 +2847,6 @@ class ChatServiceV3:
         if tool_calls not in (None, "", []):
             result["tool_calls"] = tool_calls
         
-        logger.info(f"[DEBUG] [DEBUG] _process_agent_response OUTPUT: {str(result)[:500]}...")
         return result
     
     def _get_user_filters(self, user_id: str) -> Dict[str, Any]:

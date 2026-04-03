@@ -8,6 +8,8 @@ import re
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
 
+from backend.app.core.utils.executive_output import is_business_query, validate_executive_output
+
 logger = logging.getLogger(__name__)
 
 
@@ -109,7 +111,11 @@ class ResponseValidator:
             confidence -= 0.3
         
         # 4. Validar referências a colunas
-        invalid_cols = self._check_column_references(response_text)
+        response_mode = str(validation_context.get("mode") or response.get("mode") or "").strip().lower()
+        response_source = str(validation_context.get("source") or response.get("source") or "").strip().lower()
+        skip_column_reference_check = response_mode in {"attachment_basket_pipeline", "dataset_basket_pipeline"} or "basket_analysis" in response_source
+
+        invalid_cols = [] if skip_column_reference_check else self._check_column_references(response_text)
         if invalid_cols:
             issues.append(f"Referências a colunas possivelmente inválidas: {', '.join(invalid_cols)}")
             suggestions.append(f"Colunas válidas incluem: UNE, PRODUTO, NOME, ESTOQUE_UNE, VENDA_30DD")
@@ -246,6 +252,21 @@ class ResponseValidator:
             confidence_penalty += 0.40
             should_block = True
             block_reason = block_reason or "wrong_analysis_type"
+
+        response_text = self._extract_text(response)
+        executive_checks = validate_executive_output(response_text)
+        is_dashboard_like = has_dashboard_payload or has_visual_payload
+        if is_business_query(query) and response_source != "system" and not is_dashboard_like and not no_data_detected:
+            missing_sections = [name for name, ok in executive_checks.items() if not ok]
+            if missing_sections:
+                issues.append(
+                    "Saida executiva incompleta para pergunta de negocio: faltando "
+                    + ", ".join(missing_sections)
+                )
+                suggestions.append(
+                    "Garantir Resumo executivo, Tabela operacional e Proximas acoes no texto final."
+                )
+                confidence_penalty += 0.20
 
         return {
             "issues": issues,

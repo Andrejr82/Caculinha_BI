@@ -1,6 +1,8 @@
 from typing import Annotated, Dict, Any, List, Optional
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import asyncio
+import hashlib
 import json
 import logging
 from uuid import uuid4
@@ -16,7 +18,6 @@ from backend.app.api.dependencies import require_role, get_current_active_user, 
 from backend.app.core.data_scope_service import data_scope_service
 from backend.app.infrastructure.database.models import User, UserPreference, AuditLog
 from backend.app.config.settings import settings
-from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
 from backend.app.core.llm_factory import LLMFactory
 from backend.app.core.playground_rules_engine import resolve_playground_rule, load_bi_intents_catalog
 from backend.app.core.playground_template_engine import resolve_playground_template, load_bi_templates_catalog
@@ -42,6 +43,230 @@ _SQL_ACCESS_CACHE_TTL_SECONDS = 60
 _sql_access_cache: dict[str, tuple[datetime, tuple[bool, str, str | None]]] = {}
 _canary_access_cache: dict[str, tuple[datetime, tuple[bool | None, str]]] = {}
 _playground_access_cache: dict[str, tuple[datetime, tuple[bool, str]]] = {}
+
+# ---------------------------------------------------------------------------
+# In-memory LRU cache para respostas do Playground (sem Redis obrigatório)
+# ---------------------------------------------------------------------------
+@dataclass
+class _PlaygroundCacheEntry:
+    response_text: str
+    source: str
+    intent: str
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    hits: int = 0
+
+_playground_response_cache: dict[str, _PlaygroundCacheEntry] = {}
+
+
+def _cache_key(message: str, operation_mode: str | None, temperature: float) -> str:
+    """Hash determinístico para a chave de cache."""
+    raw = json.dumps({
+        "m": (message or "").strip().lower(),
+        "op": (operation_mode or "").strip().lower(),
+        "t": round(temperature, 2),
+    }, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def _cache_get(key: str) -> "_PlaygroundCacheEntry | None":
+    entry = _playground_response_cache.get(key)
+    if entry is None:
+        return None
+    ttl = max(5, getattr(settings, "PLAYGROUND_CACHE_TTL_SECONDS", 600))
+    if (datetime.utcnow() - entry.created_at).total_seconds() > ttl:
+        _playground_response_cache.pop(key, None)
+        return None
+    entry.hits += 1
+    return entry
+
+
+def _cache_set(key: str, response_text: str, source: str, intent: str) -> None:
+    max_size = max(10, getattr(settings, "PLAYGROUND_CACHE_MAX_SIZE", 200))
+    _cache_trim(max_size - 1)
+    _playground_response_cache[key] = _PlaygroundCacheEntry(
+        response_text=response_text, source=source, intent=intent
+    )
+
+
+def _cache_trim(max_size: int) -> None:
+    if len(_playground_response_cache) <= max_size:
+        return
+    # Evict oldest entries (insertion-order dict desde Python 3.7)
+    overflow = len(_playground_response_cache) - max_size
+    for key in list(_playground_response_cache.keys())[:overflow]:
+        _playground_response_cache.pop(key, None)
+
+
+def _cache_stats_snapshot() -> dict[str, Any]:
+    total = len(_playground_response_cache)
+    total_hits = sum(e.hits for e in _playground_response_cache.values())
+    return {
+        "size": total,
+        "total_hits": total_hits,
+        "enabled": True,
+        "ttl_seconds": getattr(settings, "PLAYGROUND_CACHE_TTL_SECONDS", 600),
+    }
+
+
+def _effective_temperature(requested: float, is_sql: bool, operation_mode: str | None) -> float:
+    """Temperatura adaptativa por tipo de request:
+    - SQL/query: baixa (0.15) para respostas deterministas e corretas
+    - Modos operacionais: média (0.35) para análises precisas
+    - Se o frontend enviou temperatura default (1.0), aplicar a otimizada.
+    """
+    sql_temp = float(getattr(settings, "PLAYGROUND_SQL_TEMPERATURE", 0.15))
+    default_temp = float(getattr(settings, "PLAYGROUND_DEFAULT_TEMPERATURE", 0.35))
+    if is_sql:
+        return sql_temp
+    effective = requested if requested != 1.0 else default_temp
+    return min(effective, 0.85)  # Cap em 0.85 para manter coesão nas respostas
+
+
+_PLAYGROUND_OPERATION_MODE_SPECS: dict[str, dict[str, Any]] = {
+
+    "abastecimento": {
+        "label": "Abastecimento",
+        "focus": "Priorizacao de ruptura, giro e cobertura com recorte por loja e UNE.",
+        "tool_hints": ["encontrar_rupturas_criticas", "consultar_dados_flexivel", "sugerir_transferencias_automaticas"],
+        "output_preference": "operational_plan",
+    },
+    "mix": {
+        "label": "Mix de Produtos",
+        "focus": "Decisao de sortimento com leitura por curva, margem e regionalidade.",
+        "tool_hints": ["consultar_dados_flexivel", "gerar_grafico_universal_v2", "analisar_historico_vendas"],
+        "output_preference": "comparison",
+    },
+    "promocao": {
+        "label": "Promocao e Preco",
+        "focus": "Leitura tatico-comercial com elasticidade, margem e estoque disponivel.",
+        "tool_hints": ["calcular_mc_produto", "consultar_dados_flexivel", "analisar_cesta_compras"],
+        "output_preference": "operational_plan",
+    },
+    "devolucao": {
+        "label": "Devolucao e Transferencia",
+        "focus": "Equilibrio entre excesso, cobertura e oportunidade de transferencia.",
+        "tool_hints": ["sugerir_transferencias_automaticas", "consultar_dados_flexivel"],
+        "output_preference": "operational_plan",
+    },
+    "sazonalidade": {
+        "label": "Sazonalidade",
+        "focus": "Planejamento com historico, eventos, calendario comercial e ruptura.",
+        "tool_hints": ["prever_demanda", "calcular_eoq", "consultar_dados_flexivel"],
+        "output_preference": "forecast",
+    },
+    "opcom": {
+        "label": "OPCOM Rotinas",
+        "focus": "Rotina de execucao, follow-up e entregavel acionavel para operacao.",
+        "tool_hints": ["consultar_dados_flexivel", "gerar_dashboard_executivo"],
+        "output_preference": "executive",
+    },
+}
+
+
+def _sanitize_playground_context(raw_value: Any) -> Dict[str, str]:
+    if not isinstance(raw_value, dict):
+        return {}
+    sanitized: Dict[str, str] = {}
+    for key in ("product", "segment", "une", "period", "objective"):
+        text = str(raw_value.get(key) or "").strip()
+        if text:
+            sanitized[key] = text[:240]
+    return sanitized
+
+
+def _sanitize_playground_guided_action(raw_value: Any) -> Dict[str, Any]:
+    if not isinstance(raw_value, dict):
+        return {}
+
+    sanitized: Dict[str, Any] = {}
+    for key in (
+        "actionId",
+        "actionLabel",
+        "source",
+        "playbookId",
+        "prompt",
+        "executionPolicy",
+        "outputPreference",
+        "missingDataBehavior",
+    ):
+        text = str(raw_value.get(key) or "").strip()
+        if text:
+            sanitized[key] = text[:240]
+
+    if isinstance(raw_value.get("directSend"), bool):
+        sanitized["directSend"] = bool(raw_value["directSend"])
+
+    if isinstance(raw_value.get("toolHints"), list):
+        tool_hints = [str(item).strip()[:80] for item in raw_value["toolHints"] if str(item or "").strip()]
+        if tool_hints:
+            sanitized["toolHints"] = tool_hints[:8]
+
+    return sanitized
+
+
+def _build_playground_system_instruction(
+    *,
+    base_instruction: Optional[str],
+    operation_mode: Optional[str],
+    playbook_context: Optional[Dict[str, Any]],
+    guided_action: Optional[Dict[str, Any]],
+    is_sql_request: bool,
+) -> Optional[str]:
+    mode_key = str(operation_mode or "").strip().lower()
+    mode_spec = _PLAYGROUND_OPERATION_MODE_SPECS.get(mode_key)
+    context = _sanitize_playground_context(playbook_context or {})
+    action = _sanitize_playground_guided_action(guided_action or {})
+
+    lines: List[str] = []
+    base = str(base_instruction or "").strip()
+    if base:
+        lines.append(base)
+
+    if not mode_spec and not context and not action:
+        return base or None
+
+    lines.append("Contexto operacional adicional do Playground:")
+    if mode_spec:
+        lines.append(f"- modo operacional ativo: {mode_spec['label']}")
+        lines.append(f"- foco operacional: {mode_spec['focus']}")
+    if context.get("product"):
+        lines.append(f"- produto_foco: {context['product']}")
+    if context.get("segment"):
+        lines.append(f"- segmento_foco: {context['segment']}")
+    if context.get("une"):
+        lines.append(f"- lojas_ou_une: {context['une']}")
+    if context.get("period"):
+        lines.append(f"- periodo: {context['period']}")
+    if context.get("objective"):
+        lines.append(f"- objetivo: {context['objective']}")
+
+    if action:
+        lines.append("- usar somente dados reais observados no sistema")
+        if action.get("actionLabel"):
+            lines.append(f"- acao orientada: {action['actionLabel']}")
+        if action.get("outputPreference"):
+            lines.append(f"- formato_preferido: {action['outputPreference']}")
+        if action.get("toolHints"):
+            lines.append(f"- tools_sugeridas: {', '.join(action['toolHints'])}")
+        if action.get("missingDataBehavior"):
+            lines.append(f"- politica_lacunas: {action['missingDataBehavior']}")
+    elif mode_spec and mode_spec.get("tool_hints"):
+        lines.append(f"- tools_sugeridas: {', '.join(mode_spec['tool_hints'])}")
+
+    if is_sql_request:
+        lines.append("- quando responder SQL, entregue somente SQL Server valido em bloco ```sql```.")
+    else:
+        lines.append("- responda de forma objetiva e acionavel para operacao.")
+        lines.append("- quando fizer sentido, use Resumo executivo, Tabela operacional e Acao operacional.")
+
+    return "\n".join(lines).strip()
+
+
+def _get_playground_llm_adapter(*, provider: str, system_instruction: str | None):
+    adapter = LLMFactory.get_adapter(provider=provider, use_smart=False)
+    if hasattr(adapter, "system_instruction"):
+        adapter.system_instruction = system_instruction
+    return adapter
 
 
 def _audit_playground_event(
@@ -229,7 +454,13 @@ def _apply_sql_scope(
     return text, True, "Escopo de SQL validado para o perfil."
 
 
-def _build_local_fallback_response(message: str, json_mode: bool = False) -> str:
+def _build_local_fallback_response(
+    message: str,
+    json_mode: bool = False,
+    *,
+    operation_mode: Optional[str] = None,
+    playbook_context: Optional[Dict[str, Any]] = None,
+) -> str:
     """
     Gera resposta local quando GEMINI_API_KEY não está configurada.
     Evita UX de erro no Playground e mantém utilidade básica para prompts técnicos.
@@ -257,10 +488,32 @@ def _build_local_fallback_response(message: str, json_mode: bool = False) -> str
             "```"
         )
 
+    mode_key = str(operation_mode or "").strip().lower()
+    mode_spec = _PLAYGROUND_OPERATION_MODE_SPECS.get(mode_key)
+    context = _sanitize_playground_context(playbook_context or {})
+
     default_msg = (
         "Playground executando em modo local (sem LLM remoto). "
         "As respostas estão em modo econômico e determinístico."
     )
+    if mode_spec:
+        objective = context.get("objective") or mode_spec["focus"]
+        default_msg = (
+            "## Resumo executivo\n"
+            f"- Modo operacional ativo: {mode_spec['label']}.\n"
+            "- Playground executando em modo local, com resposta determinística de contingência.\n"
+            f"- Objetivo operacional: {objective}\n\n"
+            "## Tabela operacional\n"
+            "| Campo | Valor |\n"
+            "|---|---|\n"
+            f"| Modo | {mode_spec['label']} |\n"
+            f"| Foco | {mode_spec['focus']} |\n"
+            f"| Próximo passo sugerido | {context.get('period') or 'Definir recorte mínimo de produto, loja/UNE e período'} |\n\n"
+            "## Próximas ações\n"
+            "- Refaça o pedido informando produto/SKU, período e escopo de lojas quando houver.\n"
+            "- Se o pedido for SQL, explicite a métrica e os filtros obrigatórios.\n"
+            "- Se o pedido for operacional, diga o artefato esperado: plano, checklist, SQL, planilha ou mensagem."
+        )
     if json_mode:
         return enforce_playground_response_schema(json.dumps({"summary": default_msg, "table": {"headers": [], "rows": []}, "action": "Defina o próximo passo operacional."}, ensure_ascii=False), json_mode=True)
     return enforce_playground_response_schema(default_msg, json_mode=False)
@@ -310,6 +563,9 @@ class PlaygroundChatRequest(BaseModel):
     json_mode: bool = False
     stream: bool = False
     model: Optional[str] = None # Added for Compare Mode
+    operation_mode: Optional[str] = None
+    playbook_context: Dict[str, Any] = Field(default_factory=dict)
+    guided_action: Dict[str, Any] = Field(default_factory=dict)
 
 
 class PlaygroundFeedbackRequest(BaseModel):
@@ -405,6 +661,15 @@ async def playground_stream(
     remote_llm_allowed, remote_llm_reason = await _resolve_remote_llm_access(current_user, db)
 
     is_sql_request = _is_explicit_sql_request(request.message)
+    sanitized_playbook_context = _sanitize_playground_context(request.playbook_context)
+    sanitized_guided_action = _sanitize_playground_guided_action(request.guided_action)
+    effective_system_instruction = _build_playground_system_instruction(
+        base_instruction=request.system_instruction,
+        operation_mode=request.operation_mode,
+        playbook_context=sanitized_playbook_context,
+        guided_action=sanitized_guided_action,
+        is_sql_request=is_sql_request,
+    )
 
     rule_result = resolve_playground_rule(message=request.message, json_mode=request.json_mode) if not is_sql_request else None
     if rule_result:
@@ -532,43 +797,25 @@ async def playground_stream(
     async def event_generator():
         llm_adapter = None
         try:
-            # Groq path via unified factory; Gemini keeps legacy adapter path.
-            if provider == "groq":
-                llm_adapter = LLMFactory.get_adapter(provider="groq", use_smart=True)
-                if hasattr(llm_adapter, "system_instruction"):
-                    llm_adapter.system_instruction = request.system_instruction
-            else:
-                llm_adapter = GeminiLLMAdapter(
-                    model_name=model_name,
-                    gemini_api_key=settings.GEMINI_API_KEY,
-                    system_instruction=request.system_instruction
-                )
+            llm_adapter = _get_playground_llm_adapter(
+                provider=provider,
+                system_instruction=effective_system_instruction,
+            )
 
             # Yield start event
             yield f"data: {json.dumps({'type': 'start', 'request_id': request_id, 'model': model_name})}\n\n"
             
-            # Since stream_completion is a sync generator (using yield), we iterate it
-            # But we are in an async function. 
-            # Ideally GeminiLLMAdapter.stream_completion should be async or we run it in thread.
-            # But the underlying google genai stream is sync iterator usually.
-            # Let's assume direct iteration works for now or wrap it if it blocks.
-            
             start_time = datetime.now()
-            
-            # Use asyncio.to_thread for blocking generator if needed, 
-            # but you can't easily iterate a sync generator in a thread from async loop without wrappers.
-            # For simplicity, we'll iterate directly (might block loop slightly but ok for playground)
-            
+
             full_text = ""
             try:
-                if provider == "groq":
-                    result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
-                else:
-                    result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
+                result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
             except asyncio.TimeoutError:
                 fallback_text = _build_local_fallback_response(
                     message=request.message,
                     json_mode=request.json_mode,
+                    operation_mode=request.operation_mode,
+                    playbook_context=sanitized_playbook_context,
                 )
                 normalized = enforce_playground_response_schema(fallback_text, json_mode=request.json_mode)
                 scoped_text, scope_ok, scope_reason = _apply_sql_scope(
@@ -706,6 +953,15 @@ async def playground_chat(
             )
 
         is_sql_request = _is_explicit_sql_request(request.message)
+        sanitized_playbook_context = _sanitize_playground_context(request.playbook_context)
+        sanitized_guided_action = _sanitize_playground_guided_action(request.guided_action)
+        effective_system_instruction = _build_playground_system_instruction(
+            base_instruction=request.system_instruction,
+            operation_mode=request.operation_mode,
+            playbook_context=sanitized_playbook_context,
+            guided_action=sanitized_guided_action,
+            is_sql_request=is_sql_request,
+        )
 
         rule_result = resolve_playground_rule(message=request.message, json_mode=request.json_mode) if not is_sql_request else None
         if rule_result:
@@ -810,6 +1066,8 @@ async def playground_chat(
             fallback_text = _build_local_fallback_response(
                 message=request.message,
                 json_mode=request.json_mode,
+                operation_mode=request.operation_mode,
+                playbook_context=sanitized_playbook_context,
             )
             normalized = enforce_playground_response_schema(fallback_text, json_mode=request.json_mode)
             scoped_text, scope_ok, scope_reason = _apply_sql_scope(
@@ -863,33 +1121,87 @@ async def playground_chat(
         provider = _normalized_provider()
         model_source = settings.GROQ_MODEL_NAME if provider == "groq" else settings.LLM_MODEL_NAME
 
-        # Invocar LLM
+        # Temperatura adaptativa (LLM optimization - @performance-optimizer)
+        optimized_temperature = _effective_temperature(
+            requested=request.temperature,
+            is_sql=is_sql_request,
+            operation_mode=request.operation_mode,
+        )
+
+        # Invocar LLM - com cache e histórico truncado
         start_time = datetime.now()
+
+        # Truncar histórico para evitar context overflow
+        max_history = max(2, getattr(settings, "PLAYGROUND_MAX_HISTORY_MESSAGES", 8))
         messages: list[dict[str, str]] = []
-        for msg in request.history:
+        # Pegar apenas as últimas N mensagens do histórico
+        recent_history = list(request.history)[-max_history:]
+        for msg in recent_history:
             role = "assistant" if msg.role == "assistant" else "user"
             messages.append({"role": role, "content": msg.content})
         messages.append({"role": "user", "content": request.message})
 
+        # Verificar cache antes de chamar o LLM
+        c_key = _cache_key(request.message, request.operation_mode, optimized_temperature)
+        cached = _cache_get(c_key)
+        if cached:
+            logger.info(
+                "playground_cache_hit request_id=%s key=%s source=%s",
+                request_id, c_key[:8], cached.source,
+            )
+            scoped_text, scope_ok, scope_reason = _apply_sql_scope(
+                text=cached.response_text, has_sql_access=has_sql_access
+            )
+            safe_text, is_safe, safety_reason = _safe_response_or_block(scoped_text)
+            _record_playground_usage(
+                db,
+                user_id=current_user.id,
+                action="playground_chat_cache_hit",
+                details={"request_id": request_id, "source": cached.source, "cache_hits": cached.hits, "endpoint": "chat"},
+            )
+            await _safe_db_commit(db, "playground")
+            stats = _cache_stats_snapshot()
+            stats["hit_rate"] = round(stats["total_hits"] / max(1, stats["size"]), 2)
+            return {
+                "response": safe_text,
+                "model_info": {
+                    "model": cached.source,
+                    "temperature": optimized_temperature,
+                    "max_tokens": request.max_tokens,
+                    "json_mode": request.json_mode,
+                    "cache_hit": True,
+                    "intent": cached.intent,
+                },
+                "metadata": {
+                    "response_time": 0.0,
+                    "timestamp": datetime.now().isoformat(),
+                    "user": current_user.username,
+                    "request_id": request_id,
+                    "source": cached.source,
+                    "intent": cached.intent,
+                    "sql_access_expires_at": sql_access_expires_at,
+                    "safety": {"is_safe": is_safe and scope_ok, "reason": f"{sql_access_reason} | {scope_reason} | {safety_reason}"},
+                    "optimization": {"cache": "hit", "temperature_used": optimized_temperature},
+                },
+                "cache_stats": stats,
+            }
+
         try:
-            if provider == "groq":
-                llm_adapter = LLMFactory.get_adapter(provider="groq", use_smart=True)
-                if hasattr(llm_adapter, "system_instruction"):
-                    llm_adapter.system_instruction = request.system_instruction
-            else:
-                llm_adapter = GeminiLLMAdapter(
-                    model_name=settings.LLM_MODEL_NAME,
-                    gemini_api_key=settings.GEMINI_API_KEY,
-                    system_instruction=request.system_instruction
-                )
+            llm_adapter = _get_playground_llm_adapter(
+                provider=provider,
+                system_instruction=effective_system_instruction,
+            )
             result = await _run_playground_remote_call(llm_adapter.get_completion, messages)
             if "error" in result:
                 raise Exception(str(result["error"]))
             response_text = str(result.get("content", "") or "")
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.warning(f"playground_chat_llm_failed provider={provider} error={e}")
             fallback_text = _build_local_fallback_response(
                 message=request.message,
                 json_mode=request.json_mode,
+                operation_mode=request.operation_mode,
+                playbook_context=sanitized_playbook_context,
             )
             normalized = enforce_playground_response_schema(fallback_text, json_mode=request.json_mode)
             scoped_text, scope_ok, scope_reason = _apply_sql_scope(
@@ -897,11 +1209,14 @@ async def playground_chat(
                 has_sql_access=has_sql_access,
             )
             safe_text, is_safe, safety_reason = _safe_response_or_block(scoped_text)
+            
+            error_type = "timeout" if isinstance(e, asyncio.TimeoutError) else "api_error"
+            
             _record_playground_usage(
                 db,
                 user_id=current_user.id,
-                action="playground_chat_timeout_fallback",
-                details={"request_id": request_id, "endpoint": "chat", "timeout_seconds": _playground_remote_timeout_seconds()},
+                action=f"playground_chat_{error_type}_fallback",
+                details={"request_id": request_id, "endpoint": "chat", "error_detail": str(e)},
                 status="warning",
             )
             await _safe_db_commit(db, "playground")
@@ -909,10 +1224,10 @@ async def playground_chat(
                 "response": safe_text,
                 "model_info": {
                     "model": "local-fallback",
-                    "temperature": request.temperature,
+                    "temperature": optimized_temperature,
                     "max_tokens": request.max_tokens,
                     "json_mode": request.json_mode,
-                    "timeout_fallback": True,
+                    f"{error_type}_fallback": True,
                 },
                 "metadata": {
                     "response_time": round((datetime.now() - start_time).total_seconds(), 2),
@@ -920,17 +1235,12 @@ async def playground_chat(
                     "user": current_user.username,
                     "request_id": request_id,
                     "source": "local-fallback",
-                    "intent": "fallback.timeout",
-                    "remote_llm_reason": f"Timeout de {_playground_remote_timeout_seconds()}s no provedor remoto.",
+                    "intent": f"fallback.{error_type}",
+                    "remote_llm_reason": f"Falha no provedor remoto: {str(e)}",
                     "sql_access_expires_at": sql_access_expires_at,
                     "safety": {"is_safe": is_safe and scope_ok, "reason": f"{sql_access_reason} | {scope_reason} | {safety_reason}"},
                 },
-                "cache_stats": {
-                    "hits": 0,
-                    "misses": 0,
-                    "hit_rate": 0.0,
-                    "enabled": False,
-                },
+                "cache_stats": _cache_stats_snapshot(),
             }
 
         end_time = datetime.now()
@@ -953,26 +1263,35 @@ async def playground_chat(
             db,
             user_id=current_user.id,
             action="playground_chat_remote",
-            details={"request_id": request_id, "intent": "llm.freeform", "source": model_source, "endpoint": "chat", "duration_ms": round(response_time * 1000, 2)},
+            details={
+                "request_id": request_id,
+                "intent": "llm.freeform",
+                "source": model_source,
+                "endpoint": "chat",
+                "duration_ms": round(response_time * 1000, 2),
+                "temperature_used": optimized_temperature,
+                "history_msgs": len(messages),
+            },
         )
         await _safe_db_commit(db, "playground")
 
-        # Estatísticas de cache (simuladas por enquanto)
-        # Em produção, você poderia usar Redis ou outro sistema de cache
-        cache_stats = {
-            "hits": 0,
-            "misses": 0,
-            "hit_rate": 0.0,
-            "enabled": False
-        }
+        # Armazenar no cache se a resposta foi válida
+        if safe_text and is_safe and len(safe_text) > 20:
+            _cache_set(c_key, safe_text, model_source, "llm.freeform")
+
+        stats = _cache_stats_snapshot()
+        total_req = stats["size"] if stats["size"] > 0 else 1
+        stats["hit_rate"] = round(stats["total_hits"] / max(1, total_req), 2)
 
         return {
             "response": safe_text,
             "model_info": {
                 "model": model_source,
-                "temperature": request.temperature,
+                "temperature": optimized_temperature,
                 "max_tokens": request.max_tokens,
-                "json_mode": request.json_mode
+                "json_mode": request.json_mode,
+                "cache_hit": False,
+                "intent": "llm.freeform",
             },
             "metadata": {
                 "response_time": round(response_time, 2),
@@ -982,9 +1301,14 @@ async def playground_chat(
                 "source": model_source,
                 "intent": "llm.freeform",
                 "sql_access_expires_at": sql_access_expires_at,
-                "safety": {"is_safe": is_safe and scope_ok, "reason": f"{sql_access_reason} | {scope_reason} | {safety_reason}"}
+                "safety": {"is_safe": is_safe and scope_ok, "reason": f"{sql_access_reason} | {scope_reason} | {safety_reason}"},
+                "optimization": {
+                    "temperature_used": optimized_temperature,
+                    "history_msgs_sent": len(messages),
+                    "cache": "miss",
+                },
             },
-            "cache_stats": cache_stats
+            "cache_stats": stats,
         }
 
     except Exception as e:

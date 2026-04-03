@@ -81,6 +81,7 @@ export default function Transfers() {
   const [error, setError] = createSignal<string | null>(null);
   const [success, setSuccess] = createSignal<string | null>(null);
   const [selectedTracking, setSelectedTracking] = createSignal<TrackingItem | null>(null);
+  const [initialScopeUne, setInitialScopeUne] = createSignal<number | null>(null);
 
   const trackingItems: TrackingItem[] = [
     {
@@ -145,8 +146,18 @@ export default function Transfers() {
   };
 
   onMount(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialSegmento = urlParams.get('segmento') || '';
+    const initialUneRaw = urlParams.get('une') || '';
+    const initialUne = Number(initialUneRaw);
+    if (Number.isFinite(initialUne) && initialUne > 0) {
+      setSelectedUnesOrigem([initialUne]);
+      setInitialScopeUne(initialUne);
+    }
+
     loadUnes();
     loadFilters();
+    if (initialSegmento) setSearchSegmento(initialSegmento);
     searchProducts();
   });
 
@@ -268,6 +279,11 @@ export default function Transfers() {
             Central de Transferências
           </h2>
           <p class="text-muted-foreground mt-1">Gerenciamento logístico e movimentação de estoque entre unidades.</p>
+          <Show when={searchSegmento() || initialScopeUne()}>
+            <div class="mt-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700" data-testid="transfers-scope-pill">
+              Escopo ativo: {searchSegmento() || 'Todos os segmentos'} {initialScopeUne() ? `• origem sugerida UNE ${initialScopeUne()}` : ''}
+            </div>
+          </Show>
         </div>
         <div class="flex gap-2">
           <button
@@ -427,6 +443,7 @@ export default function Transfers() {
                 <div class="relative">
                   <Search class="absolute left-3 top-3 text-gray-400" size={18} />
                   <input
+                    data-testid="transfers-search-input"
                     type="text"
                     placeholder="Buscar por nome ou código..."
                     class="w-full pl-10 pr-4 py-2 rounded-lg border bg-slate-50 focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
@@ -436,9 +453,12 @@ export default function Transfers() {
                   />
                 </div>
                 <div class="flex gap-2">
-                  <select class="input text-xs flex-1" value={searchSegmento()} onChange={e => setSearchSegmento(e.currentTarget.value)}>
-                    <option value="">Todos Segmentos</option>
-                    <For each={availableSegmentos()}>{s => <option value={s}>{s}</option>}</For>
+                  <select data-testid="transfers-segment-filter" class="input text-xs flex-1" value={searchSegmento()} onChange={e => setSearchSegmento(e.currentTarget.value)}>
+                    <option value="" selected={searchSegmento() === ''}>Todos Segmentos</option>
+                    <Show when={searchSegmento() && !availableSegmentos().includes(searchSegmento())}>
+                      <option value={searchSegmento()} selected>{searchSegmento()} (recorte atual)</option>
+                    </Show>
+                    <For each={availableSegmentos()}>{s => <option value={s} selected={s === searchSegmento()}>{s}</option>}</For>
                   </select>
                   <button onClick={searchProducts} class="btn btn-outline p-2" title="Atualizar"><Filter size={16} /></button>
                 </div>

@@ -1,5 +1,9 @@
 import { test, expect } from './setup';
 
+const expectRenderedChart = async (page: Parameters<typeof test>[0]['authenticatedPage']) => {
+  await expect(page.locator('[data-testid="adaptive-chart-canvas"], svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+};
+
 test.describe('Chat Context Continuity', () => {
   test('keeps context from chart request into 7-day commercial plan follow-up', async ({ authenticatedPage: page }) => {
     test.setTimeout(120000);
@@ -17,7 +21,7 @@ test.describe('Chat Context Continuity', () => {
     await input.fill('gere um gráfico de vendas de todos os segmentos em todas as unes');
     await page.keyboard.press('Enter');
 
-    await expect(page.locator('svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+    await expectRenderedChart(page);
     await expect(page.locator('body')).toContainText('Segmento', { timeout: 60000 });
 
     await input.fill('me de um plano comercial de 7 dias para as unes de menor venda');
@@ -44,7 +48,7 @@ test.describe('Chat Context Continuity', () => {
     await input.fill('gere um gráfico de vendas de todos os segmentos em todas as unes');
     await page.keyboard.press('Enter');
 
-    await expect(page.locator('svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+    await expectRenderedChart(page);
     await expect(page.locator('body')).toContainText('Segmento', { timeout: 60000 });
 
     await input.fill('com base na última resposta, quais ações você recomenda?');
@@ -72,7 +76,7 @@ test.describe('Chat Context Continuity', () => {
 
     await expect(page.locator('body')).toContainText('Painel de Vendas', { timeout: 60000 });
     await expect(page.locator('body')).toContainText('segmento: ARTES', { timeout: 60000 });
-    await expect(page.locator('svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+    await expectRenderedChart(page);
 
     await input.fill('com base nesse dashboard, detalhe os pontos críticos');
     await page.keyboard.press('Enter');

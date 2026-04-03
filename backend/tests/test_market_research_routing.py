@@ -7,12 +7,12 @@ from backend.app.api.v1.endpoints.chat import (
 from backend.app.config.settings import settings
 
 
-def test_market_web_fast_path_only_for_explicit_mercado_livre() -> None:
+def test_market_web_fast_path_enabled_for_explicit_mercado_livre() -> None:
     assert _should_use_market_web_fast_path("pesquisar preço no mercado livre de fita adesiva") is True
 
 
-def test_market_web_fast_path_disabled_for_generic_market_research() -> None:
-    assert _should_use_market_web_fast_path("faça uma pesquisa de mercado de fita adesiva 45x45") is False
+def test_market_web_fast_path_enabled_for_generic_market_research() -> None:
+    assert _should_use_market_web_fast_path("faça uma pesquisa de mercado de fita adesiva 45x45") is True
 
 
 def test_market_web_fast_path_disabled_when_other_competitors_mentioned() -> None:

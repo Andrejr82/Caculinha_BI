@@ -239,22 +239,3 @@ def get_scoped_tools(
     return ToolPermissionManager.get_tools_for_role(all_tools, user_role)
 
 
-# Exemplo de uso em log
-if __name__ == "__main__":
-    # Simulação de ferramentas
-    class DummyTool:
-        def __init__(self, name):
-            self.name = name
-
-    tools = [
-        DummyTool("consultar_dados_flexivel"),
-        DummyTool("calcular_preco_final_une"),
-        DummyTool("gerar_grafico_universal_v2"),
-    ]
-
-    print("=== TOOL SCOPING EXAMPLES ===\n")
-
-    for role in ["admin", "analyst", "viewer", "guest"]:
-        scoped = ToolPermissionManager.get_tools_for_role(tools, role)
-        print(f"{role.upper()}: {len(scoped)} tools")
-        print(f"  → {[t.name for t in scoped]}\n")

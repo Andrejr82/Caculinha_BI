@@ -68,24 +68,50 @@ def _normalize_query_for_extraction(query: str) -> str:
 
 
 def extract_une_filter(query: str) -> Optional[str]:
-    """Extrai código UNE da query."""
-    # Padrões: "une 520", "loja 520", "na 520"
+    """Extrai identificador de UNE da query, aceitando códigos numéricos e textuais."""
+    if not query:
+        return None
+
     patterns = [
-        r"u+ne\s+(\d+)",  # tolera typo: uune, uuune...
-        r"une\s+(\d+)",
-        r"loja\s+(\d+)",
-        r"na\s+(\d{3,4})",  # Assume UNE tem 3-4 dígitos
-        r"da\s+(\d{3,4})",
+        r"\bu+ne\s+([a-z0-9][a-z0-9_-]{0,11})\b",  # tolera typo: uune, uuune...
+        r"\bune\s+([a-z0-9][a-z0-9_-]{0,11})\b",
+        r"\bloja\s+([a-z0-9][a-z0-9_-]{0,11})\b",
+        r"\bunidade\s+([a-z0-9][a-z0-9_-]{0,11})\b",
+        r"\b(?:na|no|da|do)\s+une\s+([a-z0-9][a-z0-9_-]{0,11})\b",
+        r"\b(?:na|no|da|do)\s+loja\s+([a-z0-9][a-z0-9_-]{0,11})\b",
+        r"\b(?:na|no|da|do)\s+([a-z]{2,10}[a-z0-9_-]{0,8})\b",
+        r"\b(?:na|da)\s+(\d{3,4})\b",
     ]
-    
+    blocked_tokens = {
+        "toda", "todas", "todo", "todos",
+        "une", "unes", "loja", "lojas", "unidade", "unidades",
+        "rede", "grupo", "segmento", "segmentos",
+        "categoria", "categorias",
+    }
+
     for pattern in patterns:
         match = re.search(pattern, query, re.IGNORECASE)
-        if match:
-            une = match.group(1)
-            logger.debug(f"[ROUTER] Extracted UNE: {une}")
-            return une
-    
+        if not match:
+            continue
+        une = str(match.group(1) or "").strip()
+        if not une:
+            continue
+        if une.lower() in blocked_tokens:
+            continue
+        logger.debug(f"[ROUTER] Extracted UNE: {une}")
+        return une.upper() if any(ch.isalpha() for ch in une) else une
+
     return None
+
+
+def _is_numeric_une(une: Optional[str]) -> bool:
+    return bool(str(une or "").isdigit())
+
+
+def _coerce_une_filter_value(une: Optional[str]) -> Optional[Any]:
+    if une in (None, "", []):
+        return None
+    return int(str(une)) if _is_numeric_une(une) else str(une)
 
 
 def extract_product_code(query: str) -> Optional[int]:
@@ -294,11 +320,22 @@ def is_market_basket_query(query: str) -> bool:
         "comprados juntos",
         "itens associados",
         "market basket",
-        "cross-sell",
-        "cross sell",
         "afinidade entre produtos",
     ]
     return any(marker in q for marker in markers)
+
+
+def infer_segment_from_keywords(query: str) -> Optional[str]:
+    q = (query or "").lower()
+    keyword_map = {
+        "PAPELARIA": ["papelaria", "volta às aulas", "volta as aulas", "material escolar"],
+        "ARTES": ["artesanato", "artes", "eva", "brush pen", "tela", "pintura"],
+        "ARMARINHO": ["armarinho", "aviamento", "costura", "linhas", "botões", "botoes"],
+    }
+    for segment, markers in keyword_map.items():
+        if any(marker in q for marker in markers):
+            return segment
+    return None
 
 
 def extract_period_filter(query: str) -> Optional[str]:
@@ -609,12 +646,32 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
         marker in query_lower
         for marker in ["margem", "rentabilidade", "lucro"]
     )
+    inferred_segment = extract_segment_filter(query) or infer_segment_from_keywords(query)
+    has_explicit_item_payload = bool(
+        product
+        or re.search(r"\bsku\s+\d+\b", query_lower)
+        or re.search(r"\bproduto\s+\d+\b", query_lower)
+        or any(token in query for token in ['{"', "[{", '"itens"', "'itens'"])
+    )
 
     # Sub-classificação de cálculo
     if is_market_basket_query(query):
         tool_name = "minerar_cestas_frequentes"
         params = {}
         reasoning = "Pergunta sobre itens que saem juntos deve usar market basket dedicado"
+    elif cart_context and not has_explicit_item_payload:
+        tool_name = "consultar_dados_flexivel"
+        params = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": ["PRODUTO", "NOME", "NOMESEGMENTO"],
+            "ordenar_por": "valor",
+            "ordem_desc": True,
+            "limite": "12",
+        }
+        if inferred_segment:
+            params["filtros"] = {"NOMESEGMENTO": inferred_segment}
+        reasoning = "Pergunta de cesta/combo sem payload transacional; usando mix real de produtos por venda"
     elif cart_context and promotion_context:
         params = {}
         if desconto_pct is not None:
@@ -637,7 +694,7 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
         reasoning = "Cálculo de EOQ (lote econômico)"
         
     elif "media comum" in query_lower or "média comum" in query_lower or "mc de estoque" in query_lower:
-        if product and une:
+        if product and une and _is_numeric_une(une):
             tool_name = "calcular_mc_produto"
             params = {"produto_id": int(product), "une_id": int(une)}
             reasoning = "Cálculo de média comum para estoque"
@@ -648,11 +705,11 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
             if product:
                 filtros["PRODUTO"] = product
             if une:
-                filtros["UNE"] = int(une)
+                filtros["UNE"] = _coerce_une_filter_value(une)
             if filtros:
                 params["filtros"] = filtros
             reasoning = "Média comum solicitada sem parâmetros mínimos; fallback para dados base"
-    elif ("margem de contribuição" in query_lower or "media comum" in query_lower or "média comum" in query_lower or re.search(r"\bmc\b", query_lower)) and product and une:
+    elif ("margem de contribuição" in query_lower or "media comum" in query_lower or "média comum" in query_lower or re.search(r"\bmc\b", query_lower)) and product and une and _is_numeric_une(une):
         tool_name = "calcular_mc_produto"
         params = {"produto_id": int(product), "une_id": int(une)}
         reasoning = "Consulta de MC/Média Comum diretamente na UNE informada"
@@ -666,7 +723,7 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
         if product:
             filtros["PRODUTO"] = product
         if une:
-            filtros["UNE"] = int(une)
+            filtros["UNE"] = _coerce_une_filter_value(une)
         if filtros:
             params["filtros"] = filtros
         reasoning = "Margem solicitada sem semântica de cesta; retorno dos dados de preço e custo para análise correta"
@@ -696,7 +753,7 @@ def route_calculation(query: str, confidence: float) -> ToolSelection:
         if product:
             filtros["PRODUTO"] = product
         if une:
-            filtros["UNE"] = int(une)
+            filtros["UNE"] = _coerce_une_filter_value(une)
         if filtros:
             params["filtros"] = filtros
         reasoning = "Cálculo operacional de markup, giro ou cobertura com base em preço, custo, venda e estoque"
@@ -772,7 +829,7 @@ def route_optimization(query: str, confidence: float) -> ToolSelection:
         tool_name = "sugerir_transferencias_automaticas"
         params = {}
         une = extract_une_filter(query)
-        if une:
+        if une and _is_numeric_une(une):
             params["une_origem_filtro"] = int(une)
         reasoning = "Sugestão de transferências automáticas"
         
@@ -800,8 +857,62 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
 
     product = extract_product_code(query)
     une = extract_une_filter(query)
+    segment = extract_segment_filter(query) or infer_segment_from_keywords(query)
     store_ranking = extract_product_store_ranking_request(query)
     product_rupture = is_product_rupture_query(query)
+
+    if re.search(r"\bcompare?\b|\bcomparativo\b|\bversus\b|\bvs\.?\b", query_lower):
+        breakdown = extract_chart_breakdown(query) or "LOJA"
+        breakdown_map = {
+            "LOJA": ["UNE"],
+            "SEGMENTO": ["NOMESEGMENTO"],
+            "CATEGORIA": ["NOMECATEGORIA"],
+            "GRUPO": ["NOMEGRUPO"],
+            "PRODUTO": ["PRODUTO", "NOME"],
+        }
+        params = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": breakdown_map.get(breakdown, ["UNE"]),
+            "ordenar_por": "valor",
+            "ordem_desc": True,
+            "limite": 50,
+        }
+        filtros: Dict[str, Any] = {}
+        if product and breakdown != "PRODUTO":
+            filtros["PRODUTO"] = product
+        if une and breakdown != "LOJA":
+            filtros["UNE"] = _coerce_une_filter_value(une)
+        if segment and breakdown != "SEGMENTO":
+            filtros["NOMESEGMENTO"] = segment
+        if filtros:
+            params["filtros"] = filtros
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params=params,
+            confidence=max(confidence, 0.90),
+            fallback_tools=["gerar_grafico_universal_v2"],
+            reasoning="Comparação analítica sem pedido explícito de gráfico; priorizando tabela/dados",
+        )
+
+    if any(token in query_lower for token in ["combo", "cross-sell", "cross sell", "ticket medio", "ticket médio", "volta às aulas", "volta as aulas"]):
+        params = {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": ["PRODUTO", "NOME", "NOMESEGMENTO"],
+            "ordenar_por": "valor",
+            "ordem_desc": True,
+            "limite": 12,
+        }
+        if segment:
+            params["filtros"] = {"NOMESEGMENTO": segment}
+        return ToolSelection(
+            tool_name="consultar_dados_flexivel",
+            tool_params=params,
+            confidence=max(confidence, 0.88),
+            fallback_tools=[],
+            reasoning="Sugestão de combo/cross-sell baseada em giro real do mix interno",
+        )
 
     if is_market_basket_query(query):
         return ToolSelection(
@@ -849,7 +960,6 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
     # Casos de negócio comercial: ruptura deve priorizar ferramenta especializada.
     if re.search(r"ruptur\w*|falta\s+de\s+estoque|sem\s+estoque", query_lower):
         params: Dict[str, Any] = {"limite": limit}
-        segment = extract_segment_filter(query)
         if segment:
             params["segmento"] = segment
         if une:
@@ -874,8 +984,7 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
         }
         filtros = {}
         if une:
-            filtros["UNE"] = int(une)
-        segment = extract_segment_filter(query)
+            filtros["UNE"] = _coerce_une_filter_value(une)
         if segment:
             filtros["NOMESEGMENTO"] = segment
         if filtros:
@@ -900,8 +1009,7 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
         }
         filtros = {}
         if une:
-            filtros["UNE"] = int(une)
-        segment = extract_segment_filter(query)
+            filtros["UNE"] = _coerce_une_filter_value(une)
         if segment:
             filtros["NOMESEGMENTO"] = segment
         if filtros:
@@ -928,13 +1036,26 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
         reasoning = "Análise de correlação entre produtos"
         
     elif "histórico" in query_lower or "historico" in query_lower:
-        tool_name = "analisar_historico_vendas"
+        tool_name = "analisar_historico_vendas" if not une or _is_numeric_une(une) else "consultar_dados_flexivel"
         params = {}
         if product:
-            params["codigo_produto"] = int(product)
+            if tool_name == "analisar_historico_vendas":
+                params["codigo_produto"] = int(product)
+            else:
+                params.setdefault("filtros", {})["PRODUTO"] = product
         if une:
-            params["codigo_une"] = int(une)
-        reasoning = "Análise de histórico de vendas"
+            if tool_name == "analisar_historico_vendas":
+                params["codigo_une"] = int(une)
+            else:
+                params.setdefault("filtros", {})["UNE"] = _coerce_une_filter_value(une)
+        if segment and tool_name == "consultar_dados_flexivel":
+            params.setdefault("filtros", {})["NOMESEGMENTO"] = segment
+        if tool_name == "consultar_dados_flexivel":
+            params.setdefault("colunas", ["PRODUTO", "NOME", "UNE", "VENDA_30DD", "ESTOQUE_UNE"])
+            params.setdefault("limite", "50")
+            reasoning = "Histórico com UNE textual; fallback para consulta flexível com filtro de UNE"
+        else:
+            reasoning = "Análise de histórico de vendas"
         
     else:
         # Fallback para consulta flexível
@@ -945,7 +1066,11 @@ def route_analysis(query: str, confidence: float) -> ToolSelection:
         if une:
             if "filtros" not in params:
                 params["filtros"] = {}
-            params["filtros"]["UNE"] = int(une)
+            params["filtros"]["UNE"] = _coerce_une_filter_value(une)
+        if segment:
+            if "filtros" not in params:
+                params["filtros"] = {}
+            params["filtros"]["NOMESEGMENTO"] = segment
         reasoning = "Análise genérica via consulta flexível"
     
     final_confidence = confidence * 0.85
@@ -1018,7 +1143,7 @@ def route_data_query(query: str, confidence: float) -> ToolSelection:
         if product and group_column != "PRODUTO":
             filtros["PRODUTO"] = product
         if une and group_column != "UNE":
-            filtros["UNE"] = int(une)
+            filtros["UNE"] = _coerce_une_filter_value(une)
         if segment and group_column != "NOMESEGMENTO":
             filtros["NOMESEGMENTO"] = segment
         if filtros:
@@ -1066,7 +1191,7 @@ def route_data_query(query: str, confidence: float) -> ToolSelection:
     if product:
         filtros["PRODUTO"] = product
     if une:
-        filtros["UNE"] = int(une)
+        filtros["UNE"] = _coerce_une_filter_value(une)
     if segment:
         filtros["NOMESEGMENTO"] = segment
     

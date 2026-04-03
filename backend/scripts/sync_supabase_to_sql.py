@@ -9,8 +9,17 @@ sys.path.append(os.path.join(os.getcwd(), 'backend'))
 from backend.app.config.settings import get_settings
 from supabase import create_client, Client
 
-# Configurações SQL Server
-CONN_STR = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=localhost,1433;DATABASE=agentbi;UID=AgenteVirtual;PWD=Cacula@2020;TrustServerCertificate=yes;"
+# Configurações SQL Server via variáveis de ambiente
+_conn_str = os.environ.get("PYODBC_CONNECTION_STRING", "")
+if not _conn_str:
+    _srv = os.environ.get("DB_ALT_SERVER", "localhost,1433")
+    _db  = os.environ.get("DB_ALT_DATABASE", "agentbi")
+    _uid = os.environ.get("DB_ALT_USER", "AgenteVirtual")
+    _pwd = os.environ.get("DB_ALT_PASSWORD", "")
+    if not _pwd:
+        raise SystemExit("Erro: defina PYODBC_CONNECTION_STRING ou DB_ALT_PASSWORD antes de executar.")
+    _conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={_srv};DATABASE={_db};UID={_uid};PWD={_pwd};TrustServerCertificate=yes;"
+CONN_STR = _conn_str
 
 def sync_users():
     settings = get_settings()

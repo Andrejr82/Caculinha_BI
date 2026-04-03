@@ -127,6 +127,20 @@
             margin-top: 20px;
         }
 
+        .field-group {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .field-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
         pre {
             background: #2d2d2d;
             color: #f8f8f2;
@@ -172,6 +186,10 @@
         <div class="test-section">
             <div class="test-title">2. API de Login</div>
             <div id="login-result" class="test-result loading">Aguardando teste de backend...</div>
+            <div class="field-group">
+                <input id="login-username" type="text" placeholder="Usuário para teste manual" autocomplete="username" />
+                <input id="login-password" type="password" placeholder="Senha para teste manual" autocomplete="current-password" />
+            </div>
         </div>
 
         <!-- Teste 3: LocalStorage -->
@@ -236,11 +254,20 @@
 
         async function testLogin() {
             const resultDiv = document.getElementById('login-result');
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+
+            if (!username || !password) {
+                resultDiv.className = 'test-result warning';
+                resultDiv.innerHTML = '⚠️ Informe usuário e senha para executar o teste manual de login.';
+                return false;
+            }
+
             try {
                 const response = await fetch('http://127.0.0.1:8000/api/v1/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: 'admin', password: 'Admin@2024' })
+                    body: JSON.stringify({ username, password })
                 });
 
                 if (response.ok) {
@@ -249,7 +276,7 @@
                     resultDiv.innerHTML = `✅ Login funcionando <span class="status-badge status-ok">Token OK</span><pre>Token: ${data.access_token.substring(0, 50)}...</pre>`;
                     return true;
                 } else {
-                    const errorData = await response.json();
+                    const errorData = await response.json().catch(() => ({}));
                     resultDiv.className = 'test-result error';
                     resultDiv.innerHTML = `❌ Erro no login: ${errorData.detail || response.statusText}`;
                     return false;

@@ -1,4 +1,5 @@
-import { createSignal, onMount, Show, For } from 'solid-js';
+import { createSignal, onMount, Show, For, createMemo } from 'solid-js';
+import { useSearchParams } from '@solidjs/router';
 import { rupturasApi, Ruptura, RupturasSummary } from '@/lib/api';
 import { AlertTriangle, RefreshCw, PackageX, ShoppingCart, Archive, Download, Filter, X, TrendingUp, Package, BarChart3, PieChart } from 'lucide-solid';
 import { PlotlyChart } from '@/components/PlotlyChart';
@@ -7,6 +8,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { EmptyStateSuccess } from '@/components/EmptyState';
 
 export default function Rupturas() {
+  const [searchParams] = useSearchParams();
   const [data, setData] = createSignal<Ruptura[]>([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal('');
@@ -30,6 +32,14 @@ export default function Rupturas() {
   const [selectedUne, setSelectedUne] = createSignal<string>('');
   const [showFilters, setShowFilters] = createSignal(false);
   const [filtersLoading, setFiltersLoading] = createSignal(false);
+  const activeScopeLabel = createMemo(() => {
+    const segment = selectedSegmento();
+    const une = selectedUne();
+    if (segment && une) return `${segment} • UNE ${une}`;
+    if (segment) return segment;
+    if (une) return `UNE ${une}`;
+    return 'Rede completa';
+  });
 
   const loadFilters = async () => {
     setFiltersLoading(true);
@@ -424,9 +434,15 @@ export default function Rupturas() {
     URL.revokeObjectURL(url);
   };
 
-  onMount(() => {
-    loadFilters();
-    loadData();
+  onMount(async () => {
+    const initialSegmento = typeof searchParams.segmento === 'string' ? searchParams.segmento : '';
+    const initialUne = typeof searchParams.une === 'string' ? searchParams.une : '';
+    if (initialSegmento || initialUne) setShowFilters(true);
+
+    await loadFilters();
+    if (initialSegmento) setSelectedSegmento(initialSegmento);
+    if (initialUne) setSelectedUne(initialUne);
+    await loadData();
   });
 
   const getCriticidadeColor = (pct: number) => {
@@ -454,6 +470,9 @@ export default function Rupturas() {
             Rupturas Críticas
           </h2>
           <p class="text-muted mt-1">CD zerado + Estoque loja abaixo da Linha Verde</p>
+          <div class="mt-3 inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700" data-testid="rupturas-scope-pill">
+            Escopo ativo: {activeScopeLabel()}
+          </div>
         </div>
         <div class="flex gap-2">
           <button onClick={() => {
@@ -500,6 +519,7 @@ export default function Rupturas() {
               {/* ✅ CORREÇÃO MOBILE: min-h-[44px] para touch-friendly */}
               <select
                 id="segmento-filter"
+                data-testid="rupturas-segment-filter"
                 class="w-full px-3 py-2 bg-background border rounded-lg disabled:opacity-50 min-h-[44px]"
                 value={selectedSegmento()}
                 onChange={(e) => setSelectedSegmento(e.target.value)}
@@ -519,6 +539,7 @@ export default function Rupturas() {
               <label for="une-filter" class="block text-sm font-medium mb-2">UNE</label>
               <select
                 id="une-filter"
+                data-testid="rupturas-une-filter"
                 class="w-full px-3 py-2 bg-background border rounded-lg disabled:opacity-50 min-h-[44px]"
                 value={selectedUne()}
                 onChange={(e) => setSelectedUne(e.target.value)}

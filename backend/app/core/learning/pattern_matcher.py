@@ -1,6 +1,9 @@
 # backend/app/core/learning/pattern_matcher.py
 
 from typing import Any, Dict, List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PatternMatcher:
     """
@@ -19,7 +22,7 @@ class PatternMatcher:
         #   {"name": "SalesBySegment", "keywords": ["vendas por segmento"], "example_code": "df.groupby('segmento')['vendas'].sum().to_dicts()"},
         #   {"name": "TopNProducts", "keywords": ["top n produtos", "n maiores produtos"], "example_code": "df.groupby('produto')['vendas'].sum().sort('vendas', descending=True).head(N).to_dicts()"}
         # ]
-        print(f"PatternMatcher placeholder: Loading patterns from {patterns_config_path}")
+        logger.info("PatternMatcher placeholder: loading patterns from %s", patterns_config_path)
         return [
             {"name": "SalesBySegment", "keywords": ["vendas por segmento", "quanto vendi por segmento"], "example_code": """
 import polars as pl
@@ -48,15 +51,7 @@ final_output = {'result': result}
         for pattern in self.patterns:
             for keyword in pattern["keywords"]:
                 if keyword in query_lower:
-                    print(f"PatternMatcher: Matched pattern '{pattern['name']}' for query: '{query}'")
+                    logger.info("PatternMatcher matched pattern %s", pattern["name"])
                     return pattern
         return None
 
-if __name__ == '__main__':
-    print("--- Testing PatternMatcher ---")
-    matcher = PatternMatcher()
-    
-    print(f"Matching 'vendas por segmento': {matcher.match_pattern('Me mostre as vendas por segmento.')}")
-    print(f"Matching 'top 5 produtos mais vendidos': {matcher.match_pattern('Quais os top 5 produtos mais vendidos?')}")
-    print(f"Matching 'margem de contribuicao por produto': {matcher.match_pattern('Calcule a margem de contribuicao por produto.')}")
-    print(f"Matching 'query sem match': {matcher.match_pattern('Qual o clima hoje?')}")

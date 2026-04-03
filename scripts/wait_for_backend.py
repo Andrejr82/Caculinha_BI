@@ -8,12 +8,13 @@ Se quiser mudar comportamento, altere apenas estas constantes:
 - BACKEND_HOST: host do backend (padrao: localhost)
 - BACKEND_PORT: porta do backend (padrao: 8000)
 - HEALTH_PATH : endpoint de saude (padrao: /health)
-- DEFAULT_TIMEOUT_SECONDS: tempo maximo de espera (padrao: 60s)
+- DEFAULT_TIMEOUT_SECONDS: tempo maximo de espera (padrao: 7200s / 120 min)
 """
 
 import socket
 import sys
 import time
+import argparse
 
 import requests
 
@@ -24,7 +25,7 @@ BACKEND_PORT = 8000
 # [AJUSTE] Endpoint de saude do backend
 HEALTH_PATH = "/health"
 # [AJUSTE] Tempo maximo total de espera
-DEFAULT_TIMEOUT_SECONDS = 120
+DEFAULT_TIMEOUT_SECONDS = 7200
 
 
 def check_port(host: str, port: int) -> bool:
@@ -75,4 +76,7 @@ def wait_for_backend(timeout: int = DEFAULT_TIMEOUT_SECONDS) -> None:
 
 
 if __name__ == "__main__":
-    wait_for_backend()
+    parser = argparse.ArgumentParser(description="Aguarda backend ficar pronto antes de subir o frontend.")
+    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Tempo maximo de espera em segundos.")
+    args = parser.parse_args()
+    wait_for_backend(timeout=args.timeout)

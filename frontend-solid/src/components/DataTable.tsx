@@ -1,11 +1,12 @@
 // frontend-solid/src/components/DataTable.tsx
 
-import { createSignal, For, Show, Accessor } from 'solid-js';
+import { createSignal, For, Show, type Accessor, type JSX } from 'solid-js';
 
 interface DataTableProps {
   data: Accessor<any[]>;
   caption?: string;
   itemsPerPage?: number;
+  headerActions?: JSX.Element;
 }
 
 export const DataTable = (props: DataTableProps) => {
@@ -37,8 +38,15 @@ export const DataTable = (props: DataTableProps) => {
 
   return (
     <div class="overflow-x-auto rounded-lg border shadow-sm my-4">
-      <Show when={props.caption}>
-        <div class="p-4 text-lg font-semibold text-card-foreground">{props.caption}</div>
+      <Show when={props.caption || props.headerActions}>
+        <div class="flex items-center justify-between gap-3 border-b bg-slate-50/80 px-4 py-3">
+          <Show when={props.caption}>
+            <div class="text-sm font-semibold text-card-foreground">{props.caption}</div>
+          </Show>
+          <Show when={props.headerActions}>
+            <div class="flex flex-wrap items-center gap-2">{props.headerActions}</div>
+          </Show>
+        </div>
       </Show>
       <table class="w-full text-sm text-left text-gray-500">
         <thead class="text-xs text-gray-700 uppercase bg-gray-50">

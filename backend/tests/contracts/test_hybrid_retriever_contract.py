@@ -9,10 +9,10 @@ from backend.app.core.rag.hybrid_retriever import HybridRetriever
 @pytest.fixture
 def mock_retriever_dependencies():
     """Mock completo das dependências externas do HybridRetriever."""
-    with patch("app.core.rag.hybrid_retriever.BM25Okapi") as mock_bm25, \
-         patch("app.core.rag.hybrid_retriever.genai") as mock_genai, \
-         patch("app.core.rag.hybrid_retriever.ExampleCollector") as mock_collector:
-            
+    with patch("backend.app.core.rag.hybrid_retriever.BM25Okapi") as mock_bm25, \
+         patch("backend.app.core.rag.hybrid_retriever.ExampleCollector") as mock_collector, \
+         patch("backend.app.core.rag.hybrid_retriever.get_embedding_backend") as mock_embedding_backend:
+             
         # Configurar mocks
         mock_collector_instance = mock_collector.return_value
         # Retorna docs falsos
@@ -26,21 +26,26 @@ def mock_retriever_dependencies():
         # Scores simulados para doc1 e doc2
         mock_bm25_instance.get_scores.return_value = [10.0, 5.0] 
         
-        # Mock GenAI
-        mock_genai.embed_content.return_value = {"embedding": [0.1, 0.2, 0.3]}
+        # Mock Embedding backend
+        backend_instance = MagicMock()
+        backend_instance.dimension = 3
+        backend_instance.embed_text.return_value = [0.1, 0.2, 0.3]
+        backend_instance.embed_batch.return_value = [[0.1, 0.2, 0.3], [0.1, 0.2, 0.3]]
+        backend_instance.cosine_similarity.return_value = 0.9
+        mock_embedding_backend.return_value = backend_instance
         
         yield {
             "bm25": mock_bm25,
-            "genai": mock_genai,
+            "embedding_backend": mock_embedding_backend,
             "collector": mock_collector
         }
 
 @pytest.fixture
 def retriever(mock_retriever_dependencies):
     """Instância do retriever com mocks injetados e inicialização forçada."""
-    with patch("app.core.rag.hybrid_retriever.settings") as mock_settings:
-        mock_settings.GEMINI_API_KEY = "fake_key"
+    with patch("backend.app.core.rag.hybrid_retriever.settings") as mock_settings:
         mock_settings.LEARNING_EXAMPLES_PATH = "/tmp"
+        mock_settings.RAG_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
         
         retriever = HybridRetriever(use_cache=False)
         # Forçar inicialização síncrona para teste unitário

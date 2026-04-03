@@ -20,7 +20,10 @@ sys.modules["backend.app.core.llm_factory"] = _THIS_MODULE
 class LLMFactory:
     """
     Fábrica inteligente para instanciar adaptadores de LLM.
-    FIX 2026-01-09: Groq primário, Gemini fallback opcional.
+    Runtime oficial: Groq + Llama.
+    Alias legados como "google"/"gemini" são normalizados para "groq"
+    para preservar compatibilidade de configuração sem manter multi-provider
+    no caminho principal do produto.
     """
     
     @staticmethod
@@ -29,11 +32,13 @@ class LLMFactory:
         Retorna um adaptador LLM com fallback automático.
         
         Args:
-            provider: Provider específico ('google'/'gemini', 'groq'/'grq'). Se None, usa settings.LLM_PROVIDER.
+            provider: Provider específico ('groq'/'grq' ou alias legado). Se None, usa settings.LLM_PROVIDER.
             use_smart: Se True, retorna SmartLLM com fallback automático.
         """
-        # Respeitar configuração do .env (FIX 2026-01-16)
-        provider = provider or settings.LLM_PROVIDER or "groq"
+        # Respeitar configuração do .env
+        provider = (provider or settings.LLM_PROVIDER or "groq").strip().lower()
+        if provider in {"google", "gemini"}:
+            provider = "groq"
         
         if use_smart:
             try:
@@ -41,40 +46,46 @@ class LLMFactory:
             except Exception as e:
                 logger.error(f"Falha ao criar SmartLLM: {e}. Usando adapter simples.")
         
-        # Fallback para adapter simples - só Groq
+        # Fallback para adapter simples canônico por provider.
         try:
+            if provider == "mock":
+                return SmartLLM._MockLLMAdapter()
             return GroqLLMAdapter()
         except Exception as e:
-            logger.error(f"Falha ao iniciar Groq: {e}")
+            logger.error(f"Falha ao iniciar provider '{provider}': {e}")
             raise
 
 
 class SmartLLM:
     """
-    Wrapper inteligente com fallback automático em tempo de execução.
-    
-    FIX 2026-01-09: Gemini é opcional - continua funcionando se API key expirada.
+    Wrapper inteligente com Groq/Llama como provider oficial.
+    Mock continua disponível apenas para testes e fallback controlado.
     """
     
     _PROVIDER_ALIASES = {
-        "google": "google",
-        "gemini": "google",
+        "google": "groq",
+        "gemini": "groq",
         "groq": "groq",
         "grq": "groq",
         "mock": "mock",
     }
     _DEFAULT_TASK_PROVIDER_PREFERENCE = {
-        "market_research": ["google", "groq"],
-        "competitive_research": ["google", "groq"],
-        "calculation": ["groq", "google"],
-        "forecasting": ["groq", "google"],
-        "optimization": ["groq", "google"],
-        "anomaly": ["groq", "google"],
-        "analysis": ["groq", "google"],
-        "data_query": ["groq", "google"],
-        "metadata": ["groq", "google"],
-        "visualization": ["groq", "google"],
-        "dashboard": ["groq", "google"],
+        "market_research": ["groq"],
+        "competitive_research": ["groq"],
+        "calculation": ["groq"],
+        "pricing": ["groq"],
+        "promotion": ["groq"],
+        "basket": ["groq"],
+        "inventory": ["groq"],
+        "replenishment": ["groq"],
+        "forecasting": ["groq"],
+        "optimization": ["groq"],
+        "anomaly": ["groq"],
+        "analysis": ["groq"],
+        "data_query": ["groq"],
+        "metadata": ["groq"],
+        "visualization": ["groq"],
+        "dashboard": ["groq"],
     }
 
     class _MockLLMAdapter(BaseLLMAdapter):
@@ -94,28 +105,21 @@ class SmartLLM:
             return f"[MOCK] Resposta simulada para: {prompt}"
 
     def __init__(self, primary: Optional[str] = None):
-        self.primary = self._normalize_provider(primary or settings.LLM_PROVIDER or "groq")
+        raw_primary = primary or settings.LLM_PROVIDER or "groq"
+        self.primary = self._normalize_provider(raw_primary)
         self._groq = None  # Lazy init
-        self._gemini = None  # Lazy init
         self._mock = None
         self.system_instruction = None  # Será setado pelo CaculinhaBIAgent
         self.dev_fast_mode = bool(getattr(settings, "DEV_FAST_MODE", False))
-
-        gemini_key = getattr(settings, 'GEMINI_API_KEY', None) or ""
-        self._gemini_available = bool(gemini_key and len(gemini_key) > 10 and "expired" not in gemini_key.lower())
-        if self.dev_fast_mode and self.primary == "groq":
-            self._gemini_available = False
-
-        if not self._gemini_available:
-            logger.info("SmartLLM: Gemini desabilitado (sem API key válida). Usando apenas Groq.")
 
         self.provider_chain = self._build_provider_chain(self.primary)
         self.task_provider_routing = self._parse_task_provider_routing(
             str(getattr(settings, "LLM_TASK_PROVIDER_ROUTING", "") or "")
         )
+        if str(raw_primary).strip().lower() in {"google", "gemini"}:
+            logger.warning("SmartLLM recebeu provider legado '%s'; usando Groq como provider efetivo.", raw_primary)
         logger.info(
-            f"SmartLLM initialized: primary={self.primary}, chain={self.provider_chain}, "
-            f"gemini_available={self._gemini_available}"
+            f"SmartLLM initialized: primary={self.primary}, chain={self.provider_chain}"
         )
 
     def _normalize_provider(self, provider: str) -> str:
@@ -144,7 +148,7 @@ class SmartLLM:
         """
         Parseia mapeamento por tarefa vindo de env.
         Formato aceito:
-          - "calculation=groq,google;market_research=google,groq"
+          - "calculation=groq;analysis=groq,mock"
         """
         routing: Dict[str, List[str]] = {}
         if not raw_mapping:
@@ -208,19 +212,6 @@ class SmartLLM:
         return self._groq
     
     @property
-    def gemini(self):
-        if self._gemini is None and self._gemini_available:
-            try:
-                # FIX 2026-01-24: Migrated to official google-genai SDK
-                from backend.app.core.llm_genai_adapter import GenAILLMAdapter
-                self._gemini = GenAILLMAdapter()
-            except Exception as e:
-                logger.warning(f"GenAI não disponível (API key expirada ou inválida): {e}")
-                self._gemini_available = False
-                return None
-        return self._gemini
-
-    @property
     def mock(self):
         if self._mock is None:
             self._mock = self._MockLLMAdapter()
@@ -233,8 +224,6 @@ class SmartLLM:
             except Exception as e:
                 logger.warning(f"Groq indisponível: {e}")
                 return None
-        if provider == "google":
-            return self.gemini
         if provider == "mock":
             return self.mock
         return None

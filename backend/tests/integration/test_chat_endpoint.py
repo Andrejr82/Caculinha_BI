@@ -201,6 +201,44 @@ def test_stream_chat_passes_resolved_capabilities_to_service(monkeypatch):
     }
 
 
+def test_stream_chat_with_context_only_does_not_trigger_validation_block(monkeypatch):
+    token = _make_valid_token()
+
+    fake_service = SimpleNamespace(
+        process_message=AsyncMock(
+            return_value={
+                "type": "text",
+                "result": {
+                    "mensagem": (
+                        "## Resumo executivo\n"
+                        "- Faturamento é o total vendido.\n\n"
+                        "## Tabela operacional\n"
+                        "- Margem é o ganho após custos e giro mede a velocidade de venda do estoque.\n\n"
+                        "## Próximas ações\n"
+                        "- Posso dar exemplos com números reais da base."
+                    )
+                },
+                "source": "llm.direct",
+                "mode": "deterministic_tool",
+                "confidence": 0.88,
+            }
+        )
+    )
+    _patch_chat_stream(monkeypatch, fake_service)
+
+    response = client.get(
+        "/api/v1/chat/stream?q=Explique%20em%20linguagem%20simples%20a%20diferen%C3%A7a%20entre%20faturamento%2C%20margem%20e%20giro%20de%20estoque.&session_id=s-guided-ctx-1&playbook_context=%7B%22period%22%3A%22ultimos%2030%20dias%22%7D",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data_events = _collect_sse_events(response)
+    final_event = next(evt for evt in data_events if evt.get("type") == "final")
+    assert final_event["source"] == "llm.direct"
+    assert final_event["mode"] == "deterministic_tool"
+    assert "policy.response_validation" not in json.dumps(final_event, ensure_ascii=False)
+
+
 def test_chat_history_requires_memory_capability():
     token = _make_valid_token(role="user", username="regular-user@example.com")
 
@@ -568,6 +606,25 @@ def test_post_chat_requires_valid_auth_token():
     assert response.status_code == 401
 
 
+def test_post_chat_uses_promotion_planner_for_operational_promotion_query():
+    token = _make_valid_token()
+
+    response = client.post(
+        "/api/v1/chat",
+        json={"query": "Como fazer uma promoção do EVA nas lojas 1685 e 2365 por 7 dias?"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    full = body["full_agent_response"]
+    assert full["source"] == "service.promotion_planner"
+    assert full["mode"] == "promotion_planner"
+    message = full["result"]["mensagem"]
+    assert "## Plano promocional" in message
+    assert "## Como executar" in message
+
+
 def test_post_feedback_requires_valid_auth_token():
     response = client.post(
         "/api/v1/chat/feedback",
@@ -706,6 +763,58 @@ def test_stream_chat_final_event_can_carry_automation_request(monkeypatch):
     final_event = next(evt for evt in _collect_sse_events(response) if evt.get("type") == "final")
     assert final_event["automation_request"]["action"] == "spreadsheet.create_report"
     assert final_event["automation_request"]["approval_status"] == "pending_user_approval"
+
+
+def test_stream_chat_analytical_sales_report_query_emits_executive_sections_without_automation_request(monkeypatch):
+    token = _make_valid_token()
+
+    fake_service = SimpleNamespace(
+        process_message=AsyncMock(
+            return_value={
+                "type": "text",
+                "result": {
+                    "mensagem": (
+                        "## Resumo executivo\n"
+                        "- O segmento Tecidos na UNE SCR foi consolidado no chat.\n\n"
+                        "## Tabela operacional\n"
+                        "| UNE | TOTAL_VENDAS |\n"
+                        "|---|---|\n"
+                        "| SCR | 125000 |\n\n"
+                        "## Próximas ações\n"
+                        "- Revisar mix e ruptura da UNE SCR nos próximos 7 dias."
+                    )
+                },
+                "request_id": "req-analytical-report-stream-001",
+                "source": "tool.consultar_dados_flexivel",
+                "confidence": 0.91,
+                "mode": "deterministic_tool",
+                "table_data": [{"UNE": "SCR", "TOTAL_VENDAS": 125000}],
+            }
+        )
+    )
+    _patch_chat_stream(monkeypatch, fake_service)
+
+    response = client.get(
+        "/api/v1/chat/stream?q=gere%20um%20relat%C3%B3rio%20de%20vendas%20do%20segmento%20tecidos%20na%20une%20scr&session_id=s-analytical-report-1",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+
+    data_events = _collect_sse_events(response)
+    text_response = "".join(evt.get("text", "") for evt in data_events if evt.get("type") == "text")
+    table_event = next(evt for evt in data_events if evt.get("type") == "table")
+    final_event = next(evt for evt in data_events if evt.get("type") == "final")
+
+    assert "## Resumo executivo" in text_response
+    assert "## Tabela operacional" in text_response
+    assert "## Próximas ações" in text_response
+    assert table_event["data"] == [{"UNE": "SCR", "TOTAL_VENDAS": 125000}]
+    assert final_event["request_id"] == "req-analytical-report-stream-001"
+    assert final_event["source"] == "tool.consultar_dados_flexivel"
+    assert final_event["mode"] == "deterministic_tool"
+    assert final_event["table_data"] == [{"UNE": "SCR", "TOTAL_VENDAS": 125000}]
+    assert "automation_request" not in final_event
 
 
 def test_chat_automation_endpoints_execute_reviewable_flow(monkeypatch, tmp_path):

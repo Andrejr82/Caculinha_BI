@@ -78,7 +78,7 @@ class DataScopeService:
             # 1. Apply User Permission Filters
             # [OK] FIX 2026-02-11: Se os segmentos permitidos forem nulos ou contiverem '*', dar acesso total.
             # Se for uma lista vazia, antigamente dava 1=0. Agora tratamos como acesso total se não houver restrição explícita.
-            if not user or user.role == "admin" or user.username == "admin" or "*" in user.segments_list or not user.segments_list:
+            if not user or user.role == "admin" or "*" in user.segments_list or not user.segments_list:
                 # Caso a lista esteja explicitamente vazia [], damos acesso total (liberação por padrão)
                 # Ou verificamos um flag específico. Para Caçulinha, vazio = Todos os segmentos (segurança relaxada por padrão)
                 logger.info(f"Usuário {user.username} com acesso total (admin ou sem restrições).")
@@ -128,7 +128,6 @@ class DataScopeService:
             if (
                 not user
                 or user.role == "admin"
-                or user.username == "admin"
                 or "*" in user.segments_list
                 or not user.segments_list
             ):
@@ -165,7 +164,7 @@ class DataScopeService:
             return []
 
         # Admin ou acesso total: retornar TODOS os segmentos disponíveis no sistema
-        if user.role == "admin" or user.username == "admin" or "*" in user.segments_list:
+        if user.role == "admin" or "*" in user.segments_list:
             con = duckdb.connect(":memory:")
             try:
                 rel = self._get_base_relation(con)

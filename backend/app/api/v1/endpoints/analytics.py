@@ -243,31 +243,32 @@ async def get_sales_analysis(
 
         # 1. Sales by Category (Dynamic Drill-down)
         vendas_categoria = []
-        chart_title = "Vendas por Categoria (Top 10)"
-        breakdown_col = categoria_col
+        chart_title = "Vendas por Segmento"
+        breakdown_col = segmento_col # ✅ FIX: Usar Segmento por padrão para o Dashboard Mestre
 
         # Dynamic Drill-down Logic
         if grupo and grupo_col and produto_col and nome_col:
              # Drill down to Product Level
              breakdown_col = nome_col
-             chart_title = "Top Produtos no Grupo (Top 10)"
+             chart_title = "Top Produtos no Grupo"
         elif categoria and categoria_col and grupo_col:
              # Drill down to Group Level
              breakdown_col = grupo_col
-             chart_title = "Vendas por Grupo (Top 10)"
+             chart_title = "Vendas por Grupo"
         
         if breakdown_col and venda_col:
             sql = f"""
-                SELECT {breakdown_col}, SUM(TRY_CAST({venda_col} AS DOUBLE)) as v
+                SELECT TRIM({breakdown_col}), SUM(TRY_CAST({venda_col} AS DOUBLE)) as v
                 FROM cat_sales
-                GROUP BY {breakdown_col}
+                GROUP BY 1
                 ORDER BY v DESC
-                LIMIT 10
+                LIMIT 50
             """
             rows = rel.query("cat_sales", sql).fetchall()
             for r in rows:
+                if not r[0] or str(r[0]).strip() == "": continue
                 vendas_categoria.append({
-                    "categoria": str(r[0])[:30], # Label ("categoria") mantido para compatibilidade frontend
+                    "categoria": str(r[0]).strip().upper(),
                     "vendas": int(r[1] or 0)
                 })
 

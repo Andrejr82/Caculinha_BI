@@ -21,13 +21,13 @@ def _mocked_llm():
     llm = SmartLLM(primary="groq")
     adapters = {
         "groq": _FakeAdapter("groq"),
-        "google": _FakeAdapter("google"),
+        "mock": _FakeAdapter("mock"),
     }
     llm._get_adapter = lambda provider: adapters.get(provider)  # type: ignore[assignment]
     return llm, adapters
 
 
-def test_task_routing_prefers_google_for_market_research():
+def test_task_routing_prefers_groq_for_market_research():
     llm, adapters = _mocked_llm()
 
     response = llm.get_completion(
@@ -36,9 +36,14 @@ def test_task_routing_prefers_google_for_market_research():
         task_type="market_research",
     )
 
-    assert response.get("provider") == "google"
-    assert adapters["google"].calls == 1
-    assert adapters["groq"].calls == 0
+    assert response.get("provider") == "groq"
+    assert adapters["groq"].calls == 1
+    assert adapters["mock"].calls == 0
+
+
+def test_legacy_google_alias_is_normalized_to_groq():
+    llm = SmartLLM(primary="google")
+    assert llm.primary == "groq"
 
 
 def test_task_routing_prefers_groq_for_calculation():
@@ -52,12 +57,12 @@ def test_task_routing_prefers_groq_for_calculation():
 
     assert response.get("provider") == "groq"
     assert adapters["groq"].calls == 1
-    assert adapters["google"].calls == 0
+    assert adapters["mock"].calls == 0
 
 
 def test_task_routing_respects_explicit_mapping_override():
     llm, adapters = _mocked_llm()
-    llm.task_provider_routing = {"calculation": ["google", "groq"]}
+    llm.task_provider_routing = {"calculation": ["mock", "groq"]}
 
     response = llm.get_completion(
         [{"role": "user", "content": "simulação de eoq"}],
@@ -65,15 +70,15 @@ def test_task_routing_respects_explicit_mapping_override():
         task_type="calculation",
     )
 
-    assert response.get("provider") == "google"
-    assert adapters["google"].calls == 1
+    assert response.get("provider") == "mock"
+    assert adapters["mock"].calls == 1
     assert adapters["groq"].calls == 0
 
 
 def test_task_routing_fallbacks_when_first_provider_errors():
     llm, adapters = _mocked_llm()
-    adapters["google"].fail = True
-    llm.task_provider_routing = {"analysis": ["google", "groq"]}
+    adapters["mock"].fail = True
+    llm.task_provider_routing = {"analysis": ["mock", "groq"]}
 
     response = llm.get_completion(
         [{"role": "user", "content": "analise vendas por segmento"}],
@@ -82,7 +87,7 @@ def test_task_routing_fallbacks_when_first_provider_errors():
     )
 
     assert response.get("provider") == "groq"
-    assert adapters["google"].calls == 1
+    assert adapters["mock"].calls == 1
     assert adapters["groq"].calls == 1
 
 
@@ -112,7 +117,7 @@ def test_get_completion_uses_circuit_breaker_wrapper():
 
 def test_get_completion_skips_provider_when_circuit_is_open():
     llm, adapters = _mocked_llm()
-    llm.task_provider_routing = {"analysis": ["google", "groq"]}
+    llm.task_provider_routing = {"analysis": ["mock", "groq"]}
     llm_globals = llm._call_with_circuit_breaker.__globals__
     circuit_open_exc = llm_globals.get("CircuitBreakerOpenError", CircuitBreakerOpenError)
 
@@ -135,5 +140,5 @@ def test_get_completion_skips_provider_when_circuit_is_open():
         )
 
     assert response.get("provider") == "groq"
-    assert adapters["google"].calls == 0
+    assert adapters["mock"].calls == 0
     assert adapters["groq"].calls == 1

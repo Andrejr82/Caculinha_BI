@@ -207,11 +207,7 @@ async def generate_pdf(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(require_permission("VIEW_REPORTS"))],
 ) -> dict[str, str]:
-    """
-    Generate PDF for report
-    
-    TODO: Implement PDF generation with reportlab or weasyprint
-    """
+    """Generate PDF for report."""
     result = await db.execute(
         select(Report).where(Report.id == report_id)
     )
@@ -223,9 +219,7 @@ async def generate_pdf(
             detail="Report not found"
         )
     
-    # Mock response - implement actual PDF generation
-    return {
-        "message": "PDF generation not yet implemented",
-        "report_id": str(report_id),
-        "report_title": report.title,
-    }
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail=f"PDF generation is not implemented for report '{report.title}' in the current stack",
+    )

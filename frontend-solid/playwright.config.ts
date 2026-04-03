@@ -1,5 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const backendCommand =
+  process.env.PLAYWRIGHT_BACKEND_COMMAND ||
+  (process.platform === 'win32'
+    ? '"backend\\.venv\\Scripts\\python.exe" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000'
+    : '.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000');
+
+const frontendCommand =
+  process.env.PLAYWRIGHT_FRONTEND_COMMAND || 'bun run dev -- --host 127.0.0.1 --port 3000';
+
 /**
  * Configuração do Playwright para testes E2E
  * Agent Solution BI - Lojas Caçula
@@ -19,8 +28,8 @@ export default defineConfig({
     // 1 worker para execução sequencial
     workers: 1,
 
-    // Timeout de 30s por teste
-    timeout: 30 * 1000,
+    // O setup autenticado pode consumir boa parte do orçamento em dev/HMR.
+    timeout: 120 * 1000,
     outputDir: 'test-results/artifacts',
 
     // Reporters
@@ -34,14 +43,14 @@ export default defineConfig({
     use: {
         baseURL: 'http://localhost:3000',
 
-        // Trace apenas em retry
-        trace: 'on-first-retry',
+        // Em ambiente local, reduzir pressão de memória.
+        trace: process.env.CI ? 'on-first-retry' : 'off',
 
         // Screenshot apenas em falha
         screenshot: 'only-on-failure',
 
-        // Vídeo apenas em falha
-        video: 'retain-on-failure',
+        // Vídeo apenas em CI para não sobrecarregar execuções locais.
+        video: process.env.CI ? 'retain-on-failure' : 'off',
 
         // Timeout de navegação
         navigationTimeout: 30 * 1000,
@@ -61,14 +70,14 @@ export default defineConfig({
     // Web Servers
     webServer: [
         {
-            command: 'python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000',
+            command: backendCommand,
             url: 'http://127.0.0.1:8000/health',
             cwd: '..',
             reuseExistingServer: !process.env.CI,
             timeout: 120 * 1000,
         },
         {
-            command: 'npm run dev -- --host 127.0.0.1 --port 3000',
+            command: frontendCommand,
             cwd: '.',
             url: 'http://localhost:3000',
             reuseExistingServer: !process.env.CI,

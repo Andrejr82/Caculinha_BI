@@ -1,17 +1,26 @@
 """
 Teste de Autenticação - Validação de Credenciais
-Testa diferentes combinações de usuário/senha para encontrar credenciais válidas
+Valida um par de credenciais informado via ambiente local
 """
 import requests
-import json
+import os
 
 BASE_URL = "http://localhost:8000"
 
-# Lista de credenciais para testar
+username = os.getenv("TEST_AUTH_USERNAME", "")
+password = os.getenv("TEST_AUTH_PASSWORD", "")
+
+if not username or not password:
+    raise SystemExit(
+        "Defina TEST_AUTH_USERNAME e TEST_AUTH_PASSWORD para validar credenciais localmente."
+    )
+
 credentials_to_test = [
-    {"username": "admin", "password": "demo123", "description": "Emergency backdoor"},
-    {"username": "user@agentbi.com", "password": "user123", "description": "User fornecido"},
-    {"username": "admin", "password": "admin123", "description": "Admin padrão"},
+    {
+        "username": username,
+        "password": password,
+        "description": "Credenciais informadas via ambiente",
+    }
 ]
 
 print("=" * 60)

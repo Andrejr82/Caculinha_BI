@@ -1,4 +1,3 @@
-/* src/index.tsx - Versão ULTRA SIMPLIFICADA sem verificação de versão */
 import { render } from 'solid-js/web';
 import { Router, Route, Navigate } from '@solidjs/router';
 import { Show, lazy, Suspense, ErrorBoundary as SolidErrorBoundary } from 'solid-js';
@@ -11,26 +10,21 @@ import Login from './pages/Login';
 import SharedConversation from './pages/SharedConversation';
 
 // ✅ PERFORMANCE: Lazy imports (code splitting - carregadas sob demanda)
-const Dashboard = lazy(() => import('./pages/DashboardPrototype'));
+const Dashboard = lazy(() => import('./pages/PainelAnaliticoMestre'));
 const Chat = lazy(() => import('./pages/Chat'));
-const Analytics = lazy(() => import('./pages/Analytics'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Learning = lazy(() => import('./pages/Learning'));
 const PlaygroundOps = lazy(() => import('./pages/PlaygroundOps'));
-const Playground = lazy(() => import('./pages/Playground'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Rupturas = lazy(() => import('./pages/Rupturas'));
 const Transfers = lazy(() => import('./pages/Transfers'));
 const Diagnostics = lazy(() => import('./pages/Diagnostics'));
-const Examples = lazy(() => import('./pages/Examples'));
 const Help = lazy(() => import('./pages/Help'));
-const CodeChat = lazy(() => import('./pages/CodeChat'));
 const About = lazy(() => import('./pages/About'));
 
 // ✅ NEW 2026-01-22: Advanced Dashboards
 const Forecasting = lazy(() => import('./pages/Forecasting'));
-const Executive = lazy(() => import('./pages/Executive'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
 
 // ✅ NEW 2026-02-08: Admin-Only Pages
@@ -46,8 +40,6 @@ import { ConfirmDialogContainer } from './components/ConfirmDialog';
 
 // ✅ ACESSIBILIDADE: Screen Reader Announcer
 import { ScreenReaderAnnouncer } from './components/ScreenReaderAnnouncer';
-
-console.log('✅ All imports loaded successfully');
 
 // Componente de Proteção de Rotas
 // ✅ PERFORMANCE: Adiciona Suspense para lazy loading
@@ -110,7 +102,6 @@ function PageLoader() {
 
 // Componente Principal da Aplicação
 function App() {
-  console.log('✅ App component created');
   return (
     <Router>
       {/* Rotas Públicas */}
@@ -132,19 +123,12 @@ function App() {
       {/* Rotas Protegidas - Dentro do Layout */}
       <Route path="/" component={Layout}>
         <Route path="/dashboard" component={() => <PrivateRoute component={<Dashboard />} />} />
-        <Route path="/dashboard-classico" component={() => <Navigate href="/dashboard" />} />
-        <Route path="/dashboard-v2" component={() => <Navigate href="/dashboard" />} />
-        <Route path="/dashboard-prototipo" component={() => <PrivateRoute component={<Dashboard />} />} />
-        <Route path="/metrics" component={() => <RoleRoute component={<Analytics />} requiredRole="admin" />} />
         <Route path="/rupturas" component={() => <PrivateRoute component={<Rupturas />} />} />
         <Route path="/transfers" component={() => <PrivateRoute component={<Transfers />} />} />
         <Route path="/reports" component={() => <RoleRoute component={<Reports />} requiredRole="admin" />} />
         <Route path="/chat" component={() => <PrivateRoute component={<Chat />} />} />
-        <Route path="/examples" component={() => <RoleRoute component={<Examples />} requiredRole="admin" />} />
         <Route path="/learning" component={() => <RoleRoute component={<Learning />} requiredRole="admin" />} />
         <Route path="/playground" component={() => <PrivateRoute component={<PlaygroundOps />} />} />
-        <Route path="/playground-lab" component={() => <PrivateRoute component={<Playground />} />} />
-        <Route path="/code-chat" component={() => <RoleRoute component={<CodeChat />} requiredRole="admin" />} />
         <Route path="/diagnostics" component={() => <RoleRoute component={<Diagnostics />} requiredRole="admin" />} />
         <Route path="/help" component={() => <PrivateRoute component={<Help />} />} />
         <Route path="/about" component={() => <PrivateRoute component={<About />} />} />
@@ -153,7 +137,6 @@ function App() {
 
         {/* ✅ NEW 2026-01-22: Advanced Dashboards */}
         <Route path="/forecasting" component={() => <PrivateRoute component={<Forecasting />} />} />
-        <Route path="/executive" component={() => <PrivateRoute component={<Executive />} />} />
         <Route path="/suppliers" component={() => <PrivateRoute component={<Suppliers />} />} />
 
         {/* ✅ NEW 2026-02-08: Admin-Only Dashboard & Evaluations */}
@@ -182,8 +165,6 @@ if (!root) {
   throw new Error('Root element not found');
 }
 
-console.log('✅ Root element found:', root);
-
 // Create QueryClient
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -193,8 +174,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-console.log('✅ QueryClient created');
 
 // Render app
 try {
@@ -236,7 +215,6 @@ try {
       <ScreenReaderAnnouncer />
     </QueryClientProvider>
   ), root);
-  console.log('✅ App rendered successfully!');
 } catch (error) {
   console.error('❌ Error rendering app:', error);
   document.body.innerHTML = `

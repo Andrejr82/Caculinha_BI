@@ -2,6 +2,7 @@
 Middleware de Logging para FastAPI
 Captura e registra todas as requisições e respostas HTTP
 """
+import logging
 import time
 import uuid
 from typing import Callable
@@ -12,6 +13,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from .logging_config import log_api_request, log_api_response
+
+fallback_logger = logging.getLogger(__name__)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -282,8 +285,11 @@ class ErrorLoggingMiddleware(BaseHTTPMiddleware):
                         client_host=request.client.host if request.client else "unknown",
                     )
                 except Exception as log_err:
-                    # Fallback simple print if structured logging fails
-                    print(f"LOGGING ERROR: {log_err} (Original error status: {response.status_code})")
+                    fallback_logger.warning(
+                        "Structured logging failed while reporting http_error: %s (status=%s)",
+                        log_err,
+                        response.status_code,
+                    )
 
             return response
 

@@ -28,7 +28,7 @@ class Embedding:
     
     document_id: str
     vector: List[float]
-    model: str = "gemini-embedding-001"
+    model: str = "all-MiniLM-L6-v2"
     id: str = field(default_factory=lambda: f"emb-{uuid4().hex[:12]}")
     created_at: datetime = field(default_factory=datetime.utcnow)
     metadata: Optional[Dict[str, Any]] = None
@@ -108,7 +108,7 @@ class Embedding:
             id=data.get("id", f"emb-{uuid4().hex[:12]}"),
             document_id=data["document_id"],
             vector=data["vector"],
-            model=data.get("model", "gemini-embedding-001"),
+            model=data.get("model", "all-MiniLM-L6-v2"),
             created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.utcnow(),
             metadata=data.get("metadata"),
         )

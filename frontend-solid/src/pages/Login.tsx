@@ -1,4 +1,4 @@
-import { createSignal, Show, createEffect } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import auth from '@/store/auth';
 import { LogIn, Loader2 } from 'lucide-solid';
@@ -6,7 +6,6 @@ import { Logo } from '@/components/Logo';
 import { toastManager } from '@/components/Toast';
 
 export default function Login() {
-  console.log('🔵 Login component mounting...');
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
   const [showForgotModal, setShowForgotModal] = createSignal(false);
@@ -16,20 +15,12 @@ export default function Login() {
   const loading = () => auth.loading();
   const error = () => auth.error();
 
-  // Log when rendering
-  createEffect(() => {
-    console.log('🔵 Login component rendered. Auth loading:', auth.loading());
-  });
-
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
     const inputEmail = email().trim();
     const inputPassword = password();
 
-    console.log('🔐 Login attempt:', { email: inputEmail, passwordLength: inputPassword.length });
-
     if (!inputEmail || !inputPassword) {
-      console.error('❌ Email or password empty');
       toastManager.warning('Por favor, preencha email e senha');
       return;
     }
@@ -38,33 +29,27 @@ export default function Login() {
     let finalEmail = inputEmail;
     if (!inputEmail.includes('@')) {
       finalEmail = `${inputEmail}@agentbi.com`;
-      console.log('🔄 Converting username to email:', finalEmail);
     }
 
     // Validate email format
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(finalEmail)) {
-      console.error('❌ Invalid email format');
       toastManager.warning('Por favor, digite um email válido');
       return;
     }
 
     try {
-      console.log('📡 Calling auth.login with:', finalEmail);
       const success = await auth.login(finalEmail, inputPassword);
-      console.log('✅ Login result:', success);
 
       if (success) {
-        console.log('🎉 Login successful! Navigating to dashboard...');
         toastManager.success('Login realizado com sucesso!');
         // ✅ CORREÇÃO: Usar navigate() do SolidJS Router para manter SPA behavior
         setTimeout(() => navigate('/dashboard', { replace: true }), 500);
       } else {
-        console.error('❌ Login failed');
         toastManager.error('Email ou senha inválidos');
       }
     } catch (error) {
-      console.error('💥 Login error:', error);
+      console.error('Login error:', error);
       toastManager.error('Erro ao fazer login. Tente novamente.');
     }
   };

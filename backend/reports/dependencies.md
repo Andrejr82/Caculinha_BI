@@ -3,8 +3,8 @@
 | Module | Status | Error |
 | --- | --- | --- |
 | backend.main | ✅ OK |  |
-| backend.api.v1.router | ✅ OK |  |
-| backend.api.v2.endpoints | ✅ OK |  |
+| backend.app.api.v1.router | ✅ OK |  |
+| backend.app.api.v2 | ✅ OK |  |
 | backend.application.services.catalog_builder_service | ✅ OK |  |
 | backend.infrastructure.adapters.search.whoosh_bm25_index_adapter | ✅ OK |  |
 | backend.app.core.llm_factory | ✅ OK |  |

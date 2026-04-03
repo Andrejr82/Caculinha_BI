@@ -1,10 +1,11 @@
 """
-Módulo __init__ para middleware
+Compatibility exports for legacy middleware imports.
 
-Exporta middlewares para uso em toda a aplicação.
+The active runtime middleware lives under ``backend.app.api.middleware``.
 """
 
 from .rate_limit import (
+    RateLimitMiddleware,
     limiter,
     get_limiter,
     get_rate_limit,
@@ -16,6 +17,7 @@ from .rate_limit import (
 )
 
 __all__ = [
+    "RateLimitMiddleware",
     "limiter",
     "get_limiter",
     "get_rate_limit",

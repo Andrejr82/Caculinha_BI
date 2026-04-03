@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.app.api import dependencies
 from backend.app.api.v1.endpoints import chat as chat_endpoint
-from backend.app.api.v1.endpoints import code_chat as code_chat_endpoint
 from backend.app.api.v1.endpoints import playground as playground_endpoint
 from backend.app.api.dependencies import get_current_active_user
 from backend.app.core.llm_gemini_adapter import GeminiLLMAdapter
@@ -81,27 +80,6 @@ def test_chat_stream_query_token_allows_user(client, monkeypatch):
     assert '"type": "text"' in text_body
     assert '"done": true' in text_body.lower()
 
-
-def test_code_chat_stream_query_token_allows_user_or_degrades(client, monkeypatch):
-    # Non-admin must be forbidden.
-    async def _non_admin(_token: str):
-        return FakeUser(role="user")
-
-    monkeypatch.setattr(dependencies, "get_current_user_from_token", _non_admin)
-    forbidden_response = client.get("/api/v1/code-chat/stream?q=x&token=fake")
-    assert forbidden_response.status_code == 403
-
-    # Admin with missing index should degrade with actionable message.
-    async def _admin(_token: str):
-        return FakeUser(role="admin", allowed_segments=["*"])
-
-    monkeypatch.setattr(dependencies, "get_current_user_from_token", _admin)
-    monkeypatch.setattr(code_chat_endpoint, "get_code_rag_service", lambda: (_ for _ in ()).throw(Exception("index missing")))
-    degraded_response = client.get("/api/v1/code-chat/stream?q=x&token=fake")
-    assert degraded_response.status_code == 200
-    assert "index missing; run scripts/index_codebase.py" in degraded_response.text
-
-
 def test_llm_rate_limit_degrades_fast(monkeypatch):
     class _FakeModel:
         def generate_content(self, contents, request_options=None):
@@ -156,11 +134,15 @@ def test_playground_stream_degrades_instead_of_500(client, monkeypatch):
         return FakeUser(role="admin", allowed_segments=["*"])
 
     class _BrokenAdapter:
-        def __init__(self, *args, **kwargs):
+        def get_completion(self, *args, **kwargs):
             raise Exception("429 RESOURCE_EXHAUSTED quota")
 
     app.dependency_overrides[get_current_active_user] = _active_user
-    monkeypatch.setattr(playground_endpoint, "GeminiLLMAdapter", _BrokenAdapter)
+    monkeypatch.setattr(
+        playground_endpoint,
+        "_get_playground_llm_adapter",
+        lambda **kwargs: _BrokenAdapter(),
+    )
     try:
         response = client.post(
             "/api/v1/playground/stream",

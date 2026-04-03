@@ -2,14 +2,18 @@
 
 import json
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from collections import defaultdict
 from pathlib import Path
 
 from backend.app.config.settings import settings
-from backend.app.core.utils.query_history import QueryHistory # To get query data
-from backend.app.core.utils.response_cache import ResponseCache # To query cache stats
+from backend.app.core.utils.query_history import QueryHistory
+from backend.app.core.utils.response_cache import ResponseCache
+from backend.services.metrics import MetricsService
+
+logger = logging.getLogger(__name__)
 
 class MetricsDashboard:
     """
@@ -24,7 +28,7 @@ class MetricsDashboard:
         """
         Retrieves key performance indicators (KPIs) for the last N days.
         - Success Rate (from feedback)
-        - Average Response Time (placeholder)
+        - Average Response Time
         - Cache Hit Rate
         - Total Queries
         - Total Errors
@@ -33,18 +37,24 @@ class MetricsDashboard:
         start_date = end_date - timedelta(days=days)
 
         all_queries = self.query_history.get_history(start_date=start_date, end_date=end_date, limit=None)
-        
-        total_queries = len(all_queries)
-        total_errors = sum(1 for q in all_queries if "error" in q.get("response_summary", "").lower()) # Simple error detection
-        
-        # Cache hit rate (placeholder - requires more sophisticated cache logging)
-        # For now, we'll simulate. In a real system, the cache would log hits/misses.
-        cache_hits = 0 # Placeholder for actual cache hits
-        cache_misses = total_queries # Placeholder for actual cache misses
-        cache_hit_rate = (cache_hits / total_queries) * 100 if total_queries > 0 else 0
+        history_total_queries = len(all_queries)
+        history_total_errors = sum(
+            1 for q in all_queries if "error" in q.get("response_summary", "").lower()
+        )
 
-        # Success rate (placeholder - needs dedicated feedback system)
-        # Assuming feedback is stored by QueryHistory for now
+        metrics = MetricsService()
+        total_queries = metrics.get_counter("chat_requests_total") or history_total_queries
+        total_errors = metrics.get_counter("chat_errors_total") or history_total_errors
+
+        cache_lookups = metrics.get_counter("chat_cache_lookups_total")
+        cache_hits = metrics.get_counter("chat_cache_hits_total")
+        cache_hit_rate = (cache_hits / cache_lookups) * 100 if cache_lookups > 0 else 0.0
+
+        latency_stats = metrics.get_histogram_stats("chat_latency_seconds")
+        average_latency_ms = 0.0
+        if latency_stats.get("count", 0) > 0:
+            average_latency_ms = float(latency_stats.get("avg", 0.0) or 0.0) * 1000.0
+
         feedback_file_path = Path(settings.LEARNING_FEEDBACK_PATH) / "feedback.jsonl"
         positive_feedback = 0
         negative_feedback = 0
@@ -74,7 +84,7 @@ class MetricsDashboard:
                         except (json.JSONDecodeError, KeyError) as parse_error:
                             continue
         except Exception as e:
-            print(f"Error reading feedback file: {e}")
+            logger.warning("Error reading feedback file: %s", e)
 
         total_feedback = positive_feedback + negative_feedback
         success_rate = (positive_feedback / total_feedback) * 100 if total_feedback > 0 else 0
@@ -84,8 +94,8 @@ class MetricsDashboard:
             "total_queries": total_queries,
             "total_errors": total_errors,
             "success_rate_feedback": round(success_rate, 2),
-            "cache_hit_rate": round(cache_hit_rate, 2), # Needs actual implementation
-            "average_response_time_ms": "N/A" # Placeholder, needs instrumented timing
+            "cache_hit_rate": round(cache_hit_rate, 2),
+            "average_response_time_ms": f"{average_latency_ms:.2f}",
         }
 
     def get_error_trend(self, days: int = 30) -> List[Dict[str, Any]]:
@@ -133,50 +143,3 @@ class MetricsDashboard:
         top_queries = sorted(query_counts.items(), key=lambda item: item[1], reverse=True)
         return [{"query": q, "count": count} for q, count in top_queries[:limit]]
 
-if __name__ == '__main__':
-    from backend.app.config.settings import Settings
-    temp_settings = Settings()
-    os.makedirs(temp_settings.LEARNING_FEEDBACK_PATH, exist_ok=True) # Ensure dir exists for feedback.jsonl
-    os.makedirs(temp_settings.LEARNING_EXAMPLES_PATH, exist_ok=True) # Ensure dir exists for query_history
-    
-    # Setup dummy query history and feedback
-    history = QueryHistory(history_dir=temp_settings.LEARNING_EXAMPLES_PATH)
-    history.add_query("user1", "Vendas por produto?", {"type": "text", "text": "OK"})
-    history.add_query("user1", "Erro na consulta de estoque.", {"type": "error", "error": "simulated error"})
-    history.add_query("user2", "Quais os top 5 produtos?", {"type": "text", "text": "OK"})
-    history.add_query("user1", "Vendas por produto?", {"type": "text", "text": "OK"}) # Duplicate query
-    
-    # Simulate feedback
-    feedback_file = Path(temp_settings.LEARNING_FEEDBACK_PATH) / "feedback.jsonl"
-    with open(feedback_file, 'a', encoding='utf-8') as f:
-        f.write(json.dumps({"timestamp": datetime.now().isoformat(), "user_id": "user1", "feedback_type": "positive"}) + "\n")
-        f.write(json.dumps({"timestamp": (datetime.now() - timedelta(days=1)).isoformat(), "user_id": "user1", "feedback_type": "negative"}) + "\n")
-    
-    dashboard = MetricsDashboard(query_history=history)
-
-    print("\n--- Testing get_metrics ---")
-    metrics = dashboard.get_metrics(days=7)
-    print(json.dumps(metrics, indent=2))
-    assert metrics["total_queries"] >= 4
-    assert metrics["total_errors"] >= 1
-    assert metrics["success_rate_feedback"] > 0
-
-    print("\n--- Testing get_error_trend ---")
-    error_trend = dashboard.get_error_trend(days=7)
-    print(json.dumps(error_trend, indent=2))
-    assert any(item["error_count"] > 0 for item in error_trend)
-
-    print("\n--- Testing get_top_queries ---")
-    top_queries = dashboard.get_top_queries(days=7, limit=2)
-    print(json.dumps(top_queries, indent=2))
-    assert top_queries[0]["query"] == "Vendas por produto?"
-    assert top_queries[0]["count"] == 2
-
-    # Clean up dummy files
-    for filename in os.listdir(temp_settings.LEARNING_EXAMPLES_PATH):
-        if filename.startswith("queries_"):
-            os.remove(os.path.join(temp_settings.LEARNING_EXAMPLES_PATH, filename))
-    if os.path.exists(feedback_file):
-        os.remove(feedback_file)
-    print("\nCleaned up dummy metrics files.")
-    print("\nMetricsDashboard tests passed!")

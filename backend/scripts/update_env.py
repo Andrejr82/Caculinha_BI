@@ -12,11 +12,23 @@ print("="*70 + "\n")
 # Caminho do arquivo .env
 env_file = Path(__file__).parent.parent / ".env"
 
-# Nova DATABASE_URL
+# Nova DATABASE_URL — lida de variáveis de ambiente
+_user = os.environ.get("DB_ALT_USER", "AgenteVirtual")
+_pwd  = os.environ.get("DB_ALT_PASSWORD", "")
+_host = os.environ.get("DB_ALT_SERVER", "127.0.0.1,1433").replace(",", ":")
+_db   = os.environ.get("DB_ALT_DATABASE", "Projeto_Caculinha")
+
+if not _pwd:
+    raise SystemExit(
+        "Erro: defina DB_ALT_PASSWORD antes de executar este script.\n"
+        "Exemplo: $env:DB_ALT_PASSWORD='suasenha'; python scripts/update_env.py"
+    )
+
 new_database_url = (
-    "mssql+aioodbc://AgenteVirtual:Cacula@2020@127.0.0.1,1433/Projeto_Caculinha"
+    f"mssql+aioodbc://{_user}:{_pwd}@{_host}/{_db}"
     "?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes"
 )
+
 
 print(f"Arquivo: {env_file}")
 print(f"\nNova DATABASE_URL:")

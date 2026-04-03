@@ -63,18 +63,3 @@ def sanitize_sql_input(text: str) -> str:
     
     return sanitized
 
-if __name__ == '__main__':
-    print("--- Username Sanitization ---")
-    print(f"Original: 'user@name-123!' -> Sanitized: '{sanitize_username('user@name-123!')}'")
-    print(f"Original: 'valid_user_42' -> Sanitized: '{sanitize_username('valid_user_42')}'")
-
-    print("\n--- Password Strength Validation ---")
-    print(f"'Password123!' is strong: {validate_password_strength('Password123!')}")
-    print(f"'weakpass' is strong: {validate_password_strength('weakpass')}")
-    print(f"'NoDigit!' is strong: {validate_password_strength('NoDigit!')}")
-    print(f"'NoSpecial1' is strong: {validate_password_strength('NoSpecial1')}")
-
-    print("\n--- SQL Input Sanitization ---")
-    print(f"Original: 'DROP TABLE users;--' -> Sanitized: '{sanitize_sql_input('DROP TABLE users;--')}'")
-    print(f"Original: '1 OR 1=1' -> Sanitized: '{sanitize_sql_input('1 OR 1=1')}'")
-    print(f"Original: 'valid_column_name' -> Sanitized: '{sanitize_sql_input('valid_column_name')}'")

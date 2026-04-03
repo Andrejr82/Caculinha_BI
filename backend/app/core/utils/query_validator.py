@@ -342,20 +342,3 @@ def get_friendly_error(error: Exception) -> str:
     return _validator.get_user_friendly_error(error)
 
 
-if __name__ == "__main__":
-    # Testes básicos
-    logging.basicConfig(level=logging.INFO)
-
-    # Teste de validação de colunas
-    df_test = pd.DataFrame({
-        'col1': [1, 2, 3],
-        'col2': ['a', 'b', 'c']
-    })
-
-    is_valid, missing = validate_columns(df_test, ['col1', 'col2', 'col3'])
-    print(f"Validação: {is_valid}, Faltantes: {missing}")
-
-    # Teste de tratamento de nulos
-    df_test['col3'] = [1, None, 3]
-    df_clean = handle_nulls(df_test, 'col3', strategy='fill', fill_value=0)
-    print(f"Nulos tratados: {df_clean['col3'].tolist()}")

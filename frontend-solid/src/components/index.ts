@@ -12,6 +12,7 @@ export { TypingIndicator } from './TypingIndicator';
 export { ThinkingProcess } from './ThinkingProcess';
 export { AutoResizeTextarea } from './AutoResizeTextarea';
 export { PlotlyChart } from './PlotlyChart';
+export { AdaptiveChart } from './AdaptiveChart';
 export { DataTable } from './DataTable';
 export { ChatDashboardRenderer } from './ChatDashboardRenderer';
 export { ChatAutomationCard } from './ChatAutomationCard';

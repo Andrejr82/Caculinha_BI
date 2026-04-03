@@ -6,7 +6,19 @@ Plataforma de BI conversacional para varejo com backend FastAPI, frontend SolidJ
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-green.svg)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Atualizado em: 2026-02-21
+Atualizado em: 2026-03-28
+
+## Convenções de dependências
+
+- Backend: fonte canônica em `backend/requirements.in`, com lock em `backend/requirements.txt`.
+- Frontend: Bun como gerenciador padrão, com lock oficial em `frontend-solid/bun.lock`.
+- `frontend-solid/package-lock.json` não faz mais parte do fluxo padrão.
+
+## Estado do saneamento
+
+- O repositório passou por saneamento estrutural em 28 de março de 2026.
+- O plano executado está em `docs/PLANO_SANEAMENTO_2026-03-28.md`.
+- A auditoria inicial foi preservada em quarentena restaurável em `legacy_quarantine/cleanup-2026-04-02/docs/historico/AUDITORIA_PROFUNDA_PROJETO_2026-03-27.md`.
 
 ## O que o sistema faz
 
@@ -140,15 +152,11 @@ Onde ajustar host/porta/timeout dessa espera:
 Backend:
 
 ```powershell
-pip install -r backend/requirements.txt
+python -m venv backend/.venv
+backend/.venv/Scripts/python -m pip install --upgrade pip
+backend/.venv/Scripts/python -m pip install -r backend/requirements.txt
 $env:WATCHFILES_FORCE_POLLING='true'
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend --reload-include *.py --reload-include .env
-```
-
-Atalho recomendado (Windows, sem Docker):
-
-```bat
-START_BACKEND_DEV.bat
 ```
 
 Frontend:
@@ -174,10 +182,14 @@ Variaveis criticas:
 | Variavel | Uso |
 |---|---|
 | `SECRET_KEY` | obrigatoria, minimo 32 caracteres |
-| `LLM_PROVIDER` | `google`, `groq` ou `mock` |
-| `LLM_FALLBACK_PROVIDERS` | cadeia de fallback de provedores |
+| `LLM_PROVIDER` | `groq`, `grq` ou `mock` (`google`/`gemini` sao aliases legados normalizados para `groq`) |
+| `LLM_FALLBACK_PROVIDERS` | cadeia de fallback do runtime (`groq` ou `mock`) |
 | `USE_SQL_SERVER` | ativa SQL Server (senao usa fallback local/parquet) |
 | `PARQUET_DATA_PATH` | caminho da base principal |
+| `RAG_EMBEDDING_MODEL` | modelo vetorial local para retrieval (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` por padrao) |
+| `RAG_EMBEDDING_CACHE_DIR` | cache local do modelo de embeddings |
+| `RAG_EMBEDDING_LOCAL_FILES_ONLY` | evita download no runtime e exige modelo previamente cacheado |
+| `RAG_EMBEDDING_PRELOAD_ON_STARTUP` | tenta validar/precarregar o modelo no boot da API |
 | `USE_SUPABASE_AUTH` | liga/desliga fluxo de auth Supabase |
 | `RATE_LIMIT_PER_MINUTE` | limite global de requests |
 
@@ -193,6 +205,31 @@ Variaveis de pesquisa concorrencial:
 | `COMPETITIVE_DOMAIN_WHITELIST` | dominios permitidos |
 | `COMPETITIVE_MANUAL_FILE` | base manual (CSV/JSON importado) |
 | `SERPAPI_API_KEY` | opcional para Google Shopping |
+
+### Embeddings locais do ChatBI
+
+O runtime principal agora usa embeddings locais desacoplados do provider generativo.
+
+Default atual:
+
+- `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+- escolhido por ser mais adequado a consultas em portugues do que `all-MiniLM-L6-v2`, mantendo custo operacional razoavel em CPU
+
+Recomendacao de producao:
+
+```powershell
+backend/.venv/Scripts/python backend/scripts/maintenance/preload_embedding_model.py --allow-download
+```
+
+Depois disso, mantenha em `backend/.env`:
+
+```env
+RAG_EMBEDDING_LOCAL_FILES_ONLY=true
+RAG_EMBEDDING_PRELOAD_ON_STARTUP=true
+```
+
+Assim o backend nao depende de download no primeiro request e o retrieval semantico fica previsivel.
+Com o cache local preenchido, o loader agora resolve o snapshot local do Hugging Face e sobe offline de forma determinística no startup.
 
 ## API principal
 
@@ -270,6 +307,7 @@ Frontend:
 
 ```powershell
 cd frontend-solid
+bun install --frozen-lockfile
 bun run test
 bun run test:e2e
 ```

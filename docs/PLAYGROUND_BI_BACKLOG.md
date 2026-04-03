@@ -1,7 +1,7 @@
 # Backlog Técnico - Playground BI
 
 ## Sprint 0 - Estabilização (em andamento)
-- [x] Criar plano versionado em `playground-bi-implementation-plan.md`.
+- [x] Criar plano versionado em `legacy_quarantine/cleanup-2026-04-02/docs/historico/playground-bi-implementation-plan.md`.
 - [x] Criar script de quality gate (`scripts/sprint0_quality_gate.ps1`).
 - [x] Registrar ADRs iniciais (`docs/adr/ADR-001..003`).
 - [ ] Fechar pendências de versionamento (workspace limpo).

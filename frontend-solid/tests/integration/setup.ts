@@ -28,20 +28,31 @@ const TEST_ADMIN = {
  * Função auxiliar para fazer login
  */
 async function login(page: Page, email: string, password: string) {
-    await page.goto('/login');
+    const emailInput = page.locator('#email, input[aria-label="Email"]').first();
+    const passwordInput = page.locator('#password, input[aria-label="Senha"]').first();
+    const submitButton = page.getByRole('button', { name: /entrar no sistema|entrar/i }).first();
 
-    // Aguardar formulário de login (usando id correto)
-    await page.waitForSelector('#email', { timeout: 10000 });
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+
+    try {
+        await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+    } catch {
+        // O dev server pode servir uma página em branco no primeiro hit enquanto recompila.
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+    }
+
+    await passwordInput.waitFor({ state: 'visible', timeout: 30000 });
 
     // Preencher credenciais
-    await page.fill('#email', email);
-    await page.fill('#password', password);
+    await emailInput.fill(email);
+    await passwordInput.fill(password);
 
     // Submeter formulário
-    await page.click('button[type="submit"]');
+    await submitButton.click();
 
     // Aguardar redirecionamento
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    await page.waitForURL('**/dashboard', { timeout: 30000 });
 }
 
 /**

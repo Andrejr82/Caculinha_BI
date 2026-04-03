@@ -213,7 +213,7 @@ class CustomLangChainLLM(BaseChatModel):
                     generic_tools_declarations.append(tool)
                 else:
                     # Fallback for other tool types or if the tool object is not fully formed
-                    print(f"Warning: Unexpected tool format encountered: {type(tool)} - {tool}")
+                    logger.warning("Unexpected tool format encountered: %s - %s", type(tool), tool)
                     if hasattr(tool, 'name') and hasattr(tool, 'description'):
                          generic_tools_declarations.append(
                                 {

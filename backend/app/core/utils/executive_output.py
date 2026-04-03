@@ -4,6 +4,8 @@ import re
 from statistics import median
 from typing import Any, Dict, List, Optional
 
+from backend.app.core.utils.report_templates import select_official_report_template
+
 _BUSINESS_KEYWORDS = (
     "venda",
     "estoque",
@@ -22,6 +24,19 @@ _BUSINESS_KEYWORDS = (
     "mercado",
     "eoq",
     "demanda",
+    "promocao",
+    "promoção",
+    "desconto",
+    "cesta",
+    "cross-sell",
+    "cross sell",
+    "afinidade",
+    "ticket medio",
+    "ticket médio",
+    "previsao",
+    "previsão",
+    "sazonal",
+    "sazonalidade",
 )
 
 
@@ -93,6 +108,10 @@ def _fmt_number(value: Any) -> str:
     return f"{number:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _fmt_currency(value: Any) -> str:
+    return f"R$ {_fmt_number(value)}"
+
+
 def _find_first_key(row: Dict[str, Any], aliases: List[str]) -> Optional[str]:
     normalized_aliases = {_normalize_key(alias) for alias in aliases}
     for key in row.keys():
@@ -119,6 +138,26 @@ def _sales_dimension_label(key: str) -> str:
         "produto": "Produto",
     }
     return mapping.get(normalized, str(key or "Dimensão").replace("_", " ").title())
+
+
+def _sales_dimension_entity_label(key: str) -> str:
+    normalized = _normalize_key(key)
+    mapping = {
+        "une": "lojas (UNE)",
+        "lojaune": "lojas (UNE)",
+        "loja": "lojas",
+        "nomesegmento": "segmentos",
+        "segmento": "segmentos",
+        "nomecategoria": "categorias",
+        "categoria": "categorias",
+        "nomegrupo": "grupos",
+        "grupo": "grupos",
+        "nomefabricante": "fabricantes",
+        "fabricante": "fabricantes",
+        "nome": "produtos",
+        "produto": "produtos",
+    }
+    return mapping.get(normalized, _sales_dimension_label(key).lower())
 
 
 def build_sales_dimension_report_from_rows(query: str, rows: List[Dict[str, Any]]) -> Optional[str]:
@@ -193,6 +232,7 @@ def build_sales_dimension_report_from_rows(query: str, rows: List[Dict[str, Any]
     amplitude = leader["value"] - values[-1]
     concentration = "alta" if leader_share >= 25 or top_5_share >= 65 else "moderada" if leader_share >= 15 or top_5_share >= 45 else "baixa"
     dimension_label = _sales_dimension_label(dim_key)
+    entity_label = _sales_dimension_entity_label(dim_key)
 
     enriched_rows: List[Dict[str, Any]] = []
     for index, row in enumerate(prepared_rows, start=1):
@@ -239,19 +279,19 @@ def build_sales_dimension_report_from_rows(query: str, rows: List[Dict[str, Any]
             "- Reavalie o segmento no próximo ciclo semanal para medir ganho de cobertura e venda."
         )
     else:
-        reading = f"há concentração {concentration} entre os principais {dimension_label.lower()}"
+        reading = f"há concentração {concentration} entre os principais {entity_label}"
         actions = (
-            f"- Priorize os {dimension_label.lower()} abaixo da mediana para revisão de sortimento, preço e execução comercial.\n"
-            f"- Compare os {dimension_label.lower()} líderes com a cauda para identificar lacunas de mix e demanda.\n"
+            f"- Priorize os {entity_label} abaixo da mediana para revisão de sortimento, preço e execução comercial.\n"
+            f"- Compare os {entity_label} líderes com a cauda para identificar lacunas de mix e demanda.\n"
             "- Reavalie o desempenho no próximo ciclo semanal com o mesmo recorte."
         )
 
     return (
         "## Resumo executivo\n"
-        f"- Consolidado de vendas por {dimension_label.lower()} concluído. Total vendido: {_fmt_number(total_value)} em {len(prepared_rows)} {dimension_label.lower()} analisados.\n"
-        f"- Destaque: {leader['label']} lidera com {_fmt_number(leader['value'])} e participação de {leader_share:.1f}% no total.\n"
-        f"- KPIs-chave: média de {_fmt_number(average_value)} por {dimension_label.lower()}, mediana de {_fmt_number(median_value)}, participação do Top 5 em {top_5_share:.1f}% e da cauda em {bottom_5_share:.1f}%.\n"
-        f"- Leitura gerencial: {reading}; a amplitude entre líder e última posição é de {_fmt_number(amplitude)}. Recorte solicitado: {query.strip()}.\n\n"
+        f"- Consolidado de vendas por {dimension_label.lower()} concluído. No recorte analisado, o total vendido alcançou {_fmt_currency(total_value)}, distribuído em {len(prepared_rows)} {entity_label}.\n"
+        f"- Principal contribuição: {leader['label']} com {_fmt_currency(leader['value'])}, equivalente a {leader_share:.1f}% do total.\n"
+        f"- Indicadores de distribuição: média de {_fmt_currency(average_value)} por {dimension_label.lower()}, mediana de {_fmt_currency(median_value)}, participação do Top 5 em {top_5_share:.1f}% e da cauda em {bottom_5_share:.1f}%.\n"
+        f"- Leitura gerencial: {reading} e a distância entre a maior e a menor posição do recorte é de {_fmt_currency(amplitude)}.\n\n"
         "## Tabela operacional\n"
         f"{header}\n{sep}\n{body}\n\n"
         "## Próximas ações\n"
@@ -267,7 +307,8 @@ def ensure_executive_output(query: str, message: str) -> str:
     if not text:
         return text
 
-    if not is_business_query(query) and "## resumo" not in text.lower():
+    recognized_template = classify_business_response_shape(query)["template_id"] != "geral_executivo"
+    if not is_business_query(query) and not recognized_template and "## resumo" not in text.lower():
         return text
 
     summary = _extract_section(text, ["## resumo executivo", "## resumo"])
@@ -283,7 +324,7 @@ def ensure_executive_output(query: str, message: str) -> str:
         summary = f"- {summary.strip()}"
 
     if not table:
-        table = "- Sem dados tabulares adicionais para exibir nesta resposta."
+        table = _default_table_for_query(query, text)
 
     if not action:
         action = _default_action_for_query(query)
@@ -310,8 +351,99 @@ def validate_executive_output(text: str) -> Dict[str, bool]:
     }
 
 
+def classify_business_response_shape(query: str) -> Dict[str, str]:
+    template = select_official_report_template(query)
+    template_id = str(template.get("id") or "geral_executivo")
+    process = str(template.get("processo") or "geral")
+    return {
+        "template_id": template_id,
+        "processo": process,
+        "nome": str(template.get("nome") or "Executivo Padrao"),
+    }
+
+
+def _default_table_for_query(query: str, message: str) -> str:
+    shape = classify_business_response_shape(query)
+    template_id = shape["template_id"]
+    summary = _first_sentence(message)
+
+    if template_id == "compras_ruptura":
+        return (
+            "| Frente | Leitura operacional |\n"
+            "|---|---|\n"
+            f"| Ruptura/Cobertura | {summary} |\n"
+            "| Impacto | Validar perda de venda, cobertura em dias e lojas mais afetadas |\n"
+            "| Prioridade | Atuar primeiro nos itens com cobertura zerada ou abaixo de 3 dias |"
+        )
+
+    if template_id in {"compras_cotacao", "comercial_margem", "comercial_promocao"}:
+        return (
+            "| Indicador | Leitura |\n"
+            "|---|---|\n"
+            f"| Diagnostico | {summary} |\n"
+            "| Margem/Preco | Confirmar faixa de preco, custo e impacto comercial |\n"
+            "| Decisao | Aprovar acao apenas com regra clara de rentabilidade |"
+        )
+
+    if template_id == "comercial_cesta":
+        return (
+            "| Frente | Leitura |\n"
+            "|---|---|\n"
+            f"| Cesta/Afinidade | {summary} |\n"
+            "| Oportunidade | Identificar itens complementares, bundles e ganho de ticket |\n"
+            "| Acao | Priorizar combinacoes com maior recorrencia e margem saudavel |"
+        )
+
+    if template_id in {"comercial_transferencia", "compras_previsao", "compras_eoq"}:
+        return (
+            "| Frente | Leitura |\n"
+            "|---|---|\n"
+            f"| Planejamento | {summary} |\n"
+            "| Gap operacional | Validar necessidade, cobertura e capacidade de atendimento |\n"
+            "| Acao sugerida | Traduzir a analise em quantidade, prazo e destino prioritario |"
+        )
+
+    return (
+        "| Indicador | Leitura |\n"
+        "|---|---|\n"
+        f"| Resumo | {summary} |\n"
+        "| Evidencia operacional | Complementar com numeros-chave da consulta |\n"
+        "| Proximo passo | Converter a leitura em decisao comercial ou operacional |"
+    )
+
+
 def _default_action_for_query(query: str) -> str:
     q = (query or "").lower()
+    template_id = classify_business_response_shape(query)["template_id"]
+
+    if template_id == "compras_ruptura":
+        return (
+            "- Priorize os itens com cobertura zerada ou abaixo de 3 dias e execute reposição/transferência nas próximas 24h.\n"
+            "- Reavalie lojas e SKUs críticos depois da movimentação para confirmar recomposição.\n"
+            "- Ajuste ponto de pedido e estoque-alvo dos itens recorrentes para reduzir reincidência."
+        )
+
+    if template_id in {"compras_cotacao", "comercial_margem", "comercial_promocao"}:
+        return (
+            "- Confirme custo, preço atual, desconto e margem real antes de aprovar a ação.\n"
+            "- Compare o cenário atual com o cenário proposto e defina limite mínimo de rentabilidade.\n"
+            "- Monitore volume, margem e conversão durante a ação para corrigir rapidamente."
+        )
+
+    if template_id == "comercial_cesta":
+        return (
+            "- Priorize os pares ou combos com maior afinidade e melhor margem combinada.\n"
+            "- Teste exposição conjunta, bundle ou recomendação assistida nas lojas de maior fluxo.\n"
+            "- Reavalie ticket médio e taxa de anexação no próximo ciclo operacional."
+        )
+
+    if template_id in {"comercial_transferencia", "compras_previsao", "compras_eoq"}:
+        return (
+            "- Converta a análise em plano com quantidade, prioridade e prazo por loja ou SKU.\n"
+            "- Revise cobertura, excesso e necessidade real antes de comprar ou transferir.\n"
+            "- Compare previsto versus realizado no próximo ciclo para calibrar o modelo decisório."
+        )
+
     if any(k in q for k in ["dashboard", "gráfico", "grafico", "vendas", "segmento", "une", "loja"]):
         return (
             "- Priorize as 3 UNEs/segmentos de menor venda com plano comercial em até 7 dias.\n"

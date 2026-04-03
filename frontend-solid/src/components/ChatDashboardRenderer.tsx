@@ -1,7 +1,7 @@
 import { Accessor, For, Show } from 'solid-js';
 
+import { AdaptiveChart } from './AdaptiveChart';
 import { DataTable } from './DataTable';
-import { PlotlyChart } from './PlotlyChart';
 
 export interface DashboardWidget {
   kind: 'kpi' | 'chart' | 'table' | 'text';
@@ -77,7 +77,7 @@ export const ChatDashboardRenderer = (props: ChatDashboardRendererProps) => {
             </Show>
 
             <Show when={widget.kind === 'chart' && widget.chart_spec}>
-              <PlotlyChart chartSpec={() => widget.chart_spec || {}} />
+              <AdaptiveChart chartSpec={() => widget.chart_spec || {}} />
             </Show>
 
             <Show when={widget.kind === 'table' && widget.rows}>

@@ -3,7 +3,8 @@ Supabase Client Configuration
 Singleton instance for Supabase authentication and database access
 """
 
-from supabase import create_client, Client
+import httpx
+from supabase import Client, ClientOptions, create_client
 from backend.app.config.settings import get_settings
 
 settings = get_settings()
@@ -11,6 +12,18 @@ settings = get_settings()
 # Singleton Supabase clients
 _supabase_client: Client | None = None
 _supabase_admin_client: Client | None = None
+
+
+def _build_client_options() -> ClientOptions:
+    """Build client options without deprecated PostgREST timeout/verify args."""
+    return ClientOptions(
+        httpx_client=httpx.Client(
+            timeout=httpx.Timeout(120.0),
+            verify=True,
+            follow_redirects=True,
+            http2=True,
+        )
+    )
 
 
 def get_supabase_client() -> Client:
@@ -33,7 +46,8 @@ def get_supabase_client() -> Client:
 
         _supabase_client = create_client(
             settings.SUPABASE_URL,
-            settings.SUPABASE_ANON_KEY
+            settings.SUPABASE_ANON_KEY,
+            options=_build_client_options(),
         )
 
     return _supabase_client
@@ -62,7 +76,8 @@ def get_supabase_admin_client() -> Client:
 
         _supabase_admin_client = create_client(
             settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY
+            settings.SUPABASE_SERVICE_ROLE_KEY,
+            options=_build_client_options(),
         )
 
     return _supabase_admin_client
