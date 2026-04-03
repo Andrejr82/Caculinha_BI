@@ -145,6 +145,24 @@ class DuckDBCatalogRepository(IProductCatalogRepository, ISynonymRepository, ICa
             res = con.execute("SELECT version_id FROM catalog_versions WHERE is_active = TRUE").fetchone()
             return res[0] if res else None
 
+    async def list_versions(self) -> List[Dict[str, Any]]:
+        with duckdb.connect(str(self.db_path)) as con:
+            rows = con.execute("""
+                SELECT version_id, description, created_at, is_active
+                FROM catalog_versions
+                ORDER BY created_at DESC
+            """).fetchall()
+
+        return [
+            {
+                "version_id": version_id,
+                "description": description,
+                "created_at": created_at.isoformat() if created_at else None,
+                "is_active": bool(is_active),
+            }
+            for version_id, description, created_at, is_active in rows
+        ]
+
     async def rollback_to_previous(self) -> Optional[str]:
         with duckdb.connect(str(self.db_path)) as con:
             versions = con.execute("SELECT version_id FROM catalog_versions ORDER BY created_at DESC LIMIT 2").fetchall()

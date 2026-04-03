@@ -10,12 +10,15 @@ import time
 import os
 from pathlib import Path
 
-# Configurações extraídas do que funcionou no AuthService
-SERVER = "127.0.0.1,1433"
-DATABASE = "Projeto_Caculinha" # Banco com dados completos
-USERNAME = "AgenteVirtual"
-PASSWORD = "Cacula@2020"
-DRIVER = "ODBC Driver 17 for SQL Server"
+# Credenciais via variáveis de ambiente (defina DB_ALT_* antes de rodar)
+SERVER   = os.environ.get("DB_ALT_SERVER",   "127.0.0.1,1433")
+DATABASE = os.environ.get("DB_ALT_DATABASE", "Projeto_Caculinha")
+USERNAME = os.environ.get("DB_ALT_USER",     "AgenteVirtual")
+PASSWORD = os.environ.get("DB_ALT_PASSWORD", "")
+DRIVER   = "ODBC Driver 17 for SQL Server"
+
+if not PASSWORD:
+    raise SystemExit("Erro: defina DB_ALT_PASSWORD no ambiente antes de executar este script.")
 
 CONNECTION_STRING = (
     f"DRIVER={{{DRIVER}}};"

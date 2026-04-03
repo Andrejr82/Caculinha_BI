@@ -664,8 +664,7 @@ async def create_user(
                 await db.commit()
             except Exception as e:
                 # Log error but don't fail the request (Supabase creation worked)
-                # logger.error(f"Failed to sync new user to SQL Server: {e}")
-                print(f"Failed to sync new user to SQL Server: {e}")
+                logger.warning("Failed to sync new user to SQL Server: %s", e)
 
             return new_user
         except Exception as e:
@@ -763,7 +762,7 @@ async def update_user(
                     
                     await db.commit()
             except Exception as e:
-                print(f"Failed to sync updated user to SQL Server: {e}")
+                logger.warning("Failed to sync updated user to SQL Server: %s", e)
 
             return updated_user
         except HTTPException:

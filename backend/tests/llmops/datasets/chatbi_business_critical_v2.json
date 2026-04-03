@@ -1,0 +1,43 @@
+{
+  "dataset_version": "v2.0.0",
+  "created_at": "2026-03-29",
+  "owner": "chatbi-team",
+  "description": "Dataset de regressao para respostas executivas criticas do negocio Cacula.",
+  "cases": [
+    {
+      "id": "ruptura_papelaria",
+      "query": "quais produtos estao em ruptura critica na papelaria",
+      "raw_response": "Existem itens de papelaria com risco imediato de perda de venda.",
+      "expected_process": "compras",
+      "expected_template": "compras_ruptura"
+    },
+    {
+      "id": "promocao_caneta_bic",
+      "query": "vale fazer promocao da caneta bic sem destruir margem",
+      "raw_response": "A promocao pode funcionar, mas precisa respeitar o limite de rentabilidade.",
+      "expected_process": "comercial",
+      "expected_template": "comercial_promocao"
+    },
+    {
+      "id": "pesquisa_mercado_cola",
+      "query": "faca uma cotacao de mercado da cola bastao 40g",
+      "raw_response": "A pesquisa levantou uma faixa publica de precos para benchmark.",
+      "expected_process": "compras",
+      "expected_template": "compras_cotacao"
+    },
+    {
+      "id": "cesta_cross_sell",
+      "query": "quais itens saem juntos e ajudam a aumentar ticket medio",
+      "raw_response": "Ha combinacoes relevantes com potencial de cross-sell.",
+      "expected_process": "comercial",
+      "expected_template": "comercial_cesta"
+    },
+    {
+      "id": "demanda_volta_aulas",
+      "query": "como devo me preparar para volta as aulas em papelaria",
+      "raw_response": "A operacao precisa antecipar reposicao dos SKUs lideres antes do pico.",
+      "expected_process": "compras",
+      "expected_template": "compras_previsao"
+    }
+  ]
+}

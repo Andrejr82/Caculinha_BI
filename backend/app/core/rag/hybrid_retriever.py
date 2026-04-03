@@ -12,17 +12,14 @@ Author: Agent BI Team
 Date: 2025-12-27
 """
 
-import os
 import json
 import logging
-import functools
 import asyncio
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
-import polars as pl
-
 from backend.app.config.settings import settings
+from backend.app.core.retrieval.embedding_backend import get_embedding_backend
 from backend.app.core.rag.example_collector import ExampleCollector
 
 logger = logging.getLogger(__name__)
@@ -34,15 +31,6 @@ try:
 except ImportError:
     logger.warning("rank_bm25 não instalado. BM25 retrieval não disponível. Install: pip install rank-bm25")
     HAS_BM25 = False
-
-try:
-    from google import genai
-    from google.genai import types
-    HAS_GEMINI = True
-except ImportError:
-    logger.warning("google-genai não instalado. Embeddings não disponíveis.")
-    HAS_GEMINI = False
-
 
 class HybridRetriever:
     """
@@ -57,7 +45,7 @@ class HybridRetriever:
     def __init__(
         self,
         examples_path: str = None,
-        embedding_model: str = "models/text-embedding-004",
+        embedding_model: Optional[str] = None,
         bm25_weight: float = 0.5,
         dense_weight: float = 0.5,
         use_cache: bool = True
@@ -67,13 +55,13 @@ class HybridRetriever:
 
         Args:
             examples_path: Caminho para exemplos/documentos
-            embedding_model: Modelo de embedding (text-embedding-004 = Google 2024)
+            embedding_model: Modelo de embedding local
             bm25_weight: Peso do BM25 no ranking final (0.0-1.0)
             dense_weight: Peso do dense embeddings (0.0-1.0)
             use_cache: Se True, cacheia embeddings
         """
         self.examples_path = examples_path or settings.LEARNING_EXAMPLES_PATH
-        self.embedding_model_name = embedding_model
+        self.embedding_model_name = embedding_model or settings.RAG_EMBEDDING_MODEL
         self.bm25_weight = bm25_weight
         self.dense_weight = dense_weight
         self.use_cache = use_cache
@@ -89,8 +77,7 @@ class HybridRetriever:
         self.documents: List[Dict[str, Any]] = []
         self.tokenized_corpus: List[List[str]] = []
 
-        # Embedding model (Gemini)
-        self.embedding_model = None
+        self.embedding_backend = get_embedding_backend(model_name=embedding_model or settings.RAG_EMBEDDING_MODEL)
 
         # Lazy initialization flags
         self._initialized = False
@@ -118,26 +105,14 @@ class HybridRetriever:
 
             logger.info(f"Carregados {len(self.documents)} documentos")
 
-            # 2. Inicializar Gemini Embeddings
-            if HAS_GEMINI and settings.GEMINI_API_KEY:
-                try:
-                    self.embedding_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-                    logger.info(f"Gemini Client configurado para embeddings: {self.embedding_model_name}")
-                except Exception as e:
-                    logger.error(f"Erro ao configurar Gemini Client: {e}")
-                    return False
-            else:
-                logger.warning("Gemini não disponível. Dense retrieval desabilitado.")
-
-            # 3. Inicializar BM25
+            # 2. Inicializar BM25
             if HAS_BM25:
                 self._initialize_bm25()
             else:
                 logger.warning("BM25 não disponível")
 
-            # 4. Carregar/gerar embeddings
-            if HAS_GEMINI:
-                self._load_or_generate_embeddings()
+            # 3. Carregar/gerar embeddings locais
+            self._load_or_generate_embeddings()
 
             self._initialized = True
             logger.info("HybridRetriever inicializado com sucesso")
@@ -177,8 +152,9 @@ class HybridRetriever:
             if self.use_cache and self.embeddings_cache_path.exists():
                 logger.info("Carregando embeddings do cache...")
                 with open(self.embeddings_cache_path, 'r', encoding='utf-8') as f:
-                    self.embeddings_cache = json.load(f)
-                logger.info(f"Cache carregado: {len(self.embeddings_cache)} embeddings")
+                    cached_payload = json.load(f)
+                self.embeddings_cache = self._normalize_cached_embeddings(cached_payload)
+                logger.info("Cache de embeddings carregado: %s itens", len(self.embeddings_cache))
 
             # Gerar embeddings faltantes
             missing_docs = [
@@ -187,13 +163,12 @@ class HybridRetriever:
             ]
 
             if missing_docs:
-                logger.info(f"Gerando embeddings para {len(missing_docs)} novos documentos...")
-                for doc in missing_docs:
-                    query = doc.get('query', '')
-                    if query:
-                        embedding = self._generate_embedding(query)
-                        if embedding:
-                            self.embeddings_cache[query] = embedding
+                logger.info("Gerando embeddings para %s novos documentos...", len(missing_docs))
+                queries = [doc.get('query', '') for doc in missing_docs if doc.get('query')]
+                embeddings = self.embedding_backend.embed_batch(queries)
+                for query, embedding in zip(queries, embeddings):
+                    if embedding:
+                        self.embeddings_cache[query] = embedding
 
                 # Salvar cache atualizado
                 if self.use_cache:
@@ -204,7 +179,7 @@ class HybridRetriever:
 
     def _generate_embedding(self, text: str) -> Optional[List[float]]:
         """
-        Gera embedding usando Gemini text-embedding-004.
+        Gera embedding usando backend local de sentence-transformers.
 
         Args:
             text: Texto para gerar embedding
@@ -213,15 +188,8 @@ class HybridRetriever:
             Lista de floats representando o embedding, ou None se falhar
         """
         try:
-            # New SDK v1 syntax
-            result = self.embedding_client.models.embed_content(
-                model=self.embedding_model_name,
-                contents=text,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
-            )
-            # Result object has 'embeddings' attribute which is a list of Embedding objects
-            # We assume single content, so we take the first one
-            return result.embeddings[0].values
+            embedding = self.embedding_backend.embed_text(text)
+            return embedding or None
 
         except Exception as e:
             logger.error(f"Erro ao gerar embedding: {e}")
@@ -233,10 +201,42 @@ class HybridRetriever:
         """
         try:
             with open(self.embeddings_cache_path, 'w', encoding='utf-8') as f:
-                json.dump(self.embeddings_cache, f, indent=2)
+                payload = {
+                    "_meta": {
+                        "model": self.embedding_backend.model_name,
+                        "dimension": self.embedding_backend.dimension,
+                    },
+                    "embeddings": self.embeddings_cache,
+                }
+                json.dump(payload, f, ensure_ascii=False, indent=2)
             logger.info(f"Cache de embeddings salvo: {len(self.embeddings_cache)} entries")
         except Exception as e:
             logger.error(f"Erro ao salvar cache de embeddings: {e}")
+
+    def _normalize_cached_embeddings(self, payload: Any) -> Dict[str, List[float]]:
+        if not isinstance(payload, dict):
+            return {}
+
+        meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+        embeddings = payload.get("embeddings") if isinstance(payload.get("embeddings"), dict) else payload
+        if not isinstance(embeddings, dict):
+            return {}
+
+        expected_dim = self.embedding_backend.dimension
+        cached_dim = meta.get("dimension")
+        if cached_dim and cached_dim != expected_dim:
+            logger.info(
+                "Ignorando cache de embeddings incompatível (cache=%s, expected=%s)",
+                cached_dim,
+                expected_dim,
+            )
+            return {}
+
+        normalized: Dict[str, List[float]] = {}
+        for key, vector in embeddings.items():
+            if isinstance(key, str) and isinstance(vector, list) and vector:
+                normalized[key] = vector
+        return normalized
 
     def _tokenize(self, text: str) -> List[str]:
         """
@@ -308,7 +308,7 @@ class HybridRetriever:
         Returns:
             Lista de documentos com scores
         """
-        if not HAS_GEMINI or not self.embeddings_cache:
+        if not self.embeddings_cache:
             return []
 
         try:
@@ -344,16 +344,7 @@ class HybridRetriever:
         Calcula similaridade de cosseno entre dois vetores.
         """
         try:
-            import math
-
-            dot_product = sum(a * b for a, b in zip(vec1, vec2))
-            magnitude1 = math.sqrt(sum(a * a for a in vec1))
-            magnitude2 = math.sqrt(sum(b * b for b in vec2))
-
-            if magnitude1 == 0 or magnitude2 == 0:
-                return 0.0
-
-            return dot_product / (magnitude1 * magnitude2)
+            return self.embedding_backend.cosine_similarity(vec1, vec2)
 
         except Exception as e:
             logger.error(f"Erro ao calcular cosine similarity: {e}")
@@ -503,15 +494,7 @@ class HybridRetriever:
         """
         try:
             # Wrapper function for the client call
-            def _embed():
-                res = self.embedding_client.models.embed_content(
-                    model=self.embedding_model_name,
-                    contents=text,
-                    config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
-                )
-                return res.embeddings[0].values
-
-            result = await asyncio.to_thread(_embed)
+            result = await asyncio.to_thread(self._generate_embedding, text)
             return result
         except Exception as e:
             logger.error(f"[RAG] Erro ao gerar embedding async: {e}")
@@ -580,7 +563,7 @@ class HybridRetriever:
             'total_documents': len(self.documents),
             'embeddings_cached': len(self.embeddings_cache),
             'bm25_available': HAS_BM25 and self.bm25_index is not None,
-            'dense_available': HAS_GEMINI and bool(self.embeddings_cache),
+            'dense_available': bool(self.embeddings_cache),
             'embedding_model': self.embedding_model_name,
             'bm25_weight': self.bm25_weight,
             'dense_weight': self.dense_weight

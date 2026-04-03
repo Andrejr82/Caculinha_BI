@@ -2,17 +2,22 @@
 Sync SQL Server to Parquet - OTIMIZADO COM BATCHES
 Extrai 1.1M+ linhas da tabela admmatao em batches para evitar timeout
 """
+import os
 import pyodbc
 import polars as pl
 from pathlib import Path
 import time
 
-SERVER = "localhost,1433"
-DATABASE = "Projeto_Caculinha"
-USERNAME = "AgenteVirtual"
-PASSWORD = "Cacula@2020"
-DRIVER = "ODBC Driver 17 for SQL Server"
+# Credenciais via variáveis de ambiente (defina DB_ALT_* antes de rodar)
+SERVER   = os.environ.get("DB_ALT_SERVER",   "localhost,1433")
+DATABASE = os.environ.get("DB_ALT_DATABASE", "Projeto_Caculinha")
+USERNAME = os.environ.get("DB_ALT_USER",     "AgenteVirtual")
+PASSWORD = os.environ.get("DB_ALT_PASSWORD", "")
+DRIVER   = "ODBC Driver 17 for SQL Server"
 BATCH_SIZE = 100000  # 100k linhas por batch
+
+if not PASSWORD:
+    raise SystemExit("Erro: defina DB_ALT_PASSWORD no ambiente antes de executar este script.")
 
 CONNECTION_STRING = (
     f"DRIVER={{{DRIVER}}};"

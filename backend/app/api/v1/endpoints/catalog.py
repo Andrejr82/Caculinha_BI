@@ -5,8 +5,10 @@ Autor: Backend Specialist Agent
 Data: 2026-02-07
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+import logging
 from typing import List, Optional, Dict, Any
+
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from backend.application.services.catalog_builder_service import CatalogBuilderService
@@ -14,9 +16,10 @@ from backend.application.services.product_search_service import ProductSearchSer
 from backend.infrastructure.adapters.repository.duckdb_catalog_repository import DuckDBCatalogRepository
 from backend.infrastructure.adapters.source.product_source_parquet_adapter import ProductSourceParquetAdapter
 from backend.application.services.pt_br_normalizer import PTBRNormalizer
-from backend.infrastructure.adapters.search.whoosh_bm25_index_adapter import WhooshBM25IndexAdapter
 from backend.infrastructure.adapters.search.vector_index_adapter import VectorIndexAdapter
 from backend.infrastructure.adapters.search.hybrid_ranking_adapter import HybridRankingAdapter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/catalog", tags=["Semantic Catalog"])
 
@@ -39,7 +42,18 @@ def get_services():
     repo = DuckDBCatalogRepository(db_path)
     source = ProductSourceParquetAdapter(parquet_path)
     normalizer = PTBRNormalizer()
-    bm25 = WhooshBM25IndexAdapter(index_dir)
+
+    try:
+        from backend.infrastructure.adapters.search.whoosh_bm25_index_adapter import WhooshBM25IndexAdapter
+
+        bm25 = WhooshBM25IndexAdapter(index_dir)
+    except Exception as exc:
+        logger.exception("Catalog BM25 unavailable; semantic catalog endpoints disabled")
+        raise HTTPException(
+            status_code=503,
+            detail="Busca semântica de catálogo indisponível neste ambiente.",
+        ) from exc
+
     vec = VectorIndexAdapter(db_path)
     ranker = HybridRankingAdapter(repo)
 
@@ -90,5 +104,6 @@ async def search_catalog(req: SearchRequest, deps=Depends(get_services)):
 
 @router.get("/versions")
 async def list_versions(deps=Depends(get_services)):
-    # TODO: Implement version listing in repository
-    return {"message": "Endpoint not fully implemented yet."}
+    _, _, repo = deps
+    versions = await repo.list_versions()
+    return {"versions": versions, "count": len(versions)}

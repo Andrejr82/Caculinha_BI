@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import unicodedata
 from itertools import combinations
@@ -176,6 +177,9 @@ class BasketAnalysisService:
         if params["target_product"]:
             rules_df = self._filter_rules_for_target(rules_df, params["target_product"])
             itemsets_df = self._filter_itemsets_for_target(itemsets_df, params["target_product"])
+        if params["target_terms"]:
+            rules_df = self._filter_rules_for_terms(rules_df, params["target_terms"])
+            itemsets_df = self._filter_itemsets_for_terms(itemsets_df, params["target_terms"])
 
         top_itemsets = self._serialize_itemsets(itemsets_df, params["max_rules"])
         top_rules = self._serialize_rules(rules_df, params["max_rules"])
@@ -191,6 +195,7 @@ class BasketAnalysisService:
             top_itemsets=top_itemsets,
             transactions_analyzed=int(transaction_frame["transaction_key"].nunique()),
             target_product=params["target_product"],
+            target_terms=params["target_terms"],
         )
         diagnostics["algorithm"] = algorithm
 
@@ -705,6 +710,7 @@ class BasketAnalysisService:
         top_itemsets: list[dict[str, Any]],
         transactions_analyzed: int,
         target_product: str | None,
+        target_terms: Sequence[str] | None = None,
     ) -> list[str]:
         mode = validation.get("analysis_mode", "unsupported")
         if mode == "unsupported":
@@ -728,6 +734,10 @@ class BasketAnalysisService:
             if target_product:
                 summary.append(
                     f"O recorte priorizou regras relacionadas ao item alvo '{target_product}'."
+                )
+            elif target_terms:
+                summary.append(
+                    f"O recorte priorizou regras relacionadas aos termos-alvo: {', '.join(target_terms)}."
                 )
         elif top_itemsets:
             first_itemset = top_itemsets[0]
@@ -809,6 +819,20 @@ class BasketAnalysisService:
         if effective_user is None:
             raise ValueError("Nenhum contexto de usuario disponivel para carregar a base.")
 
+        basket_csv_path = str(getattr(settings, "BASKET_TRANSACTIONS_CSV_PATH", "") or "").strip()
+        if basket_csv_path and os.path.exists(basket_csv_path):
+            frame = pd.read_csv(basket_csv_path)
+            allowed_unes = None
+            if isinstance(effective_user, Mapping):
+                allowed_unes = effective_user.get("allowed_unes") or effective_user.get("unes")
+            else:
+                allowed_unes = getattr(effective_user, "allowed_unes", None) or getattr(effective_user, "unes", None)
+            if allowed_unes and "une" in frame.columns:
+                allowed = {str(item) for item in allowed_unes if item not in (None, "", [])}
+                if allowed:
+                    frame = frame[frame["une"].astype(str).isin(allowed)]
+            return frame, list(frame.columns)
+
         conn = get_safe_connection()
         relation = data_scope_service.get_filtered_dataframe(effective_user, conn=conn)
         available_columns = list(relation.columns)
@@ -848,6 +872,7 @@ class BasketAnalysisService:
             "segment": self._clean_optional_string(raw.get("segment")),
             "category": self._clean_optional_string(raw.get("category")),
             "target_product": self._clean_optional_string(raw.get("target_product")),
+            "target_terms": self._clean_optional_string_list(raw.get("target_terms")),
             "min_support": self._clamp_float(raw.get("min_support"), default=0.01, minimum=0.0001, maximum=1.0),
             "min_confidence": self._clamp_float(raw.get("min_confidence"), default=0.2, minimum=0.0, maximum=1.0),
             "min_lift": self._clamp_float(raw.get("min_lift"), default=1.0, minimum=0.0, maximum=100.0),
@@ -900,6 +925,29 @@ class BasketAnalysisService:
         text = str(value).strip()
         return text or None
 
+    @classmethod
+    def _clean_optional_string_list(cls, value: Any) -> list[str]:
+        if value in (None, "", False):
+            return []
+        if isinstance(value, str):
+            candidates = re.split(r"[;,|]", value)
+        elif isinstance(value, Sequence):
+            candidates = list(value)
+        else:
+            candidates = [value]
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            text = cls._clean_optional_string(item)
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(text)
+        return cleaned
+
     @staticmethod
     def _clean_key(value: Any) -> str | None:
         if value is None or (isinstance(value, float) and math.isnan(value)):
@@ -936,6 +984,32 @@ class BasketAnalysisService:
         target = str(target_product).casefold()
         mask = itemsets_df["itemsets"].apply(
             lambda items: any(str(item).casefold() == target for item in items)
+        )
+        return itemsets_df[mask].reset_index(drop=True)
+
+    @staticmethod
+    def _filter_rules_for_terms(rules_df: pd.DataFrame, target_terms: Sequence[str]) -> pd.DataFrame:
+        if rules_df.empty or not target_terms:
+            return rules_df
+        terms = [str(term).casefold() for term in target_terms if str(term).strip()]
+        if not terms:
+            return rules_df
+
+        def matches(row: pd.Series) -> bool:
+            items = [str(item).casefold() for item in row["antecedents"]] + [str(item).casefold() for item in row["consequents"]]
+            return any(term in item for term in terms for item in items)
+
+        return rules_df[rules_df.apply(matches, axis=1)].reset_index(drop=True)
+
+    @staticmethod
+    def _filter_itemsets_for_terms(itemsets_df: pd.DataFrame, target_terms: Sequence[str]) -> pd.DataFrame:
+        if itemsets_df.empty or not target_terms:
+            return itemsets_df
+        terms = [str(term).casefold() for term in target_terms if str(term).strip()]
+        if not terms:
+            return itemsets_df
+        mask = itemsets_df["itemsets"].apply(
+            lambda items: any(term in str(item).casefold() for term in terms for item in items)
         )
         return itemsets_df[mask].reset_index(drop=True)
 

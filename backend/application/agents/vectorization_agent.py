@@ -5,10 +5,13 @@ Autor: Orchestrator Agent
 Data: 2026-02-07
 """
 
+import inspect
 from typing import List, Optional
 import structlog
 
 from backend.application.agents.base_agent import BaseAgent, AgentRequest, AgentResponse
+from backend.app.config.settings import settings
+from backend.app.core.retrieval.embedding_backend import get_embedding_backend
 from backend.domain.entities.embedding import Embedding
 
 logger = structlog.get_logger(__name__)
@@ -17,15 +20,16 @@ logger = structlog.get_logger(__name__)
 class VectorizationAgent(BaseAgent):
     """Agente responsável por gerar embeddings."""
     
-    def __init__(self, embedding_client=None, model: str = "gemini-embedding-001", dimension: int = 768):
+    def __init__(self, embedding_client=None, model: Optional[str] = None, dimension: Optional[int] = None):
         super().__init__(
             name="VectorizationAgent",
             description="Gera embeddings para textos",
             capabilities=["embed_text", "embed_batch"]
         )
         self.client = embedding_client
-        self.model = model
-        self.dimension = dimension
+        self.model = model or settings.RAG_EMBEDDING_MODEL
+        self.embedding_backend = get_embedding_backend(model_name=self.model)
+        self.dimension = dimension or self.embedding_backend.dimension
     
     async def _execute(self, request: AgentRequest) -> AgentResponse:
         embedding = await self.embed_text(request.content)
@@ -40,15 +44,18 @@ class VectorizationAgent(BaseAgent):
         if not text:
             return None
         
-        if not self.client:
-            # Fallback: embedding fake para testes
-            import hashlib
-            hash_val = int(hashlib.md5(text.encode()).hexdigest(), 16)
-            return [(hash_val >> i) % 1000 / 1000 for i in range(self.dimension)]
-        
         try:
-            response = await self.client.embed(text, model=self.model)
-            return response
+            if self.client and hasattr(self.client, "embed"):
+                response = self.client.embed(text, model=self.model)
+                if inspect.isawaitable(response):
+                    response = await response
+                if response:
+                    return response
+
+            vector = self.embedding_backend.embed_text(text)
+            if vector:
+                self.dimension = len(vector)
+            return vector or None
         except Exception as e:
             logger.error("embed_failed", error=str(e))
             return None

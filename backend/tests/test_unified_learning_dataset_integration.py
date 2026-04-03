@@ -176,6 +176,32 @@ def test_master_prompt_prefers_generated_unified_few_shot(monkeypatch, tmp_path)
     assert examples[0]["user"] == "exemplo unificado"
 
 
+def test_master_prompt_formats_examples_without_reasoning(monkeypatch, tmp_path):
+    few_shot_path = get_unified_few_shot_path(str(tmp_path))
+    _write_json(
+        few_shot_path,
+        {
+            "examples": [
+                {
+                    "category": "promotion",
+                    "user": "vale fazer promocao?",
+                    "assistant_reasoning": "nao deve aparecer no prompt",
+                    "assistant_response": "resposta operacional",
+                    "tool_calls": [{"tool": "simular_promocao_cesta", "parameters": {"desconto_pct": 10}}],
+                }
+            ]
+        },
+    )
+
+    monkeypatch.setattr(unified_builder.settings, "LEARNING_EXAMPLES_PATH", str(tmp_path))
+
+    prompt = master_prompt.get_system_prompt()
+
+    assert "nao deve aparecer no prompt" not in prompt
+    assert "Ferramentas esperadas" in prompt
+    assert "simular_promocao_cesta" in prompt
+
+
 def test_unified_dataset_status_reports_missing_real_world_sources(tmp_path):
     output_dir = get_unified_dataset_output_dir(str(tmp_path))
     manifest = {

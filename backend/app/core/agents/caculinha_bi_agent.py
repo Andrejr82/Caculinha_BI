@@ -53,7 +53,7 @@ from backend.app.core.data_source_manager import get_data_manager # Para injeç�
 
 # Import NEW universal chart tool - Context7 2025 Best Practice
 from backend.app.core.tools.universal_chart_generator import gerar_grafico_universal_v2
-from backend.app.core.tools.test_minimal import teste_minimal  # DEBUG: Ferramenta mínima para teste
+from backend.app.core.tools.tool_metadata import compose_tool_description
 try:
     from backend.app.core.tools.competitive_intelligence_tool import pesquisar_precos_concorrentes
     from backend.app.core.tools.competitive_intelligence_tool import pesquisar_mercado_web
@@ -83,7 +83,7 @@ try:
     from backend.infrastructure.adapters.search.hybrid_ranking_adapter import HybridRankingAdapter
     from backend.infrastructure.adapters.repository.duckdb_catalog_repository import DuckDBCatalogRepository
     CATALOG_SEARCH_AVAILABLE = True
-except ImportError as e:
+except Exception as e:
     logger.warning(f"Catalog Search dependencies missing: {e}")
     CATALOG_SEARCH_AVAILABLE = False
 
@@ -105,16 +105,17 @@ from backend.app.core.utils.tool_scoping import ToolPermissionManager, get_scope
 # Alias para manter compatibilidade com código existente
 safe_json_serialize = safe_json_dumps
 
-# System instruction - Master Prompt: Assistente de BI Analítico Avançado
-# DEPRECATED: Este arquivo faz parte da arquitetura V2 (removida)
-# O SYSTEM_PROMPT agora está centralizado em app.core.prompts.master_prompt
-# Este agente está deprecated. Use ChatServiceV3 para novas implementações.
-from backend.app.core.prompts.master_prompt import MASTER_PROMPT as SYSTEM_PROMPT
+# System instruction is centrally assembled in app.core.prompts.master_prompt
+from backend.app.core.prompts.master_prompt import get_system_prompt
+from backend.app.core.prompts.business_contracts import (
+    BUSINESS_CONTRACT_RESPONSE_FORMAT,
+    normalize_business_contract,
+)
 
 class CaculinhaBIAgent:
     """
-    Agent responsible for Business Intelligence queries using Gemini Native Function Calling.
-    Replaces the legacy keyword-based routing and CodeGenAgent fallback.
+    Agent responsible for Business Intelligence queries using Groq + Llama
+    with local tool orchestration.
     """
     def __init__(
         self,
@@ -124,7 +125,7 @@ class CaculinhaBIAgent:
         user_role: str = "analyst",  # NEW: Role-based tool scoping (default: analyst)
         enable_rag: bool = True  # ASYNC RAG 2025-12-27: Re-enabled with background warming (non-blocking)
     ):
-        # llm is expected to be GeminiLLMAdapter
+        # llm follows the project adapter contract (SmartLLM/Groq in the runtime principal)
         self.llm = llm
         self.field_mapper = field_mapper
         self.user_role = user_role  # Store user role for tool scoping
@@ -155,8 +156,7 @@ class CaculinhaBIAgent:
             logger.info("RAG desabilitado (enable_rag=False)")
 
         # Define CORE tools (always available)
-        # FIX DEFINITIVO: Gemini tem limite RÍGIDO de complexidade
-        # Mantendo apenas 4 ferramentas CRÍTICAS
+        # Mantém o núcleo de tools enxuto e previsível para o roteamento local.
         core_tools = [
             consultar_dados_flexivel,  # Consulta genérica
             gerar_grafico_universal_v2,  # Visualização
@@ -220,8 +220,7 @@ class CaculinhaBIAgent:
             except ImportError:
                 logger.warning("[WARNING] Purchasing tools missing (likely StatsModels/Torch issue).")
 
-        # 3. Advanced Analytics Tools (SciPy/Sklearn dependency) - NOVO 2026-01-24
-        # Ferramentas STEM para Gemini 2.5 Pro: regressão, anomalias, correlação
+        # 3. Advanced analytics tools (SciPy/Sklearn dependency)
             try:
                 from backend.app.core.tools.advanced_analytics_tool import (
                     analise_regressao_vendas,
@@ -237,7 +236,7 @@ class CaculinhaBIAgent:
                     segmentar_lojas_por_performance,
                     classificar_risco_estoque,
                 ])
-                logger.info("[OK] Advanced Analytics tools loaded (Gemini 2.5 Pro STEM features)")
+                logger.info("[OK] Advanced Analytics tools loaded")
             except ImportError as e:
                 logger.warning(f"[WARNING] Advanced Analytics tools missing (SciPy/Sklearn issue): {e}")
 
@@ -276,8 +275,8 @@ class CaculinhaBIAgent:
             f"for role '{self.user_role}'"
         )
 
-        # Convert LangChain tools to Gemini Function Declarations
-        self.gemini_tools = self._convert_tools_to_gemini_format(self.bi_tools)
+        # Convert tool schemas to the internal function-declaration wrapper used by the adapters.
+        self.tool_declarations = self._build_tool_declarations(self.bi_tools)
         
         # System instruction - Conversacional + BI Expert (Context7 Enhanced v2025)
         # DYNAMIC PROMPTING: Injetar schema real na inicialização
@@ -310,9 +309,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 - Para preços: `LIQUIDO_38` (preço de venda) e `ULTIMA_ENTRADA_CUSTO_CD` (custo).
 """
                 
-            # Substituir no template usando o novo placeholder
-            if "[SCHEMA_INJECTION_POINT]" in SYSTEM_PROMPT:
-                self.system_prompt = SYSTEM_PROMPT.replace(
+            system_prompt_template = get_system_prompt()
+
+            # Substituir no template usando o placeholder canônico
+            if "[SCHEMA_INJECTION_POINT]" in system_prompt_template:
+                self.system_prompt = system_prompt_template.replace(
                     "[SCHEMA_INJECTION_POINT]", 
                     schema_str
                 )
@@ -320,11 +321,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             else:
                 # Fallback: se o placeholder não existir, anexar ao final
                 logger.warning("[WARNING] Placeholder [SCHEMA_INJECTION_POINT] não encontrado. Anexando schema ao final do prompt.")
-                self.system_prompt = SYSTEM_PROMPT + "\n\n## 🗄️ DADOS DISPONÍVEIS\n" + schema_str
-            
+                self.system_prompt = system_prompt_template + "\n\n## DADOS DISPONIVEIS\n" + schema_str
+             
         except Exception as e:
             logger.warning(f"[ERROR] Dynamic Schema Injection Failed: {e}. Using static prompt.")
-            self.system_prompt = SYSTEM_PROMPT
+            self.system_prompt = get_system_prompt()
 
         if settings.DEV_FAST_MODE:
             self.system_prompt += (
@@ -334,12 +335,12 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             )
 
 
-    def _convert_tools_to_gemini_format(self, tools: List[BaseTool]) -> Dict[str, List[Dict[str, Any]]]:
+    def _build_tool_declarations(self, tools: List[BaseTool]) -> Dict[str, List[Dict[str, Any]]]:
         declarations = []
         for tool in tools:
             # Normalize tool metadata for both LangChain tools and plain callables.
             tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", None)
-            tool_description = getattr(tool, "description", None) or getattr(tool, "__doc__", "") or ""
+            fallback_description = getattr(tool, "description", None) or getattr(tool, "__doc__", "") or ""
             if not tool_name:
                 logger.warning(f"Skipping tool without resolvable name: {type(tool)}")
                 continue
@@ -360,7 +361,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 if hasattr(tool.args_schema, "schema"):
                     schema = tool.args_schema.schema()
             
-            # Clean schema to be compatible with Gemini (remove anyOf, titles)
+            # Clean schema to be adapter-friendly (remove noisy metadata and unsupported branches)
             cleaned_schema = self._clean_schema(schema)
             
             # Ensure 'properties' and 'required' are present if parameters exist
@@ -372,7 +373,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
             declarations.append({
                 "name": str(tool_name),
-                "description": str(tool_description).strip(),
+                "description": compose_tool_description(str(tool_name), str(fallback_description).strip()),
                 "parameters": parameters
             })
         
@@ -455,7 +456,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
     def _clean_schema(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Recursively cleans Pydantic JSON Schema for Gemini compatibility.
+        Recursively cleans Pydantic JSON Schema for function-calling compatibility.
         """
         if not isinstance(schema, dict):
             return schema
@@ -476,7 +477,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             non_null_options = [opt for opt in options if opt.get("type") != "null"]
 
             # Se houver múltiplos tipos primitivos (ex: boolean|string), usamos string
-            # para evitar validação estrita entre providers (Groq/Gemini).
+            # para evitar schemas frágeis entre adapters OpenAI-like.
             primitive_types = {
                 opt.get("type")
                 for opt in non_null_options
@@ -754,19 +755,37 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         return store_terms and objective_terms
 
     def _is_small_talk_query(self, query: str) -> bool:
+        import re
+
         q = (query or "").strip().lower()
         if not q:
             return False
-        small_talk_patterns = [
-            "qual é o seu nome", "qual e o seu nome", "seu nome", "quem é você", "quem e voce", "quem é voce",
-            "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite",
-            "tudo bem", "como vai", "o que você faz", "o que voce faz", "ajuda", "help",
-        ]
+
         # Evita capturar perguntas de negócio que contenham palavras comuns
-        business_terms = ["venda", "estoque", "une", "loja", "segmento", "produto", "gráfico", "grafico", "sql", "python"]
+        business_terms = [
+            "venda", "estoque", "une", "loja", "segmento", "produto", "gráfico", "grafico", "sql", "python",
+            "item", "itens", "promoção", "promocao", "ação", "acao", "combo", "cesta", "cross-sell",
+            "cross sell", "combina", "combinam", "compar", "margem", "desconto", "eoq",
+        ]
         if any(t in q for t in business_terms):
             return False
-        return any(p in q for p in small_talk_patterns)
+
+        exact_small_talk = {
+            "oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "tudo bem", "como vai", "ajuda", "help",
+            "qual é o seu nome", "qual e o seu nome", "seu nome", "quem é você", "quem e voce", "quem é voce",
+            "o que você faz", "o que voce faz",
+        }
+        if q in exact_small_talk:
+            return True
+
+        normalized = re.sub(r"\s+", " ", q)
+        explicit_patterns = [
+            r"^(?:oi|olá|ola|bom dia|boa tarde|boa noite)(?:[!.?, ]*)$",
+            r"^(?:oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,24}$",
+            r"^(?:qual é o seu nome|qual e o seu nome|seu nome|quem é você|quem e voce|quem é voce)$",
+            r"^(?:o que você faz|o que voce faz|ajuda|help|tudo bem|como vai)$",
+        ]
+        return any(re.search(pattern, normalized, re.IGNORECASE) for pattern in explicit_patterns)
 
     def _small_talk_response(self, query: str) -> Dict[str, Any]:
         q = (query or "").strip().lower()
@@ -814,6 +833,16 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         if normalized_tool in {"pesquisar_precos_concorrentes", "pesquisar_mercado_web"}:
             return "market_research"
+        if normalized_tool in {"simular_promocao_cesta", "analisar_cesta_compras", "minerar_cestas_frequentes"}:
+            return "basket"
+        if normalized_tool in {
+            "calcular_abastecimento_une",
+            "encontrar_rupturas_criticas",
+            "calcular_eoq",
+            "alocar_estoque_lojas",
+            "sugerir_transferencias_automaticas",
+        }:
+            return "inventory"
         if normalized_tool == "gerar_dashboard_executivo":
             return "dashboard"
         if normalized_tool in {"gerar_grafico_universal_v2", "gerar_grafico_universal"}:
@@ -826,8 +855,16 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return "market_research"
         if any(k in q for k in ["dashboard", "gráfico", "grafico", "chart"]):
             return "visualization"
+        if any(k in q for k in ["promoção", "promocao", "desconto", "bundle", "leve", "margem", "preço", "preco"]):
+            return "promotion"
+        if any(k in q for k in ["cesta", "ticket medio", "cross-sell", "cross sell", "afinidade", "combo"]):
+            return "basket"
+        if any(k in q for k in ["ruptura", "estoque", "abastecimento", "transferencia", "reposição", "reposicao"]):
+            return "inventory"
         if any(k in q for k in ["eoq", "lote econômico", "lote economico", "sensibilidade", "simulação", "simulacao"]):
             return "calculation"
+        if any(k in q for k in ["previsão", "previsao", "demanda sazonal", "sazonalidade"]):
+            return "forecasting"
         return "analysis"
 
     def _llm_get_completion(
@@ -843,6 +880,174 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return self.llm.get_completion(messages, tools=tools, task_type=task_type)
         except TypeError:
             return self.llm.get_completion(messages, tools=tools)
+
+    def _llm_generate_with_history(
+        self,
+        messages: List[Dict[str, Any]],
+        system_instruction: Optional[str] = None,
+        task_type: Optional[str] = None,
+        **kwargs,
+    ) -> str:
+        try:
+            return self.llm.generate_with_history(
+                messages,
+                system_instruction=system_instruction,
+                task_type=task_type,
+                **kwargs,
+            )
+        except TypeError:
+            try:
+                return self.llm.generate_with_history(messages, system_instruction, **kwargs)
+            except TypeError:
+                fallback = self._llm_get_completion(messages, tools=kwargs.get("tools"), task_type=task_type)
+                return str(fallback.get("content", "")) if isinstance(fallback, dict) else str(fallback)
+
+    @staticmethod
+    def _extract_chart_title(chart_data: Any) -> Optional[str]:
+        if not isinstance(chart_data, dict):
+            return None
+        layout = chart_data.get("layout")
+        if not isinstance(layout, dict):
+            return None
+        title = layout.get("title")
+        if isinstance(title, dict):
+            text = str(title.get("text") or "").strip()
+            return text or None
+        if isinstance(title, str):
+            return title.strip() or None
+        return None
+
+    def _build_visual_contract_payload(
+        self,
+        *,
+        chart_data: Any = None,
+        chart_summary: Any = None,
+        table_rows: Any = None,
+        dashboard_spec: Any = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+        if isinstance(chart_summary, dict) and chart_summary:
+            payload["chart_summary"] = chart_summary
+        chart_title = self._extract_chart_title(chart_data)
+        if chart_title:
+            payload["chart_title"] = chart_title
+        if isinstance(chart_data, dict):
+            traces = chart_data.get("data")
+            if isinstance(traces, list):
+                payload["chart_trace_count"] = len(traces)
+                sample_traces = []
+                for trace in traces[:3]:
+                    if not isinstance(trace, dict):
+                        continue
+                    sample_entry = {
+                        "name": str(trace.get("name") or "").strip() or None,
+                        "type": str(trace.get("type") or "").strip() or None,
+                    }
+                    x_values = trace.get("x")
+                    if isinstance(x_values, list) and x_values:
+                        sample_entry["x_sample"] = x_values[:5]
+                    y_values = trace.get("y")
+                    if isinstance(y_values, list) and y_values:
+                        sample_entry["y_sample"] = y_values[:5]
+                    sample_traces.append({k: v for k, v in sample_entry.items() if v not in (None, "", [])})
+                if sample_traces:
+                    payload["chart_traces"] = sample_traces
+        if isinstance(table_rows, list) and table_rows:
+            payload["table_row_count"] = len(table_rows)
+            first_row = table_rows[0] if isinstance(table_rows[0], dict) else {}
+            if isinstance(first_row, dict) and first_row:
+                payload["table_columns"] = list(first_row.keys())[:8]
+            payload["table_sample_rows"] = table_rows[:5]
+        if isinstance(dashboard_spec, dict) and dashboard_spec:
+            payload["dashboard_title"] = str(dashboard_spec.get("title") or "").strip() or None
+            widgets = dashboard_spec.get("widgets")
+            if isinstance(widgets, list):
+                payload["dashboard_widget_count"] = len(widgets)
+            filters = dashboard_spec.get("filters")
+            if isinstance(filters, list) and filters:
+                payload["dashboard_filters"] = filters[:5]
+            payload = {k: v for k, v in payload.items() if v not in (None, "", [])}
+        return payload
+
+    @staticmethod
+    def _render_business_contract_markdown(contract: Dict[str, Any]) -> Optional[str]:
+        if not isinstance(contract, dict):
+            return None
+        headline = str(contract.get("headline") or "").strip()
+        summary = str(contract.get("summary") or "").strip()
+        findings = contract.get("key_findings")
+        actions = contract.get("recommended_actions")
+        if not headline and not summary and not findings and not actions:
+            return None
+
+        lines: List[str] = []
+        if headline:
+            lines.append(f"### {headline}")
+            lines.append("")
+        if summary:
+            lines.append(summary)
+            lines.append("")
+        if isinstance(findings, list) and findings:
+            lines.append("**Principais achados**")
+            for item in findings[:4]:
+                text = str(item or "").strip()
+                if text:
+                    lines.append(f"- {text}")
+            lines.append("")
+        if isinstance(actions, list) and actions:
+            lines.append("**Ações recomendadas**")
+            for item in actions[:3]:
+                text = str(item or "").strip()
+                if text:
+                    lines.append(f"- {text}")
+        return "\n".join(line for line in lines if line is not None).strip() or None
+
+    def _generate_structured_visual_narrative(
+        self,
+        *,
+        user_query: str,
+        task_type: Optional[str],
+        fallback_text: str,
+        chart_data: Any = None,
+        chart_summary: Any = None,
+        table_rows: Any = None,
+        dashboard_spec: Any = None,
+    ) -> str:
+        payload = self._build_visual_contract_payload(
+            chart_data=chart_data,
+            chart_summary=chart_summary,
+            table_rows=table_rows,
+            dashboard_spec=dashboard_spec,
+        )
+        if not payload:
+            return fallback_text
+
+        system_message = (
+            "Voce transforma resultados de BI em resumo executivo objetivo para varejo. "
+            "Responda APENAS em JSON valido com as chaves: "
+            "headline, summary, key_findings, recommended_actions. "
+            "headline e summary devem ser strings. key_findings e recommended_actions devem ser listas de strings. "
+            "Use linguagem de negocio, mencione impacto operacional e nao invente numeros."
+        )
+        user_message = (
+            f"Pergunta do usuario: {user_query}\n"
+            f"Texto livre atual: {fallback_text}\n"
+            f"Payload de apoio: {json.dumps(payload, ensure_ascii=False)}"
+        )
+        try:
+            raw_output = self._llm_generate_with_history(
+                [{"role": "user", "content": user_message}],
+                system_instruction=system_message,
+                task_type=task_type or "analysis",
+                json_mode=True,
+                response_format=BUSINESS_CONTRACT_RESPONSE_FORMAT,
+            )
+            parsed = normalize_business_contract(raw_output)
+            structured_markdown = self._render_business_contract_markdown(parsed)
+            return structured_markdown or fallback_text
+        except Exception as exc:
+            logger.warning("Falha ao gerar narrativa estruturada em JSON mode: %s", exc)
+            return fallback_text
 
     def _extract_numeric_hint(self, query: str, patterns: List[str]) -> Optional[float]:
         import re
@@ -891,6 +1096,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
     def _detect_calculation_mode(self, query: str) -> str:
         q = (query or "").lower()
+        if "desconto" in q and "margem" in q:
+            return "discount_margin"
         if any(token in q for token in ["eoq", "lote econômico", "lote economico", "quanto comprar"]):
             return "eoq"
         if "markup" in q or "mark-up" in q:
@@ -1580,7 +1787,29 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         product_label = assumptions.get("produto_nome") or assumptions.get("produto_id") or "item analisado"
         support_table: List[Dict[str, Any]] = []
 
-        if calculation_type == "margin":
+        if calculation_type == "discount_margin":
+            current_margin_pct = calc_result.get("current_margin_pct")
+            discount_pct = calc_result.get("discount_pct")
+            new_margin_pct = calc_result.get("new_margin_pct")
+            delta_margin_pct = calc_result.get("delta_margin_pct")
+            support_table = [
+                {"Indicador": "Margem atual (%)", "Valor": f"{_fmt_num(current_margin_pct, 1)}%"},
+                {"Indicador": "Desconto aplicado (%)", "Valor": f"{_fmt_num(discount_pct, 1)}%"},
+                {"Indicador": "Nova margem estimada (%)", "Valor": f"{_fmt_num(new_margin_pct, 1)}%"},
+                {"Indicador": "Variação da margem (p.p.)", "Valor": _fmt_num(delta_margin_pct, 1)},
+            ]
+            msg = (
+                "## Resumo executivo\n"
+                f"- Aplicando { _fmt_num(discount_pct, 1) }% de desconto sobre um item com margem atual de { _fmt_num(current_margin_pct, 1) }%, a margem estimada cai para { _fmt_num(new_margin_pct, 1) }%.\n"
+                f"- A perda aproximada é de { _fmt_num(abs(delta_margin_pct), 1) } pontos percentuais.\n\n"
+                "## Tabela operacional\n"
+                + "| Indicador | Valor |\n|---|---|\n"
+                + "\n".join(f"| {row['Indicador']} | {row['Valor']} |" for row in support_table)
+                + "\n\n## Próximas ações\n"
+                + "- Valide se a nova margem continua acima da meta mínima da categoria.\n"
+                "- Se quiser, eu posso calcular o volume adicional necessário para compensar esse desconto."
+            )
+        elif calculation_type == "margin":
             margin_pct = calc_result.get("margin_pct")
             markup_pct = calc_result.get("markup_pct")
             margin_value = calc_result.get("margin_value")
@@ -1692,7 +1921,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         snapshot = self._resolve_product_snapshot_for_calculation(user_query, params)
         calculation_mode = self._detect_calculation_mode(user_query)
 
-        if calculation_mode in {"margin", "markup", "stock_coverage", "inventory_turnover"}:
+        if calculation_mode in {"margin", "markup", "stock_coverage", "inventory_turnover", "discount_margin"}:
             price = self._extract_numeric_hint(
                 user_query,
                 [
@@ -1769,6 +1998,47 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 }
                 return self._format_operational_calculation_result(user_query, calculation_mode, calc_result, assumptions)
 
+            if calculation_mode == "discount_margin":
+                discount_pct = self._extract_numeric_hint(
+                    user_query,
+                    [
+                        r"(\d+(?:[.,]\d+)?)\s*%\s+de\s+desconto",
+                        r"desconto\s+de\s+(\d+(?:[.,]\d+)?)\s*%",
+                    ],
+                )
+                current_margin_pct = self._extract_numeric_hint(
+                    user_query,
+                    [
+                        r"margem\s+atual\s+de\s+(\d+(?:[.,]\d+)?)\s*%",
+                        r"margem\s+de\s+(\d+(?:[.,]\d+)?)\s*%",
+                    ],
+                )
+                if current_margin_pct is None:
+                    current_margin_pct = self._extract_percent_hint(user_query)
+                if discount_pct is None or current_margin_pct is None:
+                    return None
+
+                discount_ratio = float(discount_pct) / 100.0
+                current_margin_ratio = float(current_margin_pct) / 100.0
+                cost_ratio = 1.0 - current_margin_ratio
+                new_price_ratio = 1.0 - discount_ratio
+                if new_price_ratio <= 0:
+                    return None
+                new_margin_ratio = (new_price_ratio - cost_ratio) / new_price_ratio
+                calc_result = {
+                    "discount_pct": round(float(discount_pct), 2),
+                    "current_margin_pct": round(float(current_margin_pct), 2),
+                    "new_margin_pct": round(new_margin_ratio * 100.0, 2),
+                    "delta_margin_pct": round((new_margin_ratio * 100.0) - float(current_margin_pct), 2),
+                }
+                assumptions = {
+                    "calculation_type": calculation_mode,
+                    "price_reference": 100.0,
+                    "cost_reference": round(cost_ratio * 100.0, 2),
+                    "from_database": False,
+                }
+                return self._format_operational_calculation_result(user_query, calculation_mode, calc_result, assumptions)
+
             if stock_units is None or stock_units < 0 or sales_30d is None or sales_30d <= 0:
                 return None
 
@@ -1831,7 +2101,45 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         holding_cost_pct = holding_cost_pct if holding_cost_pct and holding_cost_pct > 0 else 0.25
 
         if demand_annual is None or demand_annual <= 0 or unit_cost is None or unit_cost <= 0:
-            return None
+            return {
+                "type": "text",
+                "result": {
+                    "mensagem": (
+                        "## Resumo executivo\n"
+                        "- Não é possível fechar um EOQ confiável sem os insumos mínimos.\n"
+                        "- Para calcular o lote econômico eu preciso da demanda anual e do custo unitário do item; o custo por pedido e o custo de armazenagem podem ser assumidos ou informados.\n\n"
+                        "## Tabela operacional\n"
+                        "| Insumo | Situação |\n|---|---|\n"
+                        "| Demanda anual | obrigatório |\n"
+                        "| Custo unitário | obrigatório |\n"
+                        "| Custo por pedido | opcional, usa padrão se não vier |\n"
+                        "| Custo de armazenagem | opcional, usa padrão se não vier |\n\n"
+                        "## Próximas ações\n"
+                        "- Informe produto/SKU ou os parâmetros numéricos para eu calcular o EOQ agora.\n"
+                        "- Se preferir, eu também posso montar um exemplo de EOQ com premissas explícitas."
+                    )
+                },
+                "source": "sandbox.code_gen_agent",
+                "mode": "deterministic_sandbox",
+                "confidence": 0.74,
+                "citations": [],
+                "table_data": [
+                    {"Insumo": "Demanda anual", "Situação": "obrigatório"},
+                    {"Insumo": "Custo unitário", "Situação": "obrigatório"},
+                    {"Insumo": "Custo por pedido", "Situação": "opcional"},
+                    {"Insumo": "Custo de armazenagem", "Situação": "opcional"},
+                ],
+                "calculation": {
+                    "type": "eoq",
+                    "assumptions": {
+                        "demand_annual": demand_annual,
+                        "unit_cost": unit_cost,
+                        "order_cost": order_cost,
+                        "holding_cost_pct": holding_cost_pct,
+                    },
+                    "result": {},
+                },
+            }
 
         calc_result = self.code_gen_agent.calculate_eoq_internal(
             demand_annual=float(demand_annual),
@@ -3778,15 +4086,11 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             return
 
         if self._is_market_research_query(user_query):
-            # Pesquisa de mercado genérica: prioriza ferramenta multi-concorrente.
-            tool_selection.tool_name = "pesquisar_precos_concorrentes"
+            # Pesquisa de mercado genérica: prioriza ferramenta aberta multi-provider.
+            tool_selection.tool_name = "pesquisar_mercado_web"
             tool_selection.tool_params = {
-                "descricao_produto": user_query,
-                "segmento": segment or "",
-                "estado": state,
-                "cidade": "",
+                "termo_pesquisa": self._extract_market_product_hint(user_query) or user_query,
                 "limite": "15",
-                "concorrentes": self._extract_competitors_from_query(user_query),
             }
             tool_selection.confidence = max(float(tool_selection.confidence or 0), 0.92)
             return
@@ -5501,7 +5805,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
             )
             
             # Adicionar como mensagem 'user' ou 'system' dependendo do suporte do adapter
-            # Para Gemini, adicionamos como uma nota prévia à query do usuário ou uma mensagem user separada
+            # Mantemos a dica de roteamento perto da mensagem do usuário para adapters OpenAI-like.
             messages.insert(-1, {"role": "user", "content": system_hint_msg})
 
         # ========================================================================
@@ -5528,13 +5832,13 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         
         # ========================================================================
-        # MODERN REACT FLOW (Context7 - Gemini 2.5 Pro)
+        # Agentic tool loop with Groq + local tool orchestration.
         # ========================================================================
         # We trust the model's internal reasoning (ReAct) to decide between tools and text.
         # No more keyword-based forcing or prefilling.
         
         # Determine tools to use (all tools available by default)
-        tools_to_use = self.gemini_tools
+        tools_to_use = self.tool_declarations
         
         max_turns = 15
         current_turn = 0
@@ -5546,7 +5850,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 await self._emit_progress(on_progress, "Pensando", "start")
 
                 # Call LLM with tools (Blocking call wrapped in thread)
-                # self.llm is GeminiLLMAdapter which is synchronous
+                # Adapter call is synchronous and runs in a worker thread.
                 response = await asyncio.to_thread(
                     self._llm_get_completion,
                     messages,
@@ -5556,7 +5860,6 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
                 if "error" in response:
                     logger.error(f"LLM Error: {response['error']}")
-                    print(f"\n{'='*80}\n[CRITICAL DEBUG] LLM RETORNOU ERRO: {response['error']}\n{'='*80}\n", flush=True)
                     return self._generate_error_response(response['error'])
 
                 # [OK] FIX: LOGGING (mesmo do run())
@@ -5744,8 +6047,13 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
                 # PRIORIDADE DE RETORNO: Gráfico tem maior prioridade
                 if found_chart_data is not None:
-                    # CONTEXT7: Limpar JSON bruto e aplicar narrativa
-                    content = self._clean_context7_violations(content, context_type="chart")
+                    content = self._generate_structured_visual_narrative(
+                        user_query=resolved_query,
+                        task_type=llm_task_type or "visualization",
+                        fallback_text=self._clean_context7_violations(content, context_type="chart"),
+                        chart_data=found_chart_data,
+                        chart_summary=found_chart_summary,
+                    )
 
                     return {
                         "type": "code_result",
@@ -5759,12 +6067,17 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 
                 # PRIORIDADE 2: Dados Tabulares (Se encontrou resultados mas não é gráfico)
                 elif found_resultados is not None:
-                    # CONTEXT7: Limpar JSON bruto e aplicar narrativa
-                    content = self._clean_context7_violations(content, context_type="data")
+                    content = self._generate_structured_visual_narrative(
+                        user_query=resolved_query,
+                        task_type=llm_task_type or "analysis",
+                        fallback_text=self._clean_context7_violations(content, context_type="data"),
+                        table_rows=found_resultados,
+                    )
                     
                     return {
                         "type": "code_result",
                         "result": found_resultados, # Lista de dicts para o frontend renderizar Tabela
+                        "table_data": found_resultados,
                         "text_override": content
                     }
 
@@ -6071,10 +6384,8 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                         "Fallback para fluxo LLM."
                     )
 
-        # [OK] CRITICAL FIX: NÃO incluir system como mensagem
-        # System instruction já está configurada no GeminiLLMAdapter via system_instruction parameter
-        # Gemini NÃO aceita role="system" no array de mensagens - deve usar system_instruction no modelo
-        # Ref: https://ai.google.dev/gemini-api/docs/system-instructions
+        # The adapter injects the effective system instruction.
+        # Avoid duplicating system-role messages here to keep provider behavior consistent.
         messages = []
 
         # OPTIMIZATION: Context pruning for cost control in dev-fast mode.
@@ -6141,7 +6452,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
         # ========================================================================
         
         # Determine tools to use
-        tools_to_use = self.gemini_tools
+        tools_to_use = self.tool_declarations
 
         max_turns = 15
         current_turn = 0
@@ -6149,8 +6460,7 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
         while current_turn < max_turns:
             try:
-                # Call LLM with tools
-                # Note: self.llm is GeminiLLMAdapter
+                # Call LLM with tools using the active adapter contract.
                 response = self._llm_get_completion(messages, tools_to_use, llm_task_type)
 
                 if "error" in response:
@@ -6338,8 +6648,13 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
 
                 # PRIORIDADE DE RETORNO: Gráfico tem maior prioridade
                 if found_chart_data is not None:
-                    # CONTEXT7: Limpar JSON bruto e aplicar narrativa
-                    content = self._clean_context7_violations(content, context_type="chart")
+                    content = self._generate_structured_visual_narrative(
+                        user_query=resolved_query,
+                        task_type=llm_task_type or "visualization",
+                        fallback_text=self._clean_context7_violations(content, context_type="chart"),
+                        chart_data=found_chart_data,
+                        chart_summary=found_chart_summary,
+                    )
 
                     return {
                         "type": "code_result",
@@ -6353,12 +6668,17 @@ Use estas colunas preferencialmente para análises. Elas cobrem os principais ca
                 
                 # PRIORIDADE 2: Dados Tabulares (Se encontrou resultados mas não é gráfico)
                 elif found_resultados is not None:
-                    # CONTEXT7: Limpar JSON bruto e aplicar narrativa
-                    content = self._clean_context7_violations(content, context_type="data")
+                    content = self._generate_structured_visual_narrative(
+                        user_query=resolved_query,
+                        task_type=llm_task_type or "analysis",
+                        fallback_text=self._clean_context7_violations(content, context_type="data"),
+                        table_rows=found_resultados,
+                    )
                     
                     return {
                         "type": "code_result",
                         "result": found_resultados, # Lista de dicts para o frontend renderizar Tabela
+                        "table_data": found_resultados,
                         "text_override": content
                     }
 

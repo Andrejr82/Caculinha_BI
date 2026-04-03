@@ -21,6 +21,15 @@ class _LoggerPrefixFilter(logging.Filter):
         return record.name.startswith(self.prefix)
 
 
+class _ExcludeLoggerPrefixFilter(logging.Filter):
+    def __init__(self, prefix: str):
+        super().__init__()
+        self.prefix = prefix
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.name.startswith(self.prefix)
+
+
 def inject_context(logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Injeta IDs do RequestContext nos logs."""
     ctx = get_context()
@@ -101,6 +110,7 @@ def configure_logging(log_level: str = "INFO") -> None:
             encoding="utf-8",
         )
         backend_file_handler.setFormatter(formatter)
+        backend_file_handler.addFilter(_ExcludeLoggerPrefixFilter("agentbi.frontend"))
         handlers.append(backend_file_handler)
 
         frontend_file_handler = RotatingFileHandler(
@@ -122,7 +132,17 @@ def configure_logging(log_level: str = "INFO") -> None:
         force=True,
     )
 
-    for noisy_logger in ("httpx", "httpcore", "urllib3", "asyncio"):
+    for noisy_logger in (
+        "httpx",
+        "httpcore",
+        "urllib3",
+        "asyncio",
+        "pytds",
+        "faiss",
+        "sentence_transformers",
+        "huggingface_hub",
+        "transformers",
+    ):
         logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
     for uvicorn_logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):

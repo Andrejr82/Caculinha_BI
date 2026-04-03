@@ -57,9 +57,6 @@ INTENT_PATTERNS = {
         (r"top\s+\d+", 0.90),
         (r"maiores\s+\w+", 0.85),
         (r"menores\s+\w+", 0.85),
-        (r"compare?", 0.88),
-        (r"compara[çc][aã]o\s+(de|entre)", 0.88),
-        
         # Padrões de visualização
         (r"visuali[zs]e?", 0.87),
         (r"visualiza[çc][aã]o", 0.87),
@@ -98,6 +95,10 @@ INTENT_PATTERNS = {
         (r"simul(e|ar)\s+(uma\s+)?promo", 0.93),
         (r"simul(e|ar)\s+(um\s+)?desconto", 0.93),
         (r"desconto\s+na\s+cesta", 0.93),
+        (r"desconto\s+de\s+\d+(?:[.,]\d+)?\s*%", 0.92),
+        (r"margem\s+atual\s+de\s+\d+(?:[.,]\d+)?\s*%", 0.94),
+        (r"margem\s+estimad[ao]", 0.90),
+        (r"se\s+eu\s+der\s+\d+(?:[.,]\d+)?\s*%\s+de\s+desconto", 0.95),
         (r"margem\s+de\s+contribui[çc][aã]o", 0.95),
         (r"m[eé]dia\s+comum", 0.95),
         (r"\bmc\s+de\s+estoque", 0.94),
@@ -141,6 +142,15 @@ INTENT_PATTERNS = {
     ],
     
     IntentType.ANALYSIS: [
+        (r"\bcompare?\b", 0.90),
+        (r"\bcomparativo\b", 0.90),
+        (r"compara[çc][aã]o\s+(de|entre)", 0.90),
+        (r"\bversus\b", 0.88),
+        (r"\bvs\.?\b", 0.88),
+        (r"\bcombo\b", 0.88),
+        (r"ticket\s+m[eé]dio", 0.88),
+        (r"volta\s+[àa]\s+s aulas", 0.90),
+
         # Continuação estratégica/comercial
         (r"plano\s+comercial", 0.92),
         (r"plano\s+de\s+a[çc][aã]o", 0.90),
@@ -182,6 +192,8 @@ INTENT_PATTERNS = {
         (r"market\s+basket", 0.95),
         (r"itens?\s+associados", 0.91),
         (r"cross[-\s]?sell", 0.91),
+        (r"itens?\s+combinam\s+com", 0.92),
+        (r"sugira?\s+(?:itens|combos?)", 0.90),
         (r"problema", 0.78),
         (r"conselho", 0.80),
         (r"opini[aã]o", 0.78),

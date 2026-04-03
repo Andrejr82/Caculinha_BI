@@ -6,7 +6,8 @@ from pathlib import Path
 
 def test_pytest_does_not_collect_scripts():
     """
-    Garante que o pytest NÃO coleta scripts de 'backend/scripts' 
+    Garante que o pytest NÃO coleta scripts de 'backend/scripts' ou
+    'backend/scripts/maintenance'
     que não são testes unitários reais, mas têm prefixo test_.
     """
     # Executa pytest --collect-only na raiz e verifica a saída
@@ -24,10 +25,11 @@ def test_pytest_does_not_collect_scripts():
     # 1. Deve rodar com sucesso
     assert result.returncode == 0
     
-    # 2. NÃO deve coletar scripts da pasta backend/scripts
-    # Ex: backend/scripts/test_product_analysis_fix.py
+    # 2. NÃO deve coletar scripts utilitários com prefixo test_
     assert "backend/scripts/test_product_analysis_fix.py" not in result.stdout
     assert "backend/scripts/test_integration.py" not in result.stdout
+    assert "backend/scripts/maintenance/test_product_analysis_fix.py" not in result.stdout
+    assert "backend/scripts/maintenance/test_integration.py" not in result.stdout
     
     # 3. DEVE coletar testes oficiais
     assert "backend/tests" in result.stdout or "tests" in result.stdout
@@ -37,7 +39,7 @@ def test_no_sys_exit_on_import():
     Verifica se importar os scripts não causa sys.exit() acidental.
     Isso é crucial para ferramentas de análise estática e IDEs.
     """
-    scripts_dir = Path(__file__).parent.parent.parent / "backend/scripts"
+    scripts_dir = Path(__file__).parent.parent.parent / "backend/scripts/maintenance"
     
     suspect_scripts = [
         "test_product_analysis_fix.py",
@@ -52,7 +54,7 @@ def test_no_sys_exit_on_import():
         # Tenta importar em um subprocesso para isolar side-effects
         # Se o script tiver código solto fora de if __name__ == "__main__",
         # ele pode executar e falhar ou sair.
-        cmd = [sys.executable, "-c", f"import sys; sys.path.append('backend/scripts'); import {script.replace('.py', '')}"]
+        cmd = [sys.executable, "-c", f"import sys; sys.path.append('backend/scripts/maintenance'); import {script.replace('.py', '')}"]
         
         result = subprocess.run(
             cmd,

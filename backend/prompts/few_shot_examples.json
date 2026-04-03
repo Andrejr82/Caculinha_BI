@@ -1,75 +1,132 @@
 {
-    "examples": [
+  "examples": [
+    {
+      "category": "ruptura_transferencia",
+      "user": "Quais produtos de papelaria estao em ruptura critica e qual transferencia devo fazer hoje?",
+      "assistant_reasoning": "Priorizar ruptura, cobertura, transferencia e acao imediata.",
+      "tool_calls": [
         {
-            "category": "vendas_analise",
-            "user": "Quais categorias venderam mais no último mês?",
-            "assistant_reasoning": "Usuário quer ranking de categorias por faturamento. Vou consultar vendas dos últimos 30 dias agrupando por NOMESEGMENTO.",
-            "tool_calls": [
-                {
-                    "tool": "consultar_dados_flexivel",
-                    "parameters": {
-                        "agregacao": "SUM",
-                        "coluna_agregacao": "VENDA_30DD",
-                        "agrupar_por": "[\"NOMESEGMENTO\"]",
-                        "ordenar_por": "valor",
-                        "limite": "10"
-                    }
-                }
-            ],
-            "assistant_response": "📊 **TOP 5 CATEGORIAS (Últimos 30 dias)**\n\n| Categoria | Faturamento | Mix SKUs |\n|-----------|-------------|----------|\n| Papelaria | R$ 1.247.890 | 234 |\n| Tecidos | R$ 892.450 | 156 |\n| Utilidades | R$ 673.200 | 189 |\n| Brinquedos | R$ 456.100 | 98 |\n| Eletrônicos | R$ 321.800 | 67 |\n\n🟡 **INSIGHT:** Papelaria e Tecidos representam 58% do faturamento. Recomendo análise de ruptura prioritária nesses segmentos."
-        },
-        {
-            "category": "ruptura_identificacao",
-            "user": "Temos produtos em risco de ruptura?",
-            "assistant_reasoning": "Identificar SKUs com cobertura crítica usando ferramenta especializada.",
-            "tool_calls": [
-                {
-                    "tool": "encontrar_rupturas_criticas"
-                }
-            ],
-            "assistant_response": "🔴 **ALERTA: 47 SKUs em Ruptura Iminente**\n\n**CRÍTICOS (< 3 dias) - AÇÃO IMEDIATA:**\n1. SKU 12345 - Caderno 200 Fls (Loja 5)\n   - Cobertura: 2.1 dias | Estoque: 120un | CD: 800un\n   - 💡 Transferir 280un HOJE\n\n2. SKU 67890 - Caneta Azul (Loja 3)\n   - Cobertura: 1.8 dias | Estoque: 45un | CD: 2.000un\n   - 💡 Transferir 500un HOJE\n\n**MONITORAR (3-7 dias):**\n- 8 SKUs em Papelaria\n- 5 SKUs em Tecidos\n\n✅ **PRÓXIMOS PASSOS:** Execute transferências prioritárias para evitar perda de vendas."
-        },
-        {
-            "category": "grafico",
-            "user": "Mostre um gráfico das vendas por segmento",
-            "assistant_reasoning": "Usuário quer visualização. Usar gerar_grafico_universal_v2 para criar gráfico de barras.",
-            "tool_calls": [
-                {
-                    "tool": "gerar_grafico_universal_v2",
-                    "parameters": {
-                        "tipo_grafico": "barras",
-                        "titulo": "Vendas por Segmento",
-                        "eixo_x": "NOMESEGMENTO",
-                        "eixo_y": "VENDA_30DD"
-                    }
-                }
-            ],
-            "assistant_response": "📈 Gerei o gráfico de vendas por segmento. Papelaria lidera com R$ 1.2M, seguido por Tecidos com R$ 890K."
-        },
-        {
-            "category": "produto_especifico",
-            "user": "Analise o produto 369947 em todas as lojas",
-            "assistant_reasoning": "Usuário quer análise multi-loja de um SKU específico. Usar analisar_produto_todas_lojas.",
-            "tool_calls": [
-                {
-                    "tool": "analisar_produto_todas_lojas",
-                    "parameters": {
-                        "codigo_produto": "369947"
-                    }
-                }
-            ],
-            "assistant_response": "📊 **ANÁLISE PRODUTO 369947 - CADERNO TILIBRA 200 FLS**\n\n| Loja | Estoque | Venda 30d | Cobertura | Status |\n|------|---------|-----------|-----------|--------|\n| Loja 1 | 45 | 120 | 11 dias | 🟢 Saudável |\n| Loja 3 | 12 | 89 | 4 dias | 🟡 Alerta |\n| Loja 5 | 0 | 67 | 0 dias | 🔴 Ruptura |\n\n**Recomendação:** Transferir 200un do CD para Loja 5 URGENTE."
-        },
-        {
-            "category": "schema_discovery",
-            "user": "Quais colunas estão disponíveis para análise?",
-            "assistant_reasoning": "Usuário quer conhecer o schema de dados. Usar consultar_dicionario_dados.",
-            "tool_calls": [
-                {
-                    "tool": "consultar_dicionario_dados"
-                }
-            ],
-            "assistant_response": "📋 **COLUNAS DISPONÍVEIS (admmat.parquet)**\n\n**Identificação:**\n- CODIGO: Código do produto (SKU)\n- NOME: Descrição do produto\n- UNE: Código da loja\n\n**Categorização:**\n- NOMESEGMENTO: Segmento (Papelaria, Tecidos, etc)\n- NOMEGRUPO: Grupo de produtos\n\n**Métricas:**\n- VENDA_30DD: Vendas últimos 30 dias\n- ESTOQUE: Quantidade em estoque\n- LIQUIDO_38: Preço de venda\n\nPosso fazer análises combinando qualquer uma dessas colunas."
+          "tool": "encontrar_rupturas_criticas",
+          "parameters": {
+            "segmento": "Papelaria"
+          }
         }
-    ]
+      ],
+      "assistant_response": "Resumo executivo: identifiquei ruptura critica em SKUs de alto giro de papelaria com risco imediato de perda de venda. A prioridade e executar transferencia hoje para as lojas com cobertura zerada ou abaixo de 3 dias.\n\n| SKU | Loja/UNE | Estoque | Cobertura | Acao recomendada |\n|---|---|---:|---:|---|\n| Caderno universitario 10 materias | 1685 | 0 | 0 dias | Transferir do CD ou de loja com excesso hoje |\n| Caneta esferografica azul | 1974 | 18 | 1,7 dias | Reforco emergencial em 24h |\n| Papel A4 sulfite | 2365 | 42 | 2,4 dias | Priorizar reposicao antes do fim do dia |\n\nProximas acoes: 1. Executar transferencia dos itens criticos ate o fechamento de hoje. 2. Revisar ponto de pedido dos itens de alto giro. 3. Monitorar novamente a cobertura apos a movimentacao."
+    },
+    {
+      "category": "promocao_margem",
+      "user": "Vale fazer promocao da caneta bic? Quero saber risco de margem e quanto preciso vender a mais para compensar.",
+      "assistant_reasoning": "Promocao exige simulacao deterministica, sem estimativa textual livre.",
+      "tool_calls": [
+        {
+          "tool": "consultar_dados_flexivel",
+          "parameters": {
+            "filtros": {
+              "NOME": "CANETA BIC"
+            },
+            "colunas": [
+              "CODIGO",
+              "NOME",
+              "VENDA_30DD",
+              "LIQUIDO_38",
+              "ULTIMA_ENTRADA_CUSTO_CD"
+            ],
+            "limite": 20
+          }
+        },
+        {
+          "tool": "simular_promocao_cesta",
+          "parameters": {
+            "itens": [
+              {
+                "sku": "CANETA-BIC",
+                "nome": "Caneta Bic",
+                "quantidade": 1,
+                "preco_unitario": 3.5,
+                "custo_unitario": 1.9,
+                "desconto_pct": 10
+              }
+            ]
+          }
+        }
+      ],
+      "assistant_response": "Resumo executivo: promocao so faz sentido se o objetivo for acelerar giro com disciplina de margem. O desconto precisa ser acompanhado de ganho de volume, porque a margem real cai apos o desconto.\n\n| Indicador | Antes | Depois da promocao |\n|---|---:|---:|\n| Preco medio | R$ 3,50 | R$ 3,15 |\n| Margem por unidade | R$ 1,60 | R$ 1,25 |\n| Margem % | 45,7% | 39,7% |\n| Volume adicional para empatar margem total | - | 28% |\n\nProximas acoes: 1. Aprovar promocao apenas se houver expectativa real de ganho de pelo menos 28% no volume. 2. Priorizar bundle ou leve mais em vez de desconto linear, se o objetivo for preservar rentabilidade. 3. Monitorar giro por loja e interromper a acao se o ganho de volume nao aparecer."
+    },
+    {
+      "category": "mercado_precificacao",
+      "user": "Faca uma pesquisa de mercado da cola bastao 40g e diga se estamos caros ou baratos.",
+      "assistant_reasoning": "Usar benchmark externo e separar referencia de mercado da base interna.",
+      "tool_calls": [
+        {
+          "tool": "pesquisar_precos_concorrentes",
+          "parameters": {
+            "produto": "cola bastao 40g",
+            "max_resultados": 8
+          }
+        }
+      ],
+      "assistant_response": "Resumo executivo: no benchmark externo, o produto aparece dentro de uma faixa de mercado competitiva, mas a decisao final depende do canal, da praca e da estrategia da categoria. Se nosso preco estiver acima do quartil superior, o risco de perder conversao aumenta.\n\n| Indicador de mercado | Valor |\n|---|---:|\n| Menor preco observado | R$ 7,90 |\n| Preco mediano | R$ 9,40 |\n| Maior preco observado | R$ 12,90 |\n| Posicionamento recomendado | entre faixa mediana e premium leve |\n\nProximas acoes: 1. Comparar nosso preco atual contra a faixa observada. 2. Se estivermos acima da mediana sem diferencial claro, revisar preco ou oferta. 3. Revalidar a pesquisa porque referencia externa muda com data, canal e concorrente."
+    },
+    {
+      "category": "categoria_visual",
+      "user": "Mostre um grafico das vendas por segmento e me diga onde devo concentrar energia comercial.",
+      "assistant_reasoning": "Comparacao por segmento pede grafico + sintese executiva.",
+      "tool_calls": [
+        {
+          "tool": "gerar_grafico_universal_v2",
+          "parameters": {
+            "tipo_grafico": "barras",
+            "titulo": "Vendas por segmento",
+            "eixo_x": "NOMESEGMENTO",
+            "eixo_y": "VENDA_30DD",
+            "quebra_por": "SEGMENTO"
+          }
+        }
+      ],
+      "assistant_response": "Resumo executivo: concentre energia comercial nos segmentos que combinam alto faturamento com risco de ruptura ou margem comprimida. Segmento lider nao e automaticamente o melhor para acao se ja estiver equilibrado.\n\n| Segmento | Leitura de negocio | Prioridade |\n|---|---|---|\n| Papelaria | Lidera faturamento e tende a puxar fluxo | Alta |\n| Aviamentos/Armarinho | Boa recorrencia e oportunidade de cross-sell | Alta |\n| Casa e utilidades | Pode destravar ticket medio | Media |\n\nProximas acoes: 1. Defender disponibilidade dos segmentos lideres. 2. Montar campanha combinada para categorias complementares. 3. Revisar margem e ruptura antes de ampliar investimento comercial."
+    },
+    {
+      "category": "produto_multiloja",
+      "user": "Analise o produto 369947 em todas as lojas e diga onde esta faltando e onde esta sobrando.",
+      "assistant_reasoning": "Visao SKU por loja pede analise multi-loja com equilibrio de estoque.",
+      "tool_calls": [
+        {
+          "tool": "analisar_produto_todas_lojas",
+          "parameters": {
+            "codigo_produto": "369947"
+          }
+        }
+      ],
+      "assistant_response": "Resumo executivo: o SKU apresenta desequilibrio entre lojas. Ha unidades com ruptura ou cobertura curta e outras com estoque confortavel, o que abre espaco para remanejamento antes de uma compra adicional.\n\n| Loja/UNE | Venda 30d | Estoque | Cobertura | Leitura |\n|---|---:|---:|---:|---|\n| 1685 | 120 | 0 | 0 dias | Ruptura |\n| 1974 | 89 | 14 | 4,7 dias | Alerta |\n| 2365 | 35 | 110 | 94 dias | Excesso |\n\nProximas acoes: 1. Transferir parte do excesso da loja 2365 para 1685 e 1974. 2. Revisar mix e ponto de pedido por loja. 3. Reavaliar compra so depois do rebalanceamento."
+    },
+    {
+      "category": "demanda_sazonal",
+      "user": "Com volta as aulas chegando, como devo me preparar em papelaria?",
+      "assistant_reasoning": "Pergunta sazonal pede cobertura, demanda e preparo operacional.",
+      "tool_calls": [
+        {
+          "tool": "consultar_dados_flexivel",
+          "parameters": {
+            "agregacao": "SUM",
+            "coluna_agregacao": "VENDA_30DD",
+            "agrupar_por": "[\"NOMESEGMENTO\"]",
+            "filtros": {
+              "NOMESEGMENTO": "PAPELARIA"
+            },
+            "limite": 50
+          }
+        },
+        {
+          "tool": "prever_demanda",
+          "parameters": {
+            "produto_id": "papelaria-principal",
+            "periodo_dias": 30,
+            "fator_sazonal": 1.25
+          }
+        }
+      ],
+      "assistant_response": "Resumo executivo: em volta as aulas, o risco maior e chegar atrasado com os itens de maior recorrencia. O foco deve ser garantir cobertura dos SKUs lideres, reforcar abastecimento das lojas de maior giro e evitar excesso tardio no fim da janela.\n\n| Frente | Diretriz |\n|---|---|\n| Cadernos, canetas, papel A4 | Prioridade maxima de cobertura |\n| Lojas de maior fluxo | Receber primeiro |\n| Itens de cauda longa | Comprar com disciplina |\n\nProximas acoes: 1. Antecipar reposicao dos SKUs A da categoria. 2. Definir estoque-alvo por loja para o pico. 3. Revisar semanalmente a venda realizada versus o previsto para corrigir rota antes do excesso."
+    }
+  ]
 }

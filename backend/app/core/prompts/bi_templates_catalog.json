@@ -32,10 +32,21 @@
       "headers": ["Loja", "Categoria", "Demanda_prevista", "Estoque_atual", "Gap"],
       "rows": [
         ["1685", "Higiene", "340", "280", "60"],
-        ["1974", "Limpeza", "290", "310", "-20"],
-        ["2365", "Papelaria", "180", "130", "50"]
+        ["1974", "Limpeza", "290", "310", "-20"]
       ],
       "action": "Emitir plano de reposição para gaps positivos e revisar excessos para realocação."
+    },
+    {
+      "id": "sql.ruptura_por_loja_periodo",
+      "keywords": ["ruptura", "loja", "periodo", "categoria", "sql"],
+      "summary": "Analise de Ruptura por Loja, Categoria e Periodo - Determinação de Stock-out.",
+      "headers": ["Loja", "Categoria", "Descricao", "Ruptura_Confirmada", "Dias_Sem_Giro"],
+      "rows": [
+        ["1685", "Papelaria", "Caderno Tilibra", "Sim", "8"],
+        ["1974", "Escritorio", "Caneta Bic Azul", "Nao (Abaixo Minimo)", "3"],
+        ["2365", "Brinquedos", "Boneca Barbie", "Sim", "12"]
+      ],
+      "action": "Executar query SQL de Ruptura abaixo para detalhamento:\n\n```sql\n-- Query: Ruptura por Loja, Categoria e Periodo\nSELECT \n    cod_loja,\n    categoria,\n    SUM(CASE WHEN estoque_atual = 0 AND venda_media_diaria > 0 THEN 1 ELSE 0 END) as itens_em_ruptura,\n    COUNT(sku) as total_skus_ativos\nFROM admat.v_consolidado_diario\nWHERE periodo >= '2026-03-01'\nGROUP BY cod_loja, categoria\nHAVING itens_em_ruptura > 0;\n```"
     }
   ]
 }

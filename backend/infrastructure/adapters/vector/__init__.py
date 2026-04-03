@@ -1,16 +1,6 @@
-"""
-Vector Adapters — Inicialização
+"""Compatibility exports for canonical vector adapters."""
 
-Este módulo contém os adapters de busca vetorial.
-
-Uso:
-    from backend.infrastructure.adapters.vector import DuckDBVectorAdapter
-
-Autor: Arquiteto de Sistema
-Data: 2026-02-07
-"""
-
-from backend.infrastructure.adapters.vector.duckdb_vector_adapter import DuckDBVectorAdapter
+from backend.infrastructure.adapters.duckdb_vector_adapter import DuckDBVectorAdapter
 
 __all__ = [
     "DuckDBVectorAdapter",

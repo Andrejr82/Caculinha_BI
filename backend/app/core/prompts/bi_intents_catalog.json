@@ -16,9 +16,9 @@
     },
     {
       "id": "sql.ruptura_por_loja_periodo",
-      "description": "Retorna SQL para ruptura por loja e periodo",
-      "patterns": ["ruptura", "loja", "periodo"],
-      "default_confidence": 0.93
+      "description": "Retorna SQL para ruptura por loja, categoria e periodo",
+      "patterns": ["ruptura", "loja", "periodo", "categoria", "sql"],
+      "default_confidence": 0.95
     },
     {
       "id": "sql.sugestao_transferencia_lojas",

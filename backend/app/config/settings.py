@@ -84,14 +84,27 @@ class Settings(BaseSettings):
     CACHE_DIR: str = "data/cache_v2"
 
     # RAG (Retrieval Augmented Generation)
-    RAG_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    RAG_EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    RAG_EMBEDDING_CACHE_DIR: str = "data/runtime/embedding_models"
+    RAG_EMBEDDING_LOCAL_FILES_ONLY: bool = True
+    RAG_EMBEDDING_PRELOAD_ON_STARTUP: bool = False
     RAG_FAISS_INDEX_PATH: str = "data/rag/faiss_index.bin"
 
     # Learning System
     LEARNING_FEEDBACK_PATH: str = "data/feedback/"
     LEARNING_EXAMPLES_PATH: str = "data/learning/"
     LEARNING_MAX_EXAMPLES: int = 1000
-    PLAYGROUND_REMOTE_TIMEOUT_SECONDS: int = 18
+    # --- Playground LLM Optimization ---
+    # Timeout aumentado para suportar modelos grandes (Llama-3.3-70B via Groq: tipicamente 5-45s)
+    PLAYGROUND_REMOTE_TIMEOUT_SECONDS: int = 90
+    # Temperatura adaptativa: SQL=0.15 (preciso), operacional=0.35, criativo=0.65
+    PLAYGROUND_DEFAULT_TEMPERATURE: float = 0.35
+    PLAYGROUND_SQL_TEMPERATURE: float = 0.15
+    # Limitar histórico para evitar context overflow e reduzir latência
+    PLAYGROUND_MAX_HISTORY_MESSAGES: int = 8
+    # Cache em memória (LRU) para respostas repetidas — sem dependência de Redis
+    PLAYGROUND_CACHE_TTL_SECONDS: int = 600   # 10 minutos
+    PLAYGROUND_CACHE_MAX_SIZE: int = 200      # até 200 entradas simultâneas
 
     # Security
     SECRET_KEY: str | None = Field(
@@ -122,14 +135,14 @@ class Settings(BaseSettings):
     # Prometheus
     METRICS_ENABLED: bool = True
 
-    # AI / LLM - Multi-provider Support
-    # FIX 2026-01-09: Groq é o LLM principal (mais rápido, sem rate limit frequente)
-    # Nota: aceitamos "grq" como alias legível em env legada.
+    # AI / LLM - Runtime oficial
+    # Groq + Llama é o provider oficial do produto.
+    # "google"/"gemini" permanecem apenas como aliases legados normalizados para Groq.
     LLM_PROVIDER: Literal["google", "groq", "grq", "mock"] = "groq"
-    # Ordem opcional de fallback (csv), ex: "groq,google"
+    # Ordem opcional de fallback (csv), ex: "groq,mock"
     LLM_FALLBACK_PROVIDERS: str = "groq"
     # Roteamento opcional por tarefa.
-    # Formato: "calculation=groq,google;market_research=google,groq;dashboard=groq,google"
+    # Formato: "calculation=groq;analysis=groq,mock"
     LLM_TASK_PROVIDER_ROUTING: str = ""
     PLAYGROUND_MODE: Literal["local_only", "hybrid_optional", "remote_required"] = "local_only"
     PLAYGROUND_CANARY_ENABLED: bool = False
@@ -155,9 +168,9 @@ class Settings(BaseSettings):
     CHAT_CAPABILITY_COMPUTER_USE_ALLOWED_USERS: str = ""
     CHAT_AUTOMATION_ARTIFACTS_PATH: str = "data/chat_automation_artifacts"
     
-    # Google Gemini (fallback opcional)
+    # Compatibilidade legada / integrações opcionais fora do runtime principal
     GEMINI_API_KEY: str | None = None
-    LLM_MODEL_NAME: str = "gemini-2.5-pro"
+    LLM_MODEL_NAME: str = "llama-3.3-70b-versatile"
     IMAGE_ANALYSIS_MODEL_NAME: str = "gemini-2.0-flash"
 
     # Context7 (framework externo / integração opcional)
@@ -182,6 +195,7 @@ class Settings(BaseSettings):
     # Data Sources
     PARQUET_DATA_PATH: str = Field(default="data/parquet/admmat.parquet")
     PARQUET_FILE_PATH: str = Field(default="data/parquet/admmat.parquet")  # Alias for compatibility
+    BASKET_TRANSACTIONS_CSV_PATH: str = Field(default="../csv_basket_realista_baseado_no_parquet_12000_linhas.csv")
     RUNTIME_STORAGE_ROOT: str = "data/runtime"
     CHAT_STATE_BACKEND: Literal["sqlite", "sqlserver"] = "sqlite"
     CHAT_STATE_SQLITE_FALLBACK_ENABLED: bool = True
@@ -229,6 +243,21 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY must be at least 32 characters")
         return self
 
+    @field_validator(
+        "RAG_EMBEDDING_LOCAL_FILES_ONLY",
+        "RAG_EMBEDDING_PRELOAD_ON_STARTUP",
+        mode="before",
+    )
+    @classmethod
+    def normalize_bool_flags(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "off"}:
+                return False
+        return value
+
     @model_validator(mode="after")
     def resolve_paths(self) -> "Settings":
         """Resolve relative paths to absolute paths based on _base_dir"""
@@ -236,10 +265,12 @@ class Settings(BaseSettings):
         # This prevents issues when starting the app from different CWDs (e.g. root vs backend)
         path_fields = [
             "PARQUET_DATA_PATH", "PARQUET_FILE_PATH", "CACHE_DIR",
-            "RAG_FAISS_INDEX_PATH", "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH",
+            "RAG_FAISS_INDEX_PATH", "RAG_EMBEDDING_CACHE_DIR",
+            "LEARNING_FEEDBACK_PATH", "LEARNING_EXAMPLES_PATH",
             "COMPETITIVE_MANUAL_FILE", "CHAT_AUTOMATION_ARTIFACTS_PATH",
             "RUNTIME_STORAGE_ROOT", "CHAT_STATE_DB_PATH", "VECTOR_DB_PATH",
             "SESSION_LEGACY_STORAGE_PATH", "ATTACHMENTS_STORAGE_PATH",
+            "BASKET_TRANSACTIONS_CSV_PATH",
         ]
         
         for field in path_fields:

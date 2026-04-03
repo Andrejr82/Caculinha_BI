@@ -1,7 +1,14 @@
 """
 ENDPOINT DE LOGIN ALTERNATIVO - USA PYODBC DIRETO (SÍNCRONO)
 Bypass do problema com aioodbc
+
+AVISO: Este endpoint usa conexão direta ao SQL Server local.
+Deve permanecer DESABILITADO fora de ambiente controlado (USE_SQL_SERVER=false).
+Credenciais de conexão são lidas exclusivamente via variáveis de ambiente:
+  - PYODBC_CONNECTION_STRING  (string completa, preferencial)
+  - ou combinar: DB_ALT_SERVER, DB_ALT_DATABASE, DB_ALT_USER, DB_ALT_PASSWORD
 """
+import os
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 import pyodbc
@@ -26,22 +33,37 @@ class Token(BaseModel):
     token_type: str
     user: UserData
 
+def _build_connection_string() -> str:
+    """Constrói a connection string do SQL Server via variáveis de ambiente."""
+    conn_str = os.environ.get("PYODBC_CONNECTION_STRING", "")
+    if conn_str:
+        return conn_str
+    server   = os.environ.get("DB_ALT_SERVER", "")
+    database = os.environ.get("DB_ALT_DATABASE", "agentbi")
+    user     = os.environ.get("DB_ALT_USER", "")
+    password = os.environ.get("DB_ALT_PASSWORD", "")
+    if not server or not user or not password:
+        raise ValueError(
+            "Credenciais SQL Server não configuradas. "
+            "Defina PYODBC_CONNECTION_STRING ou DB_ALT_SERVER/DB_ALT_USER/DB_ALT_PASSWORD no .env."
+        )
+    return (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={server};"
+        f"DATABASE={database};"
+        f"UID={user};"
+        f"PWD={password};"
+        "TrustServerCertificate=yes;"
+    )
+
 @router_alt.post("/login", response_model=Token)
 def login_alt(login_data: LoginRequest):
     """
-    Login alternativo usando pyodbc síncrono
+    Login alternativo usando pyodbc síncrono.
+    Requer USE_SQL_SERVER=true e credenciais configuradas em variáveis de ambiente.
     """
     try:
-        # Conectar diretamente com pyodbc
-        conn = pyodbc.connect(
-            "DRIVER={ODBC Driver 17 for SQL Server};"
-            "SERVER=FAMILIA\\SQLJR,1433;"
-            "DATABASE=agentbi;"
-            "UID=AgenteVirtual;"
-            "PWD=Cacula@2020;"
-            "TrustServerCertificate=yes;",
-            timeout=5
-        )
+        conn = pyodbc.connect(_build_connection_string(), timeout=5)
         cursor = conn.cursor()
         
         # Buscar usuário

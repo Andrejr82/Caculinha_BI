@@ -26,6 +26,7 @@ class ResponseScorer:
     MIN_RESPONSE_LENGTH = 50
     GOOD_RESPONSE_LENGTH = 200
     MAX_LATENCY_MS = 5000  # 5 seconds
+    BUSINESS_SEGMENTS = ("papelaria", "artes", "armarinho", "tecidos", "aviamentos", "bazar")
     
     def score(
         self,
@@ -51,18 +52,20 @@ class ResponseScorer:
         scores = {}
         reasons = []
         
+        prompt_markers = self._extract_prompt_markers(prompt)
+
         # 1. Helpfulness Score (0-100)
         helpfulness = self._score_helpfulness(response)
         scores["helpfulness"] = helpfulness["score"]
         reasons.extend(helpfulness["reasons"])
         
         # 2. Groundedness Score (0-100)
-        groundedness = self._score_groundedness(response, retrieved_docs)
+        groundedness = self._score_groundedness(response, retrieved_docs, prompt_markers)
         scores["groundedness"] = groundedness["score"]
         reasons.extend(groundedness["reasons"])
         
         # 3. Correctness Proxy (0-100)
-        correctness = self._score_correctness(response)
+        correctness = self._score_correctness(prompt, response, prompt_markers)
         scores["correctness"] = correctness["score"]
         reasons.extend(correctness["reasons"])
         
@@ -120,7 +123,8 @@ class ResponseScorer:
     def _score_groundedness(
         self,
         response: str,
-        retrieved_docs: Optional[List[str]] = None
+        retrieved_docs: Optional[List[str]] = None,
+        prompt_markers: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Score based on data grounding and specificity."""
         score = 60  # Base score
@@ -148,10 +152,22 @@ class ResponseScorer:
         if retrieved_docs and len(retrieved_docs) > 0:
             score += 15
             reasons.append(f"Baseada em {len(retrieved_docs)} documentos")
+
+        if prompt_markers:
+            preserved = self._count_preserved_markers(response, prompt_markers)
+            expected = self._count_expected_markers(prompt_markers)
+            if expected > 0 and preserved > 0:
+                score += min(15, preserved * 5)
+                reasons.append(f"Preserva {preserved}/{expected} filtros críticos da pergunta")
         
         return {"score": min(100, max(0, score)), "reasons": reasons}
     
-    def _score_correctness(self, response: str) -> Dict[str, Any]:
+    def _score_correctness(
+        self,
+        prompt: str,
+        response: str,
+        prompt_markers: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Score based on format validity and non-empty content."""
         score = 70  # Base score
         reasons = []
@@ -179,6 +195,28 @@ class ResponseScorer:
         if response.strip().startswith('{') or '```json' in response:
             score -= 10
             reasons.append("Contém JSON bruto")
+
+        prompt_lower = (prompt or "").lower()
+        response_lower = (response or "").lower()
+
+        if prompt_markers:
+            expected = self._count_expected_markers(prompt_markers)
+            preserved = self._count_preserved_markers(response, prompt_markers)
+            if expected > 0 and preserved == 0:
+                score -= 15
+                reasons.append("Não preserva filtros operacionais pedidos")
+            elif preserved > 0:
+                score += min(10, preserved * 3)
+
+        if "compare" in prompt_lower or "compar" in prompt_lower:
+            if not any(term in response_lower for term in ("versus", "compar", "diferen", "acima", "abaixo")):
+                score -= 10
+                reasons.append("Resposta não evidencia comparação solicitada")
+
+        if any(term in prompt_lower for term in ("grafico", "gráfico", "dashboard", "painel")):
+            if not any(term in response_lower for term in ("gráfico", "grafico", "tabela", "dashboard", "painel")):
+                score -= 5
+                reasons.append("Resposta não indica o formato visual solicitado")
         
         return {"score": min(100, max(0, score)), "reasons": reasons}
     
@@ -197,6 +235,53 @@ class ResponseScorer:
             return {"score": 50, "reasons": ["Resposta lenta"]}
         else:
             return {"score": 25, "reasons": ["Resposta muito lenta"]}
+
+    def _extract_prompt_markers(self, prompt: str) -> Dict[str, Any]:
+        prompt_lower = (prompt or "").lower()
+        markers: Dict[str, Any] = {}
+
+        une_matches = re.findall(r"\b(?:loja|une|unidade)\s+([a-z0-9_-]{1,12})\b", prompt_lower)
+        if une_matches:
+            markers["unes"] = [match.upper() if not match.isdigit() else match for match in une_matches]
+
+        product_match = re.search(r"\bproduto\s*(\d+)\b", prompt_lower)
+        if product_match:
+            markers["produto"] = product_match.group(1)
+
+        for segment in self.BUSINESS_SEGMENTS:
+            if segment in prompt_lower:
+                markers.setdefault("segmentos", []).append(segment)
+
+        period_tokens = []
+        for token in ("7d", "30d", "hoje", "ontem", "semana", "mensal", "mês", "mes"):
+            if token in prompt_lower:
+                period_tokens.append(token)
+        if period_tokens:
+            markers["periodos"] = period_tokens
+
+        return markers
+
+    def _count_expected_markers(self, markers: Dict[str, Any]) -> int:
+        total = 0
+        for value in markers.values():
+            if isinstance(value, list):
+                total += len(value)
+            elif value:
+                total += 1
+        return total
+
+    def _count_preserved_markers(self, response: str, markers: Dict[str, Any]) -> int:
+        response_lower = (response or "").lower()
+        preserved = 0
+        for key, value in markers.items():
+            values = value if isinstance(value, list) else [value]
+            for item in values:
+                candidate = str(item).lower()
+                if candidate and candidate in response_lower:
+                    preserved += 1
+                elif key == "unes" and candidate.isdigit() and f"loja {candidate}" in response_lower:
+                    preserved += 1
+        return preserved
 
 
 # Global singleton

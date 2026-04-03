@@ -10,6 +10,7 @@ import pytest
 from backend.app.core.utils.intent_classifier import classify_intent, IntentType
 from backend.app.core.utils.query_router import (
     route_query,
+    extract_une_filter,
     extract_chart_breakdown,
     extract_segment_filter,
     is_all_stores_scope,
@@ -31,8 +32,7 @@ class TestIntentClassifier:
             "gere um gráfico de ranking de vendas dos segmentos na une 520",
             "mostre um gráfico de vendas por categoria",
             "top 10 produtos mais vendidos",
-            "ranking de vendas",
-            "compare vendas entre lojas"
+            "ranking de vendas"
         ]
         
         for query in queries:
@@ -60,13 +60,19 @@ class TestIntentClassifier:
             "calcule o lote econômico do produto 369947",
             "quanto comprar de produto X?",
             "qual o EOQ?",
-            "margem de contribuição do produto 25"
+            "margem de contribuição do produto 25",
+            "Se eu der 10% de desconto em um produto com margem atual de 28%, como fica a margem estimada?",
         ]
         
         for query in queries:
             result = classify_intent(query)
             assert result.intent == IntentType.CALCULATION, f"Failed for: {query}"
             assert result.confidence > 0.80
+
+    def test_comparison_intent_defaults_to_analysis_without_chart_request(self):
+        result = classify_intent("compare vendas entre lojas")
+        assert result.intent == IntentType.ANALYSIS
+        assert result.confidence >= 0.85
     
     def test_anomaly_detection_intent(self):
         """Testa detecção de intenção de anomalia."""
@@ -111,6 +117,20 @@ class TestQueryRouter:
         assert selection.tool_params["filtro_une"] == "520"  # String
         assert "limite" in selection.tool_params
         assert selection.confidence > 0.85
+
+    def test_extract_une_filter_accepts_textual_store_codes(self):
+        assert extract_une_filter("gere um relatório de vendas do segmento tecidos na une scr") == "SCR"
+        assert extract_une_filter("mostre as vendas da loja mad") == "MAD"
+
+    def test_analysis_routing_keeps_textual_une_as_filter(self):
+        query = "gere um relatório de vendas do segmento tecidos na une scr"
+        intent_result = classify_intent(query)
+
+        selection = route_query(intent_result.intent, query, intent_result.confidence)
+
+        assert selection.tool_name == "consultar_dados_flexivel"
+        assert selection.tool_params["filtros"]["UNE"] == "SCR"
+        assert selection.tool_params["filtros"]["NOMESEGMENTO"] == "TECIDOS"
     
     def test_forecasting_routing(self):
         """Testa roteamento de previsões."""

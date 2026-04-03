@@ -19,14 +19,17 @@ from backend.app.core.llm_base import BaseLLMAdapter
 from backend.app.config.settings import settings
 
 GENAI_AVAILABLE = False
+logger = logging.getLogger(__name__)
 
 try:
     from google import genai
     from google.genai import types
     GENAI_AVAILABLE = True
 except ImportError as e:
-    print(f"[ERROR] Erro de importação do google-genai: {e}")
-    print("Execute: pip install google-genai>=1.60.0")
+    logger.warning(
+        "Erro de importacao do google-genai: %s. Execute: pip install google-genai>=1.60.0",
+        e,
+    )
 
 
 class GenAILLMAdapter(BaseLLMAdapter):
@@ -165,7 +168,6 @@ class GenAILLMAdapter(BaseLLMAdapter):
                             with open(tools_file, 'w', encoding='utf-8') as f:
                                 json.dump(tools_dict, f, indent=2, ensure_ascii=False)
                             
-                            print(f"\n{'='*80}\n[DEBUG] Ferramentas salvas em: {tools_file}\n{'='*80}\n", flush=True)
                             self.logger.info(f"[DEBUG] Ferramentas salvas em: {tools_file}")
                         except Exception as e:
                             self.logger.error(f"Erro ao salvar ferramentas: {e}")
@@ -656,7 +658,6 @@ class GenAILLMAdapter(BaseLLMAdapter):
             
             # If still empty but no error detected
             self.logger.error(f"[ERROR] Resposta vazia detectada (mas com candidatos).")
-            print(f"\n{'='*80}\n[CRITICAL DEBUG] RESPOSTA VAZIA DO LLM!\n{'='*80}\n", flush=True)
             self.logger.error(f"[DEBUG] Response object: {response}")
             self.logger.error(f"[DEBUG] Candidates: {getattr(response, 'candidates', 'NO ATTR')}")
             if hasattr(response, 'candidates') and response.candidates:

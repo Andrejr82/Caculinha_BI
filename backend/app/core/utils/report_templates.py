@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
+import unicodedata
 
 
 _OFFICIAL_TEMPLATES: List[Dict[str, Any]] = [
@@ -40,11 +41,32 @@ _OFFICIAL_TEMPLATES: List[Dict[str, Any]] = [
         "keywords": ["margem", "preco", "preço", "desconto", "markup", "mix"],
     },
     {
+        "id": "comercial_promocao",
+        "processo": "comercial",
+        "nome": "Promocao e Elasticidade",
+        "descricao": "Avaliacao de promocao, impacto de margem e ganho de volume necessario.",
+        "keywords": ["promocao", "promoção", "desconto", "leve", "oferta", "campanha", "elasticidade"],
+    },
+    {
+        "id": "comercial_cesta",
+        "processo": "comercial",
+        "nome": "Cesta e Cross-sell",
+        "descricao": "Leitura de cesta, afinidade e oportunidade de aumento de ticket.",
+        "keywords": ["cesta", "cross-sell", "cross sell", "afinidade", "combo", "ticket medio", "ticket médio", "saem juntos"],
+    },
+    {
         "id": "comercial_transferencia",
         "processo": "comercial",
         "nome": "Transferencia e Balanceamento",
         "descricao": "Realocacao entre lojas para reduzir ruptura e excesso.",
         "keywords": ["transferencia", "transferência", "alocar", "redistribuir", "estoque parado"],
+    },
+    {
+        "id": "compras_previsao",
+        "processo": "compras",
+        "nome": "Previsao e Planejamento",
+        "descricao": "Estimativa de demanda e preparo operacional com viés sazonal.",
+        "keywords": ["previsao", "previsão", "demanda", "sazonal", "sazonalidade", "forecast", "volta as aulas", "preparar"],
     },
 ]
 
@@ -60,15 +82,16 @@ def select_official_report_template(query: str) -> Dict[str, Any]:
     """
     Seleciona template oficial por heuristica de keywords.
     """
-    q = (query or "").lower()
+    q = _normalize_text(query)
     best_score = -1
     best_template = None
 
     for template in _OFFICIAL_TEMPLATES:
         score = 0
         for keyword in template.get("keywords", []):
-            if keyword in q:
-                score += 1
+            normalized_keyword = _normalize_text(keyword)
+            if normalized_keyword in q:
+                score += max(1, len(normalized_keyword.split()))
         if score > best_score:
             best_score = score
             best_template = template
@@ -83,3 +106,9 @@ def select_official_report_template(query: str) -> Dict[str, Any]:
         "descricao": "Resposta executiva padronizada para decisoes de negocio.",
         "keywords": [],
     }
+
+
+def _normalize_text(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return text.lower()

@@ -2,15 +2,20 @@
 Script para obter token de autenticação válido para testes
 """
 import requests
-import json
+import os
 
 BASE_URL = "http://localhost:8000"
 
-# Tentar login com credenciais de teste
+# Credenciais fornecidas pelo ambiente local
 login_data = {
-    "username": "admin",
-    "password": "admin123"
+    "username": os.getenv("TEST_AUTH_USERNAME", ""),
+    "password": os.getenv("TEST_AUTH_PASSWORD", "")
 }
+
+if not login_data["username"] or not login_data["password"]:
+    raise SystemExit(
+        "Defina TEST_AUTH_USERNAME e TEST_AUTH_PASSWORD para gerar tests/test_token.txt localmente."
+    )
 
 try:
     response = requests.post(f"{BASE_URL}/api/v1/auth/login", json=login_data)

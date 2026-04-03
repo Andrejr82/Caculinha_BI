@@ -3,12 +3,15 @@
 import json
 import os
 import hashlib
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from backend.app.config.settings import settings
 from backend.app.infrastructure.redis_client import get_sync_redis_client
 import re
+
+logger = logging.getLogger(__name__)
 
 class ResponseCache:
     """
@@ -20,7 +23,7 @@ class ResponseCache:
         os.makedirs(self.cache_dir, exist_ok=True)
         self.ttl = timedelta(minutes=ttl_minutes)
         self.ttl_seconds = max(1, int(self.ttl.total_seconds()))
-        print(f"ResponseCache initialized in {self.cache_dir} with TTL {self.ttl}")
+        logger.info("ResponseCache initialized in %s with TTL %s", self.cache_dir, self.ttl)
 
     def _get_cache_file_path(self, key: str) -> str:
         """Generates a file path for a given cache key."""
@@ -61,7 +64,7 @@ class ResponseCache:
                 if cached_payload:
                     return json.loads(cached_payload)
             except Exception as exc:
-                print(f"Redis cache read failed for key {key}: {exc}")
+                logger.warning("Redis cache read failed for key %s: %s", key, exc)
 
         file_path = self._get_cache_file_path(key)
         if os.path.exists(file_path):
@@ -73,16 +76,16 @@ class ResponseCache:
                 if cached_time_str:
                     cached_time = datetime.fromisoformat(cached_time_str)
                     if datetime.now() - cached_time < self.ttl:
-                        print(f"Cache hit for key: {key}")
+                        logger.debug("Cache hit for key %s", key)
                         return cached_data.get("response")
                     else:
-                        print(f"Cache expired for key: {key}. Deleting...")
+                        logger.info("Cache expired for key %s. Deleting...", key)
                         os.remove(file_path) # Clean up expired cache
                 else:
-                    print(f"Cache data for key: {key} missing timestamp. Deleting...")
+                    logger.warning("Cache data for key %s missing timestamp. Deleting...", key)
                     os.remove(file_path) # Invalid cache entry
             except (json.JSONDecodeError, OSError) as e:
-                print(f"Error reading or decoding cache file {file_path}: {e}. Deleting...")
+                logger.warning("Error reading or decoding cache file %s: %s. Deleting...", file_path, e)
                 if os.path.exists(file_path):
                     os.remove(file_path)
         return None
@@ -96,7 +99,7 @@ class ResponseCache:
             try:
                 redis_client.setex(self._redis_key(key), self.ttl_seconds, json.dumps(response, ensure_ascii=False))
             except Exception as exc:
-                print(f"Redis cache write failed for key {key}: {exc}")
+                logger.warning("Redis cache write failed for key %s: %s", key, exc)
 
         file_path = self._get_cache_file_path(key)
         data_to_cache = {
@@ -106,9 +109,9 @@ class ResponseCache:
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data_to_cache, f, ensure_ascii=False, indent=4)
-            print(f"Cache set for key: {key}")
+            logger.debug("Cache set for key %s", key)
         except OSError as e:
-            print(f"Error writing cache file {file_path}: {e}")
+            logger.warning("Error writing cache file %s: %s", file_path, e)
 
     def clean_expired_cache(self):
         """
@@ -127,52 +130,15 @@ class ResponseCache:
                         cached_time = datetime.fromisoformat(cached_time_str)
                         if datetime.now() - cached_time >= self.ttl:
                             os.remove(file_path)
-                            print(f"Cleaned expired cache file: {filename}")
+                            logger.info("Cleaned expired cache file %s", filename)
                     else:
                         os.remove(file_path)
-                        print(f"Cleaned invalid cache file (no timestamp): {filename}")
+                        logger.info("Cleaned invalid cache file (no timestamp): %s", filename)
                 except (json.JSONDecodeError, OSError) as e:
-                    print(f"Error checking/cleaning cache file {file_path}: {e}. Removing.")
+                    logger.warning("Error checking/cleaning cache file %s: %s. Removing.", file_path, e)
                     if os.path.exists(file_path):
                         os.remove(file_path)
 
     def _redis_key(self, key: str) -> str:
         return f"{settings.REDIS_KEY_PREFIX}:response_cache:{key}"
 
-# Example usage
-if __name__ == '__main__':
-    # Ensure cache directory exists for testing
-    os.makedirs(settings.LEARNING_FEEDBACK_PATH, exist_ok=True) # Assuming LEARNING_FEEDBACK_PATH is a good temp dir
-    cache = ResponseCache(cache_dir=settings.LEARNING_FEEDBACK_PATH, ttl_minutes=1) # 1 minute TTL for testing
-
-    test_query = "Qual é o total de vendas por produto para o segmento A?"
-    test_response = {"result": [{"product": "X", "sales": 100}], "chart_spec": None}
-
-    key = cache.generate_key(test_query)
-    print(f"\nGenerated key for '{test_query}': {key}")
-
-    # Test set
-    cache.set(key, test_response)
-    
-    # Test get (should hit)
-    retrieved = cache.get(key)
-    print(f"Retrieved (should hit): {retrieved}")
-    assert retrieved == test_response
-
-    # Test get (after expiration - manual simulation)
-    print("Waiting for cache to expire (1 minute)...")
-    import time
-    time.sleep(65) # Wait a bit more than 1 minute
-
-    retrieved_expired = cache.get(key)
-    print(f"Retrieved (should miss after expiration): {retrieved_expired}")
-    assert retrieved_expired is None
-
-    # Test clean_expired_cache
-    cache.set(key, test_response) # Set again to have something to expire
-    time.sleep(65)
-    print("\nRunning cache cleanup...")
-    cache.clean_expired_cache()
-    assert cache.get(key) is None # Should be gone after cleanup
-
-    print("\nResponseCache tests passed!")

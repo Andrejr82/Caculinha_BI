@@ -5,6 +5,7 @@ import {
   ThinkingProcess,
   AutoResizeTextarea,
   PlotlyChart,
+  AdaptiveChart,
   DataTable,
   FeedbackButtons,
   MessageActions,
@@ -41,9 +42,21 @@ import {
   sanitizeHyperlink,
   sanitizePlainText,
 } from '@/lib/chatPayload';
+import {
+  CHAT_PLAYBOOKS,
+  buildPlaybookPrompt,
+  createEmptyPlaybookContext,
+  type ChatPlaybookContext,
+  type ChatPlaybookId,
+} from '@/lib/chatPlaybooks';
+import {
+  buildPlaybookActionContext,
+  canDirectSendExecutiveAction,
+  type GuidedActionContext,
+} from '@/lib/chatExecutive';
 import { renderChatMarkdown } from '@/lib/chatMarkdown';
 import { openChatStream, type ChatStreamConnection } from '@/lib/chatStreamClient';
-import { Trash2, StopCircle, Bot, Sparkles, SendHorizontal, Paperclip, History, Plus, X, Mic, Volume2 } from 'lucide-solid';
+import { Trash2, StopCircle, Bot, Sparkles, SendHorizontal, Paperclip, History, Plus, X, Mic, Volume2, Download } from 'lucide-solid';
 import 'github-markdown-css/github-markdown.css';
 import './chat-markdown.css';
 import type { DashboardSpec } from '@/components/ChatDashboardRenderer';
@@ -180,6 +193,47 @@ const formatConversationTimestamp = (rawValue?: string): string => {
   }).format(parsed);
 };
 
+const stripRenderedTableSection = (text: string) => {
+  const normalized = String(text || '')
+    .replace(/^\s*Dados\s+tabulares:\s*/i, '')
+    .replace(/\s*Recorte solicitado:\s*.+?(?=(?:\n|$))/i, '');
+
+  const lines = normalized.split(/\r?\n/);
+  const keptLines: string[] = [];
+  let skippingTableSection = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine || '';
+    const trimmed = line.trim();
+    const isHeading = /^##\s+/.test(trimmed);
+
+    if (/^##\s*Tabela operacional\s*$/i.test(trimmed)) {
+      skippingTableSection = true;
+      continue;
+    }
+
+    if (skippingTableSection && isHeading) {
+      skippingTableSection = false;
+    }
+
+    if (!skippingTableSection) {
+      keptLines.push(line);
+    }
+  }
+
+  return keptLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+};
+
+const sanitizeTableFilename = (rawValue: string) => {
+  const normalized = String(rawValue || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  return normalized || 'chat_tabela';
+};
+
 const mapHistoryItemToMessage = (item: HistoryItem, index: number): Message | null => {
   const role = item?.role === 'user' || item?.role === 'assistant' || item?.role === 'system'
     ? item.role
@@ -272,6 +326,12 @@ export default function Chat() {
   const [isUploadingAttachments, setIsUploadingAttachments] = createSignal(false);
   const [attachmentError, setAttachmentError] = createSignal('');
   const [isBasketBuilderOpen, setIsBasketBuilderOpen] = createSignal(false);
+  const [isPlaybookBuilderOpen, setIsPlaybookBuilderOpen] = createSignal(false);
+  const [selectedPlaybookId, setSelectedPlaybookId] = createSignal<ChatPlaybookId>('executive_overview');
+  const [playbookContext, setPlaybookContext] = createSignal<ChatPlaybookContext>(createEmptyPlaybookContext());
+  const [activePlaybookId, setActivePlaybookId] = createSignal<ChatPlaybookId | null>(null);
+  const [activePlaybookContext, setActivePlaybookContext] = createSignal<ChatPlaybookContext>(createEmptyPlaybookContext());
+  const [activeGuidedActionContext, setActiveGuidedActionContext] = createSignal<GuidedActionContext | null>(null);
   const [basketBuilderMode, setBasketBuilderMode] = createSignal<BasketBuilderMode>('margin');
   const [basketItems, setBasketItems] = createSignal<BasketBuilderItem[]>([createBasketBuilderItem()]);
   const [basketDiscountPct, setBasketDiscountPct] = createSignal('');
@@ -282,10 +342,12 @@ export default function Chat() {
   const [isVoiceRecording, setIsVoiceRecording] = createSignal(false);
   const [voiceError, setVoiceError] = createSignal('');
   const [speakingMessageId, setSpeakingMessageId] = createSignal('');
+  const [exportingTableKey, setExportingTableKey] = createSignal('');
   const [currentEventSource, setCurrentEventSource] = createSignal<ChatStreamConnection | null>(null);
   const [busyAutomationMessageId, setBusyAutomationMessageId] = createSignal<string | null>(null);
   const [chatCapabilities, setChatCapabilities] = createSignal<ChatCapabilities>(DEFAULT_CHAT_CAPABILITIES);
   const conversationHistory = () => chatRuntime.conversationHistory();
+  const selectedPlaybook = () => CHAT_PLAYBOOKS.find(item => item.id === selectedPlaybookId()) || CHAT_PLAYBOOKS[0];
 
   // UI Refs
   let messagesEndRef: HTMLDivElement | undefined;
@@ -295,6 +357,76 @@ export default function Chat() {
   let speechRecognitionRef: SpeechRecognitionInstance | null = null;
 
   const getAuthToken = () => sessionStorage.getItem('token') || auth.token() || '';
+
+  const buildRenderableMessageText = (message: Message) => {
+    const baseText = String(message.text || '');
+    if (Array.isArray(message.data) && message.data.length > 0) {
+      return stripRenderedTableSection(baseText);
+    }
+    return baseText
+      .replace(/^\s*Dados\s+tabulares:\s*/i, '')
+      .replace(/\s*Recorte solicitado:\s*.+?(?=(?:\n|$))/i, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  const buildTableExportFilename = (message: Message) => {
+    const firstRow = Array.isArray(message.data) && message.data.length > 0 && typeof message.data[0] === 'object'
+      ? message.data[0]
+      : null;
+    const primaryColumn = firstRow ? Object.keys(firstRow)[0] : 'tabela';
+    const dateStamp = new Date(message.timestamp).toISOString().slice(0, 10);
+    return sanitizeTableFilename(`chat_${primaryColumn}_${dateStamp}`);
+  };
+
+  const downloadChatTable = async (message: Message, format: 'csv' | 'xlsx') => {
+    const rows = Array.isArray(message.data) ? message.data : [];
+    if (rows.length === 0) {
+      window.alert('Nenhuma tabela disponível para exportação.');
+      return;
+    }
+
+    const exportKey = `${message.id}:${format}`;
+    setExportingTableKey(exportKey);
+
+    try {
+      const token = getAuthToken();
+      const fallbackFilename = `${buildTableExportFilename(message)}.${format}`;
+      const response = await fetch(`/api/v1/chat/table-export?format=${format}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          rows,
+          caption: 'Detalhes',
+          filename: buildTableExportFilename(message),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`table_export_http_${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filename = getFilenameFromContentDisposition(contentDisposition, fallbackFilename);
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Erro ao exportar tabela do chat:', error);
+      window.alert(`Não foi possível exportar a tabela em ${format.toUpperCase()}.`);
+    } finally {
+      setExportingTableKey('');
+    }
+  };
 
   const sendFrontendTelemetryLog = async (
     feature: 'voice_input' | 'voice_output' | 'chat_stream',
@@ -387,11 +519,22 @@ export default function Chat() {
   };
 
   const startFreshConversation = () => {
+    stopGeneration();
     const newSession = crypto.randomUUID();
     setMessages([createInitialGreetingMessage()]);
+    setInput('');
     setSessionId(newSession);
     setPendingAttachments([]);
     setAttachmentError('');
+    setVoiceError('');
+    setBusyAutomationMessageId(null);
+    setIsPlaybookBuilderOpen(false);
+    setIsBasketBuilderOpen(false);
+    setSelectedPlaybookId('executive_overview');
+    setPlaybookContext(createEmptyPlaybookContext());
+    setActivePlaybookId(null);
+    setActivePlaybookContext(createEmptyPlaybookContext());
+    setActiveGuidedActionContext(null);
     localStorage.setItem('chat_session_id', newSession);
     if (chatCapabilities().memory) {
       void refreshConversationHistory();
@@ -403,6 +546,9 @@ export default function Chat() {
     stopGeneration();
     setPendingAttachments([]);
     setAttachmentError('');
+    setActivePlaybookId(null);
+    setActivePlaybookContext(createEmptyPlaybookContext());
+    setActiveGuidedActionContext(null);
     setSessionId(targetSessionId);
     localStorage.setItem('chat_session_id', targetSessionId);
     await loadPersistedHistory(targetSessionId);
@@ -726,7 +872,106 @@ export default function Chat() {
     };
   };
 
-  const submitPreparedMessage = async (userVisibleText: string, effectiveQuery: string) => {
+  const updatePlaybookContext = (field: keyof ChatPlaybookContext, value: string) => {
+    setPlaybookContext(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const applyPlaybookPrompt = (playbookId: ChatPlaybookId, mode: 'insert' | 'send') => {
+    const definition = CHAT_PLAYBOOKS.find(item => item.id === playbookId) || selectedPlaybook();
+    const prompt = buildPlaybookPrompt(playbookId, playbookContext());
+    const actionContext = buildPlaybookActionContext(playbookId, {
+      source: 'playbook_builder',
+      label: definition.cta,
+      prompt,
+      directSend: mode === 'send',
+    });
+    setActivePlaybookId(playbookId);
+    setActivePlaybookContext({ ...playbookContext() });
+    setActiveGuidedActionContext(actionContext);
+    if (mode === 'insert') {
+      setInput(prompt);
+      setIsPlaybookBuilderOpen(false);
+      return;
+    }
+
+    void submitPreparedMessage(definition.cta, prompt, actionContext);
+    setIsPlaybookBuilderOpen(false);
+  };
+
+  const applyFollowUpPrompt = (prompt: string) => {
+    if (isStreaming() || isUploadingAttachments()) return;
+    void submitPreparedMessage(prompt, prompt);
+  };
+
+  const openExecutiveGuide = (playbookId: ChatPlaybookId, prompt: string, headline?: string | null) => {
+    if (isStreaming() || isUploadingAttachments()) return;
+
+    const baseContext = activePlaybookContext();
+    const nextContext: ChatPlaybookContext = {
+      ...createEmptyPlaybookContext(),
+      ...baseContext,
+      objective: prompt,
+    };
+
+    if (!nextContext.objective.trim() && headline) {
+      nextContext.objective = headline;
+    }
+
+    setSelectedPlaybookId(playbookId);
+    setPlaybookContext(nextContext);
+    setIsBasketBuilderOpen(false);
+    setIsPlaybookBuilderOpen(true);
+  };
+
+  const handleExecutiveCta = (cta: { label: string; prompt: string; playbookId?: ChatPlaybookId }, headline?: string | null) => {
+    if (isStreaming() || isUploadingAttachments()) return;
+
+    if (!cta.playbookId) {
+      applyFollowUpPrompt(cta.prompt);
+      return;
+    }
+
+    const seedContext = activePlaybookContext();
+    const nextContext: ChatPlaybookContext = {
+      ...createEmptyPlaybookContext(),
+      ...seedContext,
+      objective: cta.prompt,
+    };
+
+    const canDirectSend = canDirectSendExecutiveAction(
+      cta,
+      nextContext,
+      activePlaybookId(),
+    );
+
+    if (canDirectSend) {
+      const actionContext = buildPlaybookActionContext(cta.playbookId, {
+        source: 'executive_cta',
+        label: cta.label,
+        prompt: cta.prompt,
+        directSend: true,
+      });
+      setPlaybookContext(nextContext);
+      setActivePlaybookId(cta.playbookId);
+      setActivePlaybookContext(nextContext);
+      setActiveGuidedActionContext(actionContext);
+      const definition = CHAT_PLAYBOOKS.find(item => item.id === cta.playbookId);
+      const effectiveQuery = buildPlaybookPrompt(cta.playbookId, nextContext);
+      void submitPreparedMessage(definition?.cta || cta.label || cta.prompt, effectiveQuery, actionContext);
+      return;
+    }
+
+    openExecutiveGuide(cta.playbookId, cta.prompt, headline);
+  };
+
+  const submitPreparedMessage = async (
+    userVisibleText: string,
+    effectiveQuery: string,
+    actionContext?: GuidedActionContext | null,
+  ) => {
     setInput('');
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
@@ -734,7 +979,7 @@ export default function Chat() {
       text: userVisibleText,
       timestamp: Date.now()
     }]);
-    await processUserMessage(effectiveQuery);
+    await processUserMessage(effectiveQuery, actionContext ?? activeGuidedActionContext());
   };
 
   const handleInsertBasketPrompt = () => {
@@ -1002,7 +1247,10 @@ export default function Chat() {
     void sendFrontendTelemetryLog('voice_output', 'started', { message_id: messageId });
   };
 
-  const processUserMessage = async (userText: string) => {
+  const processUserMessage = async (
+    userText: string,
+    guidedActionContext?: GuidedActionContext | null,
+  ) => {
     const token = auth.token();
     if (!token) {
       setMessages(prev => [...prev, {
@@ -1143,7 +1391,25 @@ export default function Chat() {
         throw new Error('Não foi possível obter token efêmero para o stream.');
       }
 
-      const streamUrl = `/api/v1/chat/stream?q=${encodeURIComponent(userText)}&stream_token=${encodeURIComponent(streamToken)}&session_id=${sessionId()}`;
+      const streamParams = new URLSearchParams({
+        q: userText,
+        stream_token: streamToken,
+        session_id: sessionId(),
+      });
+      if (activePlaybookId()) {
+        streamParams.set('chat_mode', activePlaybookId()!);
+      }
+      const activeContextPayload = activePlaybookContext();
+      const activeActionPayload = guidedActionContext ?? activeGuidedActionContext();
+      const shouldSendGuidedContext = Boolean(activePlaybookId() || activeActionPayload);
+      const hasActiveContext = Object.values(activeContextPayload).some(value => String(value || '').trim().length > 0);
+      if (shouldSendGuidedContext && hasActiveContext) {
+        streamParams.set('playbook_context', JSON.stringify(activeContextPayload));
+      }
+      if (activeActionPayload) {
+        streamParams.set('guided_action', JSON.stringify(activeActionPayload));
+      }
+      const streamUrl = `/api/v1/chat/stream?${streamParams.toString()}`;
       logStreamTelemetry('started', {
         query_length: userText.length,
       });
@@ -1717,6 +1983,8 @@ export default function Chat() {
 
               <For each={messages()}>
                 {(msg) => (
+                  (() => {
+                    return (
                   <div class={`group mb-8 w-full ${msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
 
                     {/* Avatar for Assistant */}
@@ -1757,12 +2025,12 @@ export default function Chat() {
                             </div>
                           </Show>
 
-                          {/* Charts */}
-                          <Show when={msg.chart_spec}>
-                            <div class="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 shadow-sm">
-                              <PlotlyChart chartSpec={() => msg.chart_spec} />
-                            </div>
-                          </Show>
+                            {/* Charts */}
+                            <Show when={msg.chart_spec}>
+                              <div class="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 shadow-sm">
+                              <AdaptiveChart chartSpec={() => msg.chart_spec} />
+                              </div>
+                            </Show>
 
                           {/* Dashboard */}
                           <Show when={msg.type === 'dashboard' && msg.dashboard_spec}>
@@ -1774,7 +2042,34 @@ export default function Chat() {
                           {/* Tables */}
                           <Show when={msg.data}>
                             <div class="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 shadow-sm">
-                              <DataTable data={() => msg.data || []} caption="Detalhes" />
+                              <DataTable
+                                data={() => msg.data || []}
+                                caption="Detalhes"
+                                headerActions={
+                                  <div class="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void downloadChatTable(msg, 'csv')}
+                                      disabled={exportingTableKey() !== ''}
+                                      class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-slate-200 dark:hover:bg-zinc-800"
+                                      title="Baixar tabela em CSV"
+                                    >
+                                      <Download size={13} />
+                                      {exportingTableKey() === `${msg.id}:csv` ? 'Exportando CSV...' : 'CSV'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void downloadChatTable(msg, 'xlsx')}
+                                      disabled={exportingTableKey() !== ''}
+                                      class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-slate-200 dark:hover:bg-zinc-800"
+                                      title="Baixar tabela em XLSX"
+                                    >
+                                      <Download size={13} />
+                                      {exportingTableKey() === `${msg.id}:xlsx` ? 'Exportando XLSX...' : 'XLSX'}
+                                    </button>
+                                  </div>
+                                }
+                              />
                             </div>
                           </Show>
 
@@ -1812,13 +2107,13 @@ export default function Chat() {
                           </Show>
 
                           {/* Text Response */}
-                          <Show when={msg.text && msg.type !== 'error'}>
+                          <Show when={buildRenderableMessageText(msg) && msg.type !== 'error'}>
                             <div
                               class="markdown-body prose dark:prose-invert prose-indigo max-w-none 
                                                 bg-transparent text-slate-700 dark:text-slate-300 leading-7 text-[15px]
                                                 prose-p:leading-7 prose-li:my-0.5 prose-strong:font-bold prose-headings:font-bold prose-headings:text-slate-900 dark:prose-headings:text-slate-100"
                               onClick={handleMarkdownClick}
-                              innerHTML={renderChatMarkdown(msg.text)}
+                              innerHTML={renderChatMarkdown(buildRenderableMessageText(msg))}
                             />
                           </Show>
 
@@ -1868,10 +2163,10 @@ export default function Chat() {
 
                           {/* Actions */}
                           <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pt-1">
-                            <Show when={chatCapabilities().voice && msg.text && msg.type !== 'error'}>
+                            <Show when={chatCapabilities().voice && buildRenderableMessageText(msg) && msg.type !== 'error'}>
                               <button
                                 type="button"
-                                onClick={() => toggleMessageSpeech(msg.id, msg.text)}
+                                onClick={() => toggleMessageSpeech(msg.id, buildRenderableMessageText(msg))}
                                 class={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
                                   speakingMessageId() === msg.id
                                     ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300'
@@ -1883,7 +2178,7 @@ export default function Chat() {
                                 {speakingMessageId() === msg.id ? 'Parar' : 'Ouvir'}
                               </button>
                             </Show>
-                            <MessageActions messageText={msg.text} messageId={msg.id} canRegenerate={false} />
+                            <MessageActions messageText={buildRenderableMessageText(msg)} messageId={msg.id} canRegenerate={false} />
                             <Show when={msg.response_id}>
                               <FeedbackButtons messageId={msg.response_id!} onFeedback={handleFeedback} />
                             </Show>
@@ -1894,6 +2189,8 @@ export default function Chat() {
                     </div>
 
                   </div>
+                    );
+                  })()
                 )}
               </For>
 
@@ -1948,222 +2245,7 @@ export default function Chat() {
                     </button>
                   </Show>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBasketBuilderError('');
-                      setIsBasketBuilderOpen(current => !current);
-                    }}
-                    disabled={isStreaming() || isUploadingAttachments()}
-                    class={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-                      isBasketBuilderOpen()
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/40 dark:text-indigo-200'
-                        : 'border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 dark:border-zinc-700 dark:text-slate-300 dark:hover:border-indigo-500'
-                    }`}
-                    title="Montar cesta, promoção ou basket analysis"
-                  >
-                    Cesta
-                  </button>
-
-                <div class="flex-1">
-                  <Show when={isBasketBuilderOpen()}>
-                    <div class="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80">
-                      <div class="mb-3 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBasketBuilderMode('margin');
-                            setBasketBuilderError('');
-                          }}
-                          class={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                            basketBuilderMode() === 'margin'
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 text-slate-600 dark:bg-zinc-900 dark:text-slate-300'
-                          }`}
-                        >
-                          Margem real
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBasketBuilderMode('promotion');
-                            setBasketBuilderError('');
-                          }}
-                          class={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                            basketBuilderMode() === 'promotion'
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 text-slate-600 dark:bg-zinc-900 dark:text-slate-300'
-                          }`}
-                        >
-                          Promoção
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBasketBuilderMode('basket');
-                            setBasketBuilderError('');
-                          }}
-                          class={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                            basketBuilderMode() === 'basket'
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 text-slate-600 dark:bg-zinc-900 dark:text-slate-300'
-                          }`}
-                        >
-                          Itens juntos
-                        </button>
-                      </div>
-
-                      <Show when={basketBuilderMode() === 'basket'} fallback={
-                        <>
-                          <div class="grid gap-2">
-                            <For each={basketItems()}>
-                              {(item, index) => (
-                                <div class="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/80 lg:grid-cols-[1.2fr_1.4fr_repeat(5,minmax(0,1fr))_auto]">
-                                  <input
-                                    value={item.sku}
-                                    onInput={(e) => updateBasketItem(item.id, 'sku', e.currentTarget.value)}
-                                    placeholder={`SKU ${index() + 1}`}
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <input
-                                    value={item.nome}
-                                    onInput={(e) => updateBasketItem(item.id, 'nome', e.currentTarget.value)}
-                                    placeholder="Nome do item"
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <input
-                                    value={item.quantidade}
-                                    onInput={(e) => updateBasketItem(item.id, 'quantidade', e.currentTarget.value)}
-                                    placeholder="Qtd"
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <input
-                                    value={item.precoUnitario}
-                                    onInput={(e) => updateBasketItem(item.id, 'precoUnitario', e.currentTarget.value)}
-                                    placeholder="Preço"
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <input
-                                    value={item.custoUnitario}
-                                    onInput={(e) => updateBasketItem(item.id, 'custoUnitario', e.currentTarget.value)}
-                                    placeholder="Custo"
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <input
-                                    value={item.impostoPct}
-                                    onInput={(e) => updateBasketItem(item.id, 'impostoPct', e.currentTarget.value)}
-                                    placeholder="Imp. %"
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <input
-                                    value={item.freteValor}
-                                    onInput={(e) => updateBasketItem(item.id, 'freteValor', e.currentTarget.value)}
-                                    placeholder="Frete"
-                                    class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                  />
-                                  <div class="flex items-start justify-end">
-                                    <button
-                                      type="button"
-                                      onClick={() => removeBasketItem(item.id)}
-                                      disabled={basketItems().length <= 1}
-                                      class="rounded-xl p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/20"
-                                      title="Remover item"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
-                                  <div class="lg:col-span-8 grid gap-2 md:grid-cols-2">
-                                    <input
-                                      value={item.descontoPct}
-                                      onInput={(e) => updateBasketItem(item.id, 'descontoPct', e.currentTarget.value)}
-                                      placeholder="Desconto % por item"
-                                      class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                    />
-                                    <input
-                                      value={item.despesaVariavelPct}
-                                      onInput={(e) => updateBasketItem(item.id, 'despesaVariavelPct', e.currentTarget.value)}
-                                      placeholder="Despesa variável %"
-                                      class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </For>
-                          </div>
-
-                          <div class="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={addBasketItem}
-                              class="rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600 dark:border-zinc-700 dark:text-slate-300"
-                            >
-                              Adicionar item
-                            </button>
-                          </div>
-
-                          <Show when={basketBuilderMode() === 'promotion'}>
-                            <div class="mt-3 grid gap-2 md:grid-cols-3">
-                              <input
-                                value={basketDiscountPct()}
-                                onInput={(e) => setBasketDiscountPct(e.currentTarget.value)}
-                                placeholder="Desconto % da promoção"
-                                class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                              />
-                              <input
-                                value={basketDiscountValue()}
-                                onInput={(e) => setBasketDiscountValue(e.currentTarget.value)}
-                                placeholder="Desconto em valor"
-                                class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                              />
-                              <input
-                                value={basketUpliftPct()}
-                                onInput={(e) => setBasketUpliftPct(e.currentTarget.value)}
-                                placeholder="Uplift estimado %"
-                                class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                              />
-                            </div>
-                          </Show>
-                        </>
-                      }>
-                        <div class="grid gap-2">
-                          <textarea
-                            value={basketTransactionsText()}
-                            onInput={(e) => setBasketTransactionsText(e.currentTarget.value)}
-                            rows={5}
-                            placeholder={'Uma transação por linha.\nExemplo:\nfralda, cerveja\nfralda, lenço, cerveja'}
-                            class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-slate-200"
-                          />
-                        </div>
-                      </Show>
-
-                      <Show when={basketBuilderError()}>
-                        <p class="mt-3 text-xs text-red-600 dark:text-red-400">{basketBuilderError()}</p>
-                      </Show>
-
-                      <div class="mt-3 flex flex-wrap justify-between gap-2">
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400">
-                          Monte a carga estruturada para margem real, simulação de promoção ou itens que saem juntos.
-                        </p>
-                        <div class="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={handleInsertBasketPrompt}
-                            class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-indigo-400 hover:text-indigo-600 dark:border-zinc-700 dark:text-slate-300"
-                          >
-                            Inserir no chat
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleSendBasketPrompt()}
-                            class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
-                          >
-                            Enviar análise
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </Show>
-
+                  <div class="flex-1">
                   <Show when={pendingAttachments().length > 0 || !!attachmentError() || !!voiceError()}>
                     <div class="mb-2 flex flex-wrap items-center gap-2">
                       <For each={pendingAttachments()}>

@@ -18,15 +18,17 @@ import {
 import { playgroundApi } from '../lib/api';
 import { announcer } from '../components/ScreenReaderAnnouncer';
 import { toastManager } from '../components/Toast';
+import {
+  buildGuidedChatPayload,
+  createPlaygroundSessionId,
+  extractGuidedChatResolution,
+  operationModes,
+  type OperationMode,
+} from './playground-ops-guided';
+import { renderChatMarkdown } from '@/lib/chatMarkdown';
+import 'github-markdown-css/github-markdown.css';
+import './chat-markdown.css';
 import './playground-surfaces.css';
-
-type OperationMode = {
-  id: string;
-  title: string;
-  description: string;
-  focus: string;
-  prompts: string[];
-};
 
 type ChatMessage = {
   id: string;
@@ -57,98 +59,35 @@ type ApprovalDraft = {
   generatedOutput: string;
 };
 
-const operationModes: OperationMode[] = [
-  {
-    id: 'abastecimento',
-    title: 'Abastecimento',
-    description: 'Reposicao por ruptura, cobertura e estoque de seguranca.',
-    focus: 'Priorizacao de ruptura, giro e cobertura com recorte por loja e UNE.',
-    prompts: [
-      'Monte uma SQL para ruptura por loja, categoria e periodo.',
-      'Crie um plano operacional para itens abaixo do estoque de seguranca.',
-    ],
-  },
-  {
-    id: 'mix',
-    title: 'Mix de Produtos',
-    description: 'Ajuste de sortimento por loja, curva e sazonalidade.',
-    focus: 'Decisao de sortimento com leitura por curva, margem e regionalidade.',
-    prompts: [
-      'Quero um roteiro para revisar mix por curva ABC e margem.',
-      'Monte SQL para achar categorias sem giro e com excesso de espaco.',
-    ],
-  },
-  {
-    id: 'promocao',
-    title: 'Promocao e Preco',
-    description: 'Giro, margem e recomendacoes de campanha.',
-    focus: 'Leitura tatico-comercial com elasticidade, margem e estoque disponivel.',
-    prompts: [
-      'Estruture uma analise de ROI para campanha por categoria.',
-      'Crie uma consulta SQL para margem e giro antes e depois de promocao.',
-    ],
-  },
-  {
-    id: 'devolucao',
-    title: 'Devolucao e Transferencia',
-    description: 'Transferencias entre UNEs e reducao de excesso.',
-    focus: 'Equilibrio entre excesso, cobertura e oportunidade de transferencia.',
-    prompts: [
-      'Preciso de uma SQL para sugerir transferencia entre lojas com excesso e falta.',
-      'Monte um checklist operacional para devolucao de itens parados.',
-    ],
-  },
-  {
-    id: 'sazonalidade',
-    title: 'Sazonalidade',
-    description: 'Planejamento por periodo e comportamento historico.',
-    focus: 'Planejamento com historico, eventos, calendario comercial e ruptura.',
-    prompts: [
-      'Sugira um roteiro para previsao semanal por loja e categoria.',
-      'Crie uma estrutura para medir sazonalidade e cobertura antes do pico.',
-    ],
-  },
-  {
-    id: 'opcom',
-    title: 'OPCOM Rotinas',
-    description: 'Execucao operacional com checklist e prazo.',
-    focus: 'Rotina de execucao, follow-up e entregavel acionavel para operacao.',
-    prompts: [
-      'Monte um checklist diario de OPCOM com SLA e dono por etapa.',
-      'Crie um rascunho de mensagem para cobrar plano de acao das lojas.',
-    ],
-  },
-];
-
 const approvalOutputOptions = [
   {
     id: 'operational_report',
-    label: 'Relatorio operacional',
-    hint: 'Resumo executivo ou plano de acao estruturado.',
+    label: 'Relatório operacional',
+    hint: 'Resumo executivo ou plano de ação estruturado.',
     icon: FileText,
   },
   {
     id: 'sql',
     label: 'Consulta SQL',
-    hint: 'Envio para validacao tecnica ou liberacao controlada.',
+    hint: 'Envio para validação técnica ou liberação controlada.',
     icon: Terminal,
   },
   {
     id: 'spreadsheet_report',
     label: 'Planilha',
-    hint: 'Base para preenchimento ou revisao manual.',
+    hint: 'Base para preenchimento ou revisão manual.',
     icon: TableProperties,
   },
   {
     id: 'export_csv',
-    label: 'Exportacao CSV',
-    hint: 'Artefato para downstream ou distribuicao.',
+    label: 'Exportação CSV',
+    hint: 'Artefato para downstream ou distribuição.',
     icon: TableProperties,
   },
   {
     id: 'email_draft',
     label: 'Rascunho de e-mail',
-    hint: 'Texto para revisao antes de qualquer envio.',
+    hint: 'Texto para revisão antes de qualquer envio.',
     icon: Mail,
   },
   {
@@ -159,7 +98,7 @@ const approvalOutputOptions = [
   },
 ];
 
-const PLAYGROUND_OPS_STORAGE_KEY = 'playground_ops_state_v1';
+const PLAYGROUND_OPS_STORAGE_KEY = 'playground_ops_state_v2';
 const MAX_PERSISTED_OPS_MESSAGES = 14;
 
 function loadPersistedOpsState() {
@@ -173,6 +112,7 @@ function loadPersistedOpsState() {
       selectedMode?: string;
       input?: string;
       messages?: ChatMessage[];
+      sessionId?: string;
       selectedOutputType?: string;
       deliveryTarget?: string;
       approvalPriority?: string;
@@ -263,13 +203,14 @@ function OpsMessageBubble(props: {
       }`}
     >
       <div class="playground-message-label">
-        <span>{isAssistant() ? 'Operacao' : 'Voce'}</span>
+        <span>{isAssistant() ? 'Operação' : 'Você'}</span>
         <span class="playground-message-time">{formatTime(props.message.timestamp)}</span>
       </div>
 
-      <pre class="m-0 whitespace-pre-wrap break-words font-sans text-[0.94rem] leading-7 text-foreground">
-        {props.message.content}
-      </pre>
+      <div 
+        class="markdown-body playground-markdown"
+        innerHTML={renderChatMarkdown(props.message.content)} 
+      />
 
       <Show when={isAssistant()}>
         <div class="playground-action-row">
@@ -344,6 +285,7 @@ export default function PlaygroundOps() {
   const [selectedMode, setSelectedMode] = createSignal<string>('abastecimento');
   const [input, setInput] = createSignal('');
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
+  const [playgroundSessionId, setPlaygroundSessionId] = createSignal<string>(createPlaygroundSessionId());
   const [loading, setLoading] = createSignal(false);
   const [auditTrail, setAuditTrail] = createSignal<OpsAuditItem[]>([]);
   const [approvalDraft, setApprovalDraft] = createSignal<ApprovalDraft | null>(null);
@@ -392,22 +334,33 @@ export default function PlaygroundOps() {
     if (Array.isArray(persistedState?.messages)) {
       setMessages(persistedState.messages.filter((message) => message && typeof message.content === 'string').slice(-MAX_PERSISTED_OPS_MESSAGES));
     }
+    if (typeof persistedState?.sessionId === 'string' && persistedState.sessionId.trim()) {
+      setPlaygroundSessionId(persistedState.sessionId.trim());
+    }
     if (typeof persistedState?.selectedOutputType === 'string') setSelectedOutputType(persistedState.selectedOutputType);
     if (typeof persistedState?.deliveryTarget === 'string') setDeliveryTarget(persistedState.deliveryTarget);
     if (typeof persistedState?.approvalPriority === 'string') setApprovalPriority(persistedState.approvalPriority);
     if (typeof persistedState?.approvalNotes === 'string') setApprovalNotes(persistedState.approvalNotes);
     setStateHydrated(true);
 
+    // Acesso otimista: habilita o Playground imediatamente.
+    // Se getInfo() confirmar bloqueio explícito, redireciona.
+    // Isso evita que falhas de rede/banco silenciem o usuário.
+    setAccessReady(true);
     try {
       const info = await playgroundApi.getInfo();
-      if (info?.data?.playground_access_enabled !== true) {
+      // Só redireciona se a API responder explicitamente com acesso negado
+      if (info?.data?.playground_access_enabled === false && info?.data?.playground_access_reason) {
+        // Não admin e acesso explicitamente negado pelo servidor
         navigate('/dashboard', { replace: true });
         return;
       }
-      setAccessReady(true);
       await loadOpsAudit();
     } catch {
-      navigate('/dashboard', { replace: true });
+      // Se getInfo() falhar (backend offline, rede, etc.),
+      // mantém accessReady=true e deixa o usuário usar o Playground.
+      // O sendMessage tem seu próprio tratamento de erro.
+      console.warn('[PlaygroundOps] getInfo() falhou — modo offline/standalone ativo.');
     }
   });
 
@@ -418,6 +371,7 @@ export default function PlaygroundOps() {
       selectedMode: selectedMode(),
       input: input(),
       messages: messages().slice(-MAX_PERSISTED_OPS_MESSAGES),
+      sessionId: playgroundSessionId(),
       selectedOutputType: selectedOutputType(),
       deliveryTarget: deliveryTarget(),
       approvalPriority: approvalPriority(),
@@ -453,74 +407,153 @@ export default function PlaygroundOps() {
     ].join('\n');
   };
 
+  /** Gera resposta local determinística quando todos os canais de API falham */
+  const buildLocalFallback = (query: string): string => {
+    const q = query.toLowerCase();
+    const modeTitle = selectedModeConfig().title;
+
+    if (q.includes('sql') || q.includes('ruptura')) {
+      return [
+        '```sql',
+        '-- SQL gerado localmente (backend indisponível)',
+        `-- Modo: ${modeTitle}`,
+        'SELECT',
+        '    UNE        AS loja,',
+        '    NOMESEGMENTO AS categoria,',
+        '    CAST(DT_REF AS DATE) AS periodo,',
+        '    COUNT(*)   AS total_rupturas,',
+        '    SUM(CASE WHEN GATILHO_CRITICO = 1 THEN 1 ELSE 0 END) AS criticos',
+        'FROM admmat',
+        'WHERE ESTOQUE_UNE = 0',
+        '  AND DT_REF >= DATEADD(DAY, -30, GETDATE())',
+        'GROUP BY UNE, NOMESEGMENTO, CAST(DT_REF AS DATE)',
+        'ORDER BY total_rupturas DESC;',
+        '```',
+        '',
+        '> ⚠️ Resposta gerada localmente. Reinicie o backend para obter análise completa via LLM.',
+      ].join('\n');
+    }
+
+    return [
+      `## Resumo executivo — ${modeTitle}`,
+      '',
+      `> Modo: ${modeTitle} | Foco: ${selectedModeConfig().focus}`,
+      '',
+      '## Tabela operacional',
+      '| Campo | Instrução |',
+      '|-------|-----------|',
+      '| Produto/SKU | Informe o código ou nome do produto |',
+      '| UNE/Loja | Informe a loja ou conjunto de lojas |',
+      '| Período | Ex.: últimos 30 dias, semana atual |',
+      '| Métrica | Ex.: ruptura, giro, margem, cobertura |',
+      '',
+      '## Próximas ações',
+      '1. Informe produto + período + loja para análise específica.',
+      '2. Se precisar de SQL, adicione a palavra "SQL" no prompt.',
+      '3. Verifique se o backend está online para análise completa via LLM.',
+      '',
+      '> ⚠️ Resposta local — backend indisponível no momento.',
+    ].join('\n');
+  };
+
   const sendMessage = async () => {
-    const content = input().trim();
-    if (!content || loading()) return;
-
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-    };
-    const assistantId = crypto.randomUUID();
-    const pendingAssistantMsg: ChatMessage = {
-      id: assistantId,
-      role: 'assistant',
-      content: 'Processando resposta operacional...',
-      timestamp: new Date().toISOString(),
-      source: 'playground.pending',
-    };
-
-    const newHistory = [...messages(), userMsg];
-    setMessages([...newHistory, pendingAssistantMsg]);
-    setInput('');
-    setLoading(true);
-    setApprovalBanner(null);
-    announcer.polite(`Enviando pergunta no modo ${selectedModeConfig().title}.`);
-
     try {
-      const response = await playgroundApi.chat({
-        message: content,
-        history: newHistory
-          .slice(0, -1)
-          .map((message) => ({ role: message.role, content: message.content, timestamp: message.timestamp })),
-        system_instruction: buildSystemInstruction(content),
-        temperature: 0.4,
-        max_tokens: 2048,
-        json_mode: false,
-        stream: false,
-      });
+      const content = input().trim();
+      if (!content || loading()) return;
 
-      const assistantMsg: ChatMessage = {
-        id: assistantId,
-        role: 'assistant',
-        content: String(response?.data?.response || '').trim() || 'Sem resposta retornada.',
+      toastManager.info('⏳ Montando bloco de instrução...', 1500);
+      setLoading(true);
+
+      const uId = createPlaygroundSessionId();
+      const aId = createPlaygroundSessionId();
+      
+      const userMsg: ChatMessage = {
+        id: uId,
+        role: 'user',
+        content,
         timestamp: new Date().toISOString(),
-        request_id: response?.data?.metadata?.request_id,
-        source: response?.data?.metadata?.source || response?.data?.model_info?.model,
-        intent: response?.data?.metadata?.intent || response?.data?.model_info?.intent,
+      };
+      
+      const pendingAssistantMsg: ChatMessage = {
+        id: aId,
+        role: 'assistant',
+        content: '⚙️ O servidor IA está processando sua solicitação...\n\n_Dica: Consultas complexas podem levar de 10 a 60 segundos._',
+        timestamp: new Date().toISOString(),
+        approval_status: 'pending',
       };
 
-      setMessages((prev) => prev.map((message) => (message.id === assistantId ? assistantMsg : message)));
-    } catch (error: any) {
-      const detail = error?.response?.data?.detail || error?.message || 'Falha na chamada do Playground.';
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === assistantId
-            ? {
-                id: assistantId,
-                role: 'assistant',
-                content: `Erro: ${detail}`,
-                timestamp: new Date().toISOString(),
-                source: 'playground.error',
-              }
-            : message,
-        ),
-      );
-      toastManager.error(detail);
-      announcer.assertive(`Erro no Playground operacional: ${detail}`);
-    } finally {
+      // Fazer clonagem profunda e recriar toda a array para forçar SolidJS a notificar
+      const historyCopy = JSON.parse(JSON.stringify(messages()));
+      const nextMessages = [...historyCopy, userMsg, pendingAssistantMsg];
+      
+      setMessages(nextMessages);
+      setInput('');
+      setApprovalBanner(null);
+      
+      try { announcer.polite(`Enviando pergunta no modo ${selectedModeConfig().title}.`); } catch(e){}
+      
+      setTimeout(() => messagesEndRef?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
+
+      let resolved: { text: string; requestId?: string; source?: string; intent?: string } | null = null;
+      let finalResponseGenerated = false;
+
+      // Chama a Camada Primaria: LLM Remoto com fallback para local.
+      try {
+        const payload = buildGuidedChatPayload({
+          modeId: selectedMode(),
+          query: content,
+          sessionId: playgroundSessionId(),
+          outputType: selectedOutputType(),
+        });
+
+        toastManager.info('🤖 Servidor de IA operando...', 3000);
+        
+        const response = await playgroundApi.guidedChat(payload);
+        const resolvedText = extractGuidedChatResolution(response);
+        
+        if (resolvedText?.text) {
+           resolved = resolvedText;
+           finalResponseGenerated = true;
+           toastManager.success('✅ Resposta gerada com sucesso!');
+        } else {
+           throw new Error('Servidor retornou resposta em branco.');
+        }
+
+      } catch (remoteError: any) {
+        console.error('Falha no Provider remoto. Aplicando contingência:', remoteError);
+        const errDetail = remoteError?.response?.data?.detail || remoteError?.message || 'Timeout/Falha de rede';
+        setApprovalBanner(`⚠️ Usando processamento local de contingência. API Indisponível: ${errDetail}`);
+        toastManager.error('⚠️ Fallback de contingência engajado.');
+        
+        const localT = buildLocalFallback(content);
+        resolved = { text: localT, source: 'local-offline', intent: 'fallback.local' };
+        finalResponseGenerated = true;
+      } finally {
+        if (!finalResponseGenerated || !resolved) {
+          resolved = { text: 'Nao foi possivel processar a solicitacao local ou remotamente. Tente novamente mais tarde.', source: 'error', intent: 'unknown' };
+        }
+        
+        const finalContent = String(resolved?.text || '').trim();
+        
+        const finalMsg: ChatMessage = {
+          id: aId,
+          role: 'assistant',
+          content: finalContent || buildLocalFallback(content),
+          timestamp: new Date().toISOString(),
+          request_id: resolved?.requestId,
+          source: resolved?.source || 'safeguard',
+          intent: resolved?.intent || 'safeguard',
+        };
+
+        // Atualiza o Signal usando a reconstrução completa
+        setMessages((prev) => prev.map(m => m.id === aId ? finalMsg : {...m}));
+        
+        setLoading(false);
+        setTimeout(() => messagesEndRef?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 150);
+      }
+      
+    } catch (critical: any) {
+      console.error('Critical UI Error:', critical);
       setLoading(false);
       setTimeout(() => messagesEndRef?.scrollIntoView({ behavior: 'smooth' }), 120);
     }
@@ -645,6 +678,7 @@ export default function PlaygroundOps() {
     setApprovalPriority('media');
     setApprovalNotes('');
     setSelectedOutputType('operational_report');
+    setPlaygroundSessionId(createPlaygroundSessionId());
     try {
       window.localStorage.removeItem(PLAYGROUND_OPS_STORAGE_KEY);
     } catch {
@@ -713,15 +747,6 @@ export default function PlaygroundOps() {
                 </div>
 
                 <div class="flex flex-col items-stretch gap-3 xl:items-end">
-                  <button
-                    type="button"
-                    class="btn btn-outline gap-2"
-                    onClick={() => navigate('/playground-lab')}
-                    aria-label="Abrir o laboratório comparativo de prompts"
-                  >
-                    <ArrowUpRight size={16} />
-                    Abrir laboratorio comparativo
-                  </button>
                   <button type="button" class="btn btn-ghost gap-2" onClick={() => void loadOpsAudit()}>
                     <RefreshCcw size={16} />
                     Atualizar auditoria

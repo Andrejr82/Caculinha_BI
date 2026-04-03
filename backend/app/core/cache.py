@@ -8,6 +8,7 @@ import json
 import os
 import hashlib
 import sys
+import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
@@ -15,6 +16,8 @@ from backend.app.config.settings import settings
 
 sys.modules.setdefault("app.core.cache", sys.modules[__name__])
 sys.modules.setdefault("backend.app.core.cache", sys.modules[__name__])
+
+logger = logging.getLogger(__name__)
 
 class AgentGraphCache:
     """
@@ -36,7 +39,7 @@ class AgentGraphCache:
             ttl_minutes = int(getattr(self._settings, "AGENT_GRAPH_CACHE_TTL_MINUTES", 360))
         self.ttl = timedelta(minutes=ttl_minutes)
         self.in_memory_cache: Dict[str, Dict[str, Any]] = {} # {key: {value: graph_data, timestamp: datetime, version: str}}
-        print(f"AgentGraphCache initialized in {self.cache_dir} with TTL {self.ttl}")
+        logger.info("AgentGraphCache initialized in %s with TTL %s", self.cache_dir, self.ttl)
 
         # Load existing cache from disk on startup
         self._load_all_from_disk()
@@ -70,7 +73,7 @@ class AgentGraphCache:
                     cached_data = json.load(f)
                 return cached_data
             except (json.JSONDecodeError, OSError) as e:
-                print(f"Error reading or decoding cache file {file_path}: {e}")
+                logger.warning("Error reading or decoding cache file %s: %s", file_path, e)
                 if os.path.exists(file_path):
                     os.remove(file_path) # Remove corrupt file
         return None
@@ -88,7 +91,7 @@ class AgentGraphCache:
                 json.dump(data_to_cache, f, ensure_ascii=False, indent=4)
             # print(f"Agent graph cache saved to disk for key: {key}")
         except OSError as e:
-            print(f"Error writing agent graph cache file {file_path}: {e}")
+            logger.warning("Error writing agent graph cache file %s: %s", file_path, e)
 
     def _load_all_from_disk(self):
         """Loads all valid cache entries from disk into memory on startup."""
@@ -104,7 +107,7 @@ class AgentGraphCache:
                         self.in_memory_cache[key] = cached_data
                         # print(f"Loaded valid agent graph cache for key: {key} from disk.")
                     else:
-                        print(f"Invalidated old agent graph cache for key: {key} (expired or version mismatch).")
+                        logger.info("Invalidated old agent graph cache for key %s (expired or version mismatch)", key)
                         os.remove(self._get_cache_file_path(key))
     
     def get(self, key: str) -> Any:
@@ -135,7 +138,7 @@ class AgentGraphCache:
                 # print(f"Agent graph cache hit (disk) for key: {key}")
                 return cached_data_from_disk["value"]
             else:
-                print(f"Invalidated old agent graph cache for key: {key} (expired or version mismatch).")
+                logger.info("Invalidated old agent graph cache for key %s (expired or version mismatch)", key)
                 os.remove(self._get_cache_file_path(key))
         
         return None
@@ -163,46 +166,12 @@ class AgentGraphCache:
             file_path = self._get_cache_file_path(key)
             if os.path.exists(file_path):
                 os.remove(file_path)
-            print(f"Agent graph cache cleared for key: {key}")
+            logger.info("Agent graph cache cleared for key %s", key)
         else:
             self.in_memory_cache.clear()
             for filename in os.listdir(self.cache_dir):
                 file_path = os.path.join(self.cache_dir, filename)
                 if os.path.isfile(file_path):
                     os.remove(file_path)
-            print("All agent graph cache cleared.")
-
-# Example usage
-if __name__ == '__main__':
-    # Ensure cache directory exists for testing
-    os.makedirs(settings.LEARNING_EXAMPLES_PATH, exist_ok=True) # Using LEARNING_EXAMPLES_PATH as temp dir
-    
-    cache = AgentGraphCache(cache_dir=settings.LEARNING_EXAMPLES_PATH, ttl_minutes=1) # 1 minute TTL for testing
-
-    test_key = "my_agent_graph_key"
-    test_graph_data = {"nodes": ["A", "B"], "edges": [("A", "B")]}
-
-    # Test set
-    cache.set(test_key, test_graph_data)
-    
-    # Test get (should hit)
-    retrieved = cache.get(test_key)
-    print(f"Retrieved (should hit): {retrieved}")
-    assert retrieved == test_graph_data
-
-    # Test get (after expiration - manual simulation)
-    print("Waiting for cache to expire (1 minute)...")
-    import time
-    time.sleep(65) # Wait a bit more than 1 minute
-
-    retrieved_expired = cache.get(test_key)
-    print(f"Retrieved (should miss after expiration): {retrieved_expired}")
-    assert retrieved_expired is None
-
-    # Test clear
-    cache.set(test_key, test_graph_data)
-    cache.clear(test_key)
-    assert cache.get(test_key) is None
-
-    print("\nAgentGraphCache tests passed!")
+            logger.info("All agent graph cache cleared")
 

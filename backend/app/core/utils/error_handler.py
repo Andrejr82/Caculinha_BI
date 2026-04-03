@@ -373,36 +373,3 @@ class ParquetErrorHandler:
         return create_error_response(error, context, include_details=False)
 
 
-if __name__ == "__main__":
-    # Teste básico do error handler
-    logging.basicConfig(level=logging.INFO)
-
-    # Teste 1: Erro simples
-    try:
-        raise ValueError("Teste de erro")
-    except Exception as e:
-        error_ctx = handle_error(
-            e,
-            context={'function': 'test', 'param': 'value'}
-        )
-        print(f"\nMensagem para usuário: {error_ctx.user_message}")
-
-    # Teste 2: Estatísticas
-    stats = get_error_stats()
-    print(f"\nEstatísticas: {stats}")
-
-    # Teste 3: Decorador
-    @error_handler_decorator(
-        context_func=lambda x: {'param': x},
-        return_on_error={'success': False, 'data': []}
-    )
-    def test_function(param):
-        if param == 'error':
-            raise KeyError("Campo não encontrado")
-        return {'success': True, 'data': [param]}
-
-    result = test_function('error')
-    print(f"\nResultado com erro: {result}")
-
-    result = test_function('ok')
-    print(f"Resultado sem erro: {result}")

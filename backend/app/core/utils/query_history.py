@@ -2,8 +2,11 @@
 
 import json
 import os
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 class QueryHistory:
     """
@@ -14,7 +17,7 @@ class QueryHistory:
     def __init__(self, history_dir: str = "data/query_history"):
         self.history_dir = history_dir
         os.makedirs(self.history_dir, exist_ok=True)
-        print(f"QueryHistory initialized in {self.history_dir}")
+        logger.info("QueryHistory initialized in %s", self.history_dir)
 
     def _get_daily_file_path(self, date: Optional[datetime] = None) -> str:
         """Generates the file path for a given day."""
@@ -42,9 +45,9 @@ class QueryHistory:
         try:
             with open(file_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            print(f"Query added to history for user {user_id}.")
+            logger.debug("Query added to history for user %s", user_id)
         except OSError as e:
-            print(f"Error writing query history file {file_path}: {e}")
+            logger.warning("Error writing query history file %s: %s", file_path, e)
 
     def _summarize_response(self, response: Dict[str, Any]) -> str:
         """Creates a brief summary of the response for history logging."""
@@ -106,9 +109,9 @@ class QueryHistory:
                                         if len(history_records) >= limit:
                                             return history_records # Return early if limit reached
                             except json.JSONDecodeError:
-                                print(f"Warning: Corrupt JSON line in {filename}: {line.strip()}")
+                                logger.warning("Corrupt JSON line in %s", filename)
                 except OSError as e:
-                    print(f"Error reading history file {file_path}: {e}")
+                    logger.warning("Error reading history file %s: %s", file_path, e)
         
         return history_records[:limit]
 
@@ -128,51 +131,3 @@ class QueryHistory:
                     break
         return matching_records
 
-# Example usage
-if __name__ == '__main__':
-    from backend.app.config.settings import Settings
-    temp_settings = Settings()
-
-    # Ensure history directory exists for testing
-    os.makedirs(temp_settings.LEARNING_EXAMPLES_PATH, exist_ok=True) # Using LEARNING_EXAMPLES_PATH as temp history dir
-
-    history = QueryHistory(history_dir=temp_settings.LEARNING_EXAMPLES_PATH)
-
-    user1_id = "test_user_1"
-    user2_id = "test_user_2"
-
-    # Add some queries
-    history.add_query(user1_id, "Vendas totais do produto A?", {"type": "text", "text": "Total de vendas: 100"})
-    history.add_query(user1_id, "Gráfico de vendas por região?", {"type": "chart", "chart_spec": {"data": []}})
-    history.add_query(user2_id, "Qual o estoque atual?", {"type": "text", "text": "Estoque: 500"})
-    history.add_query(user1_id, "Top 5 produtos?", {"type": "code_result", "result": [{"prod": "X", "val": 50}]}
-)
-
-    print("\n--- Testing get_history ---")
-    all_history = history.get_history()
-    print(f"All history ({len(all_history)} records):")
-    for entry in all_history:
-        print(f"  [{entry['timestamp']}] User {entry['user_id']}: {entry['query']} -> {entry['response_summary']}")
-
-    user1_history = history.get_history(user_id=user1_id)
-    print(f"\nUser 1 history ({len(user1_history)} records):")
-    for entry in user1_history:
-        print(f"  [{entry['timestamp']}] User {entry['user_id']}: {entry['query']} -> {entry['response_summary']}")
-
-    print("\n--- Testing search_queries ---")
-    search_results = history.search_queries(keyword="vendas")
-    print(f"Search 'vendas' ({len(search_results)} records):")
-    for entry in search_results:
-        print(f"  [{entry['timestamp']}] User {entry['user_id']}: {entry['query']} -> {entry['response_summary']}")
-
-    search_user1_chart = history.search_queries(user_id=user1_id, keyword="gráfico")
-    print(f"\nSearch 'gráfico' for User 1 ({len(search_user1_chart)} records):")
-    for entry in search_user1_chart:
-        print(f"  [{entry['timestamp']}] User {entry['user_id']}: {entry['query']} -> {entry['response_summary']}")
-
-    # Clean up dummy files
-    for filename in os.listdir(temp_settings.LEARNING_EXAMPLES_PATH):
-        if filename.startswith("queries_"):
-            os.remove(os.path.join(temp_settings.LEARNING_EXAMPLES_PATH, filename))
-    print("\nCleaned up dummy history files.")
-    print("\nQueryHistory tests passed!")

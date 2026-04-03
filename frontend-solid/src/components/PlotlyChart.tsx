@@ -1,7 +1,6 @@
-// frontend-solid/src/components/PlotlyChart.tsx
-
-import { createEffect, onCleanup, Accessor, createSignal, Show, onMount } from 'solid-js';
+import { createEffect, onCleanup, Accessor, createSignal, Show } from 'solid-js';
 import { Maximize, Minimize, BarChart3 } from 'lucide-solid';
+import { getPlotlyForSpec, peekPlotly } from '@/lib/plotly';
 
 const CACULA_CHART_COLORS = [
   '#8B7355', '#C9A961', '#6B7A5A', '#A68968', '#CC8B3C',
@@ -18,26 +17,18 @@ interface PlotlyChartProps {
   expandedContent?: any; // JSX.Element
   naked?: boolean; // New prop for borderless mode
   deferLoad?: boolean; // Load Plotly only after explicit user action
+  loadWhenVisible?: boolean; // Load Plotly only when the chart enters the viewport
 }
-
-type PlotlyModule = typeof import('plotly.js-dist-min');
-let plotlyPromise: Promise<PlotlyModule> | null = null;
-
-function getPlotly(): Promise<PlotlyModule> {
-  if (!plotlyPromise) {
-    plotlyPromise = import('plotly.js-dist-min');
-  }
-  return plotlyPromise;
-}
-
 
 export const PlotlyChart = (props: PlotlyChartProps) => {
+  let containerRef: HTMLDivElement | undefined;
   let chartDiv: HTMLDivElement | undefined;
   let expandedChartDiv: HTMLDivElement | undefined;
 
   const chartId = props.chartId || `chart-${Math.random().toString(36).substr(2, 9)}`;
   const [isExpanded, setIsExpanded] = createSignal(false);
-  const [shouldLoad, setShouldLoad] = createSignal(!props.deferLoad);
+  const shouldObserveVisibility = () => !props.deferLoad && props.loadWhenVisible !== false;
+  const [shouldLoad, setShouldLoad] = createSignal(!props.deferLoad && !shouldObserveVisibility());
 
   const toggleExpand = () => {
     const newState = !isExpanded();
@@ -57,15 +48,32 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
     else window.removeEventListener('keydown', handleEsc);
   });
 
+  createEffect(() => {
+    if (shouldLoad() || !shouldObserveVisibility() || !containerRef) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin: '160px 0px',
+        threshold: 0.15,
+      },
+    );
+
+    observer.observe(containerRef);
+    onCleanup(() => observer.disconnect());
+  });
+
   onCleanup(() => {
     window.removeEventListener('keydown', handleEsc);
     document.body.style.overflow = '';
-    getPlotly()
-      .then((mod) => {
-        if (chartDiv) mod.purge(chartDiv);
-        if (expandedChartDiv) mod.purge(expandedChartDiv);
-      })
-      .catch(() => undefined);
+    const plotly = peekPlotly();
+    if (plotly && chartDiv) plotly.purge(chartDiv);
+    if (plotly && expandedChartDiv) plotly.purge(expandedChartDiv);
   });
 
   const renderPlot = async () => {
@@ -76,7 +84,7 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
     if (!targetDiv || !spec || Object.keys(spec).length === 0) return;
 
     try {
-      const plotly = await getPlotly();
+      const plotly = await getPlotlyForSpec(spec);
       const caculaLayout = {
         paper_bgcolor: isExpanded() ? '#FAFAFA' : '#FAFAFA',
         plot_bgcolor: '#FFFFFF',
@@ -144,6 +152,7 @@ export const PlotlyChart = (props: PlotlyChartProps) => {
   return (
     <>
       <div
+        ref={containerRef}
         class={`relative w-full overflow-hidden transition-shadow ${props.naked ? '' : 'rounded-xl border bg-card group shadow-sm hover:shadow-md'}`}
         style={{ height: props.height || '550px', 'min-height': '450px' }}
       >

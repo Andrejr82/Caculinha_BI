@@ -40,7 +40,7 @@ export default function Help() {
     },
     {
       pergunta: 'O que são os "AI Insights" no Dashboard?',
-      resposta: 'São análises proativas geradas pelo Gemini 3.0 Flash que cruzam dados de venda, estoque e crescimento. A IA identifica anomalias (como o TNT sem estoque na loja mas com 16 mil unidades no CD) e sugere planos de ação imediatos.'
+      resposta: 'São análises proativas geradas pela LLM operacional do sistema, baseada em Groq + Llama, que cruza dados de venda, estoque e crescimento. A IA identifica anomalias e sugere planos de ação imediatos.'
     },
     {
       pergunta: 'Posso exportar dados para Excel?',
@@ -52,7 +52,7 @@ export default function Help() {
     },
     {
       pergunta: 'Como o Chat BI entende meus dados?',
-      resposta: 'O Chat utiliza um adaptador do Gemini integrado ao nosso banco de dados Parquet. Ele "lê" as colunas de venda e estoque em tempo real e aplica regras de negócio específicas da Caçula para responder suas perguntas.'
+      resposta: 'O Chat utiliza um adaptador Groq + Llama integrado ao nosso banco de dados analítico e às ferramentas determinísticas do sistema. Ele consulta vendas, estoque, mercado e cálculos operacionais com regras de negócio específicas da Caçula.'
     },
     {
       pergunta: 'Administradores podem gerenciar usuários e segmentos?',
@@ -68,10 +68,10 @@ export default function Help() {
     {
       problema: 'Chat BI não está respondendo ou apresenta erro de modelo',
       solucao: [
-        'Verifique se o backend está ativo e a chave do Gemini configurada',
+        'Verifique se o backend está ativo e a chave da Groq configurada',
         'Confirme sua conexão com a internet',
         'Tente reformular a pergunta de forma mais clara',
-        'Verifique se o serviço do Google AI está disponível na sua região'
+        'Verifique se o serviço remoto da LLM está disponível e sem bloqueio de rede'
       ]
     },
     {
@@ -170,7 +170,7 @@ export default function Help() {
                   <Sparkles size={24} class="text-blue-500 mb-4" />
                   <h4 class="font-bold mb-2">IA Generativa</h4>
                   <p class="text-xs text-muted-foreground leading-relaxed">
-                    O Gemini analisa milhões de linhas de estoque para encontrar oportunidades que o olho humano não veria de forma rápida.
+                    A camada Groq + Llama analisa grandes volumes de dados para encontrar oportunidades e riscos operacionais com mais velocidade.
                   </p>
                 </div>
                 <div class="card p-6 border bg-green-50/50 dark:bg-green-900/10">
@@ -223,7 +223,7 @@ export default function Help() {
                 <input
                   type="text"
                   class="w-full pl-12 pr-4 py-4 bg-card border rounded-2xl focus:ring-2 focus:ring-primary outline-none shadow-sm"
-                  placeholder="Busque por termos como: ABC, Ruptura, Gemini, Transferência..."
+                  placeholder="Busque por termos como: ABC, Ruptura, LLM, Transferência..."
                   value={searchTerm()}
                   onInput={(e) => setSearchTerm(e.currentTarget.value)}
                 />

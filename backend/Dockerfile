@@ -27,6 +27,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Precarregar o modelo de embeddings no build para evitar fallback no primeiro request
+COPY . backend/
+ENV PYTHONPATH=/app \
+    RAG_EMBEDDING_LOCAL_FILES_ONLY=false
+RUN python backend/scripts/maintenance/preload_embedding_model.py --allow-download || true
+
 # -----------------------------------------------------------------------------
 # STAGE 2: Production
 # -----------------------------------------------------------------------------
@@ -44,13 +50,16 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copiar código da aplicação dentro do diretório backend
 COPY --chown=appuser:appuser . backend/
+COPY --from=builder /app/backend/data/runtime/embedding_models /app/backend/data/runtime/embedding_models
 
 # Variáveis de ambiente padrão
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     ENVIRONMENT=production \
     PORT=8000 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    RAG_EMBEDDING_LOCAL_FILES_ONLY=true \
+    RAG_EMBEDDING_PRELOAD_ON_STARTUP=true
 
 # Expor porta
 EXPOSE 8000

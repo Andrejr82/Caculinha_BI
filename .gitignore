@@ -15,7 +15,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -39,6 +39,11 @@ playwright-report/
 test-results/
 frontend-solid/playwright-report/
 frontend-solid/test-results/
+frontend-solid/package-lock.json
+.vite/
+backend/logs/
+backend/data/runtime/
+backend/scripts/maintenance/columns_list.txt
 .pnpm-debug.log*
 
 # ============ IDE ============
@@ -146,3 +151,38 @@ deprecated*
 *_output.txt
 *_results.txt
 test_*.html
+docs/sprint0_quality_gate_*.json
+
+# ============ HIGIENE DE REPOSITÓRIO ============
+# Ferramentas locais do agente
+.agent/
+CLAUDE.md
+
+# Logs e artefatos de execução local
+runtime_logs/
+frontend-solid/runtime_logs/
+
+# Segredos/configuração local
+backend/.env.supabase
+
+# Dados locais e índices gerados
+backend/data/
+backend/scripts/data/
+backend/scripts/backend/data/
+
+# Build frontend gerado localmente
+frontend-solid/dist/
+
+# Relatórios gerados localmente
+backend/reports/*.json
+
+# Sobras temporárias de documentação
+docs/__write_test.txt
+docs/_tmp_*
+
+# Tokens/sessões locais de testes manuais
+backend/tests/test_token.txt
+
+# Scripts operacionais locais (não versionar)
+PUSH_TO_GITHUB.bat
+scripts/github_checkup.ps1

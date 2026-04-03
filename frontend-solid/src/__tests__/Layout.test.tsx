@@ -74,17 +74,17 @@ describe('Layout Component', () => {
     expect(container.textContent).toContain('CAÇULINHA');
   });
 
-  it('shows a human breadcrumb label for playground lab', () => {
-    mockPathname = '/playground-lab';
+  it('shows a human breadcrumb label for playground ops', () => {
+    mockPathname = '/playground';
 
     const { container } = render(() => (
       <Layout>
-        <div>Lab Content</div>
+        <div>Playground Content</div>
       </Layout>
     ));
 
     const breadcrumb = container.querySelector('header .text-foreground.font-medium');
-    expect(breadcrumb?.textContent).toBe('Playground Lab');
+    expect(breadcrumb?.textContent).toBe('Playground Ops');
   });
 
   it('hides playground entries for non-admin users without playground access', async () => {
@@ -99,7 +99,6 @@ describe('Layout Component', () => {
 
     await waitFor(() => {
       expect(screen.queryAllByText('Playground')).toHaveLength(0);
-      expect(screen.queryAllByText('Playground Lab')).toHaveLength(0);
     });
   });
 });

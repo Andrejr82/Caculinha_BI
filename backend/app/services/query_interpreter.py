@@ -10,8 +10,9 @@ Estratégia:
 - Confidence gate (< 0.6 → pedir esclarecimento)
 """
 
-import re
 import logging
+import json
+import re
 from typing import Dict, Any, List, Optional, Literal
 from dataclasses import dataclass
 from enum import Enum
@@ -266,7 +267,7 @@ class QueryInterpreter:
                 intent_type=IntentType.COMPARACAO,
                 entities=entities,
                 aggregations=["sum", "avg"],
-                visualization=visualization or "bar",  # Comparação geralmente usa gráfico
+                visualization=visualization,
                 confidence=0.85,
                 raw_query=query
             )
@@ -297,107 +298,45 @@ class QueryInterpreter:
         Returns:
             QueryIntent classificado pela LLM
         """
-        # Prompt avançado com Chain-of-Thought e Few-Shot Learning (2026-01-16)
-        prompt = """Você é um especialista em classificação de queries de Business Intelligence.
+        prompt = f"""Você classifica queries de BI da Caçula.
 
-# 🧠 CHAIN-OF-THOUGHT (Raciocínio Passo a Passo)
+Responda APENAS com JSON válido.
+Não explique o raciocínio.
+Não use markdown.
 
-Antes de classificar, analise:
-1. **Intenção Principal:** O que o usuário quer? (vendas, estoque, ruptura, comparação, gráfico)
-2. **Entidades Específicas:** Há loja, produto, segmento ou período mencionados?
-3. **Visualização:** O usuário quer ver um gráfico, tabela ou apenas dados?
-4. **Confiança:** Quão certo estou da classificação? (0.0 = incerto, 1.0 = certeza total)
+Regras:
+- intent_type deve ser um de: vendas, estoque, ruptura, comparacao, grafico, chat
+- entities deve conter apenas chaves úteis: une, unes, segmento, produto, periodo
+- visualization deve ser uma de: bar, line, table, auto, null
+- confidence deve ser número entre 0 e 1
+- Use "chat" quando a pergunta for sobre o sistema, ajuda geral ou não depender de dados operacionais
 
----
+Exemplos:
+{{"query":"Como estão as vendas da loja 1685?","intent_type":"vendas","entities":{{"une":1685}},"confidence":0.95,"visualization":null}}
+{{"query":"Mostre um gráfico de rupturas","intent_type":"ruptura","entities":{{}},"confidence":0.90,"visualization":"auto"}}
+{{"query":"Compare vendas das lojas 1685 e 2365","intent_type":"comparacao","entities":{{"unes":[1685,2365]}},"confidence":0.92,"visualization":"bar"}}
+{{"query":"Quanto tem em estoque de tecidos?","intent_type":"estoque","entities":{{"segmento":"TECIDOS"}},"confidence":0.88,"visualization":null}}
+{{"query":"Quais colunas você tem no banco?","intent_type":"chat","entities":{{}},"confidence":0.98,"visualization":null}}
 
-# [TIP] EXEMPLOS (FEW-SHOT LEARNING)
-
-**Exemplo 1:**
-Query: "Como estão as vendas da loja 1685?"
-Raciocínio:
-- Intenção: VENDAS (palavra-chave clara)
-- Entidades: UNE=1685 (loja específica)
-- Visualização: Não solicitada explicitamente
-- Confiança: 0.95 (muito claro)
-Resposta: {"intent_type": "vendas", "confidence": 0.95, "visualization": null}
-
-**Exemplo 2:**
-Query: "Mostre um gráfico de rupturas"
-Raciocínio:
-- Intenção: RUPTURA (palavra-chave "rupturas")
-- Entidades: Nenhuma específica (análise geral)
-- Visualização: "gráfico" solicitado explicitamente
-- Confiança: 0.90 (claro, mas sem entidades)
-Resposta: {"intent_type": "ruptura", "confidence": 0.90, "visualization": "auto"}
-
-**Exemplo 3:**
-Query: "Compare vendas das lojas 1685 e 2365"
-Raciocínio:
-- Intenção: COMPARACAO (palavra-chave "compare")
-- Entidades: UNEs=1685,2365 (múltiplas lojas)
-- Visualização: Implícita (comparação geralmente usa gráfico)
-- Confiança: 0.92 (muito claro)
-Resposta: {"intent_type": "comparacao", "confidence": 0.92, "visualization": "bar"}
-
-**Exemplo 4:**
-Query: "Quanto tem em estoque de tecidos?"
-Raciocínio:
-- Intenção: ESTOQUE (palavra-chave "estoque")
-- Entidades: Segmento=TECIDOS
-- Visualização: Não solicitada
-- Confiança: 0.88 (claro)
-Resposta: {"intent_type": "estoque", "confidence": 0.88, "visualization": null}
-
-**Exemplo 5:**
-Query: "Gere um gráfico de vendas por categoria"
-Raciocínio:
-- Intenção: GRAFICO (foco principal é visualização)
-- Entidades: Agrupamento por categoria
-- Visualização: "gráfico" explícito
-- Confiança: 0.95 (muito claro)
-Resposta: {"intent_type": "grafico", "confidence": 0.95, "visualization": "auto"}
-
-**Exemplo 6:**
-Query: "Quais colunas você tem no banco?"
-Raciocínio:
-- Intenção: CHAT (pergunta sobre o sistema/conhecimento, não busca de dados)
-- Entidades: Nenhuma direta
-- Visualização: Null
-- Confiança: 0.98
-Resposta: {"intent_type": "chat", "confidence": 0.98, "visualization": null}
-
----
-
-# [INFO] TAREFA
-
-Query do usuário: "{query}"
-
-**Seu raciocínio (pense em voz alta):**
-1. Intenção:
-2. Entidades:
-3. Visualização:
-4. Confiança:
-
-**Resposta (APENAS JSON válido):**
-{{
-  "intent_type": "vendas|estoque|ruptura|comparacao|grafico|chat",
-  "entities": {{ "une": 1234, "segmento": "TEXTO", "produto": 123, "periodo": "30d" }},
-  "confidence": 0.0-1.0,
-  "visualization": "bar|line|table|auto|null"
-}}
+Query do usuário: {json.dumps(query, ensure_ascii=False)}
 
 JSON:"""
         
         try:
-            # Usar get_completion (sync) compatível com SmartLLM
             messages = [{"role": "user", "content": prompt}]
-            # SmartLLM.get_completion espera messages e tools (opcional)
-            llm_result = self.llm_adapter.get_completion(messages)
-            
-            if "error" in llm_result:
-                raise Exception(llm_result["error"])
-                
-            response = llm_result.get("content", "")
+            if hasattr(self.llm_adapter, "generate_with_history"):
+                response = self.llm_adapter.generate_with_history(
+                    messages,
+                    task_type="intent_classification",
+                    json_mode=True,
+                    response_format={"type": "json_object"},
+                )
+            else:
+                llm_result = self.llm_adapter.get_completion(messages)
+                if "error" in llm_result:
+                    raise Exception(llm_result["error"])
+                response = llm_result.get("content", "")
+
             result = self._parse_llm_response(response)
             
             # Extrair entidades (priorizando LLM para flexibilidade)
@@ -454,15 +393,16 @@ JSON:"""
         entities = {}
         query_lower = query.lower()
         
-        # UNE (loja) - padrões: "loja 35", "une 520", "loja 1685" (1-4 dígitos)
-        une_match = re.search(r'\b(?:loja|une|unidade)\s+(\d{1,4})\b', query_lower)
+        # UNE (loja) - aceita códigos numéricos e textuais ("une 520", "loja 1685", "une scr")
+        une_match = re.search(r'\b(?:loja|une|unidade)\s+([a-z0-9][a-z0-9_-]{0,11})\b', query_lower)
         if une_match:
-            entities["une"] = int(une_match.group(1))
+            une_value = une_match.group(1)
+            entities["une"] = int(une_value) if une_value.isdigit() else une_value.upper()
         
         # Múltiplas UNEs para comparação (ex: "lojas 35 e 520")
-        unes_match = re.findall(r'\b(?:loja|une|unidade)\s+(\d{1,4})\b', query_lower)
+        unes_match = re.findall(r'\b(?:loja|une|unidade)\s+([a-z0-9][a-z0-9_-]{0,11})\b', query_lower)
         if len(unes_match) > 1:
-            entities["unes"] = [int(u) for u in unes_match]
+            entities["unes"] = [int(u) if str(u).isdigit() else str(u).upper() for u in unes_match]
         
         # Segmento
         segmentos = ["tecidos", "aviamentos", "armarinho", "papelaria"]
@@ -511,8 +451,6 @@ JSON:"""
         Returns:
             Dicionário com intent_type e confidence
         """
-        import json
-        
         # Tentar extrair JSON da resposta (Robustez: 1. Markdown, 2. Raw JSON)
         try:
             # Estratégia 1: Extrair de bloco de código Markdown ```json ... ```

@@ -1,7 +1,6 @@
 
 import os
 import logging
-import json
 from typing import List, Dict, Any, Optional
 from groq import Groq
 from backend.app.core.llm_base import BaseLLMAdapter
@@ -39,26 +38,26 @@ class GroqLLMAdapter(BaseLLMAdapter):
             chat=True,
             tools=True,
             streaming=False,
-            json_mode=False,
+            json_mode=True,
         )
 
-    def get_completion(
-        self, 
-        messages: List[Dict[str, str]], 
-        tools: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    def _create_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        *,
+        json_mode: bool = False,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Obtém completion da Groq API.
-        Compatível com o formato OpenAI/Gemini do projeto.
-        """
+        working_messages = [dict(message) for message in messages]
         try:
             # Injetar instrução de sistema se fornecida
             if self.system_instruction:
                 # Se a primeira mensagem já for system, atualiza, senão insere
-                if messages and messages[0].get("role") == "system":
-                    messages[0]["content"] = self.system_instruction
+                if working_messages and working_messages[0].get("role") == "system":
+                    working_messages[0]["content"] = self.system_instruction
                 else:
-                    messages.insert(0, {"role": "system", "content": self.system_instruction})
+                    working_messages.insert(0, {"role": "system", "content": self.system_instruction})
 
             # Converter ferramentas para formato Groq (OpenAI-like)
             groq_tools = None
@@ -72,7 +71,7 @@ class GroqLLMAdapter(BaseLLMAdapter):
             # Prepare arguments
             kwargs = {
                 "model": self.model_name,
-                "messages": messages,
+                "messages": working_messages,
                 "temperature": 0.1,
                 "max_tokens": self.max_output_tokens,
                 "top_p": 1,
@@ -82,9 +81,13 @@ class GroqLLMAdapter(BaseLLMAdapter):
             if groq_tools:
                 kwargs["tools"] = groq_tools
                 kwargs["tool_choice"] = tool_choice
+            elif response_format:
+                kwargs["response_format"] = response_format
+            elif json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
 
             # Normalize messages (Gemini -> OpenAI format)
-            normalized_messages = self._normalize_messages(messages)
+            normalized_messages = self._normalize_messages(working_messages)
             kwargs["messages"] = normalized_messages
 
             response = self.client.chat.completions.create(**kwargs)
@@ -110,6 +113,39 @@ class GroqLLMAdapter(BaseLLMAdapter):
         except Exception as e:
             self.logger.error(f"[ERR] Erro ao chamar Groq: {e}", exc_info=True)
             return {"error": str(e)}
+
+    def get_completion(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Obtém completion da Groq API.
+        Compatível com o formato OpenAI/Groq do projeto.
+        """
+        return self._create_completion(messages, tools=tools, json_mode=False)
+
+    def generate_with_history(
+        self,
+        messages: List[Dict[str, Any]],
+        system_instruction: Optional[str] = None,
+        **kwargs,
+    ) -> str:
+        previous_instruction = self.system_instruction
+        if system_instruction:
+            self.system_instruction = system_instruction
+        try:
+            result = self._create_completion(
+                messages,
+                tools=kwargs.get("tools"),
+                json_mode=bool(kwargs.get("json_mode", False)),
+                response_format=kwargs.get("response_format"),
+            )
+            if "error" in result:
+                raise ValueError(result["error"])
+            return str(result.get("content", ""))
+        finally:
+            self.system_instruction = previous_instruction
 
     def _normalize_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

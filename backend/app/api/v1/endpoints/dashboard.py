@@ -3,9 +3,9 @@ Dashboard Endpoints - API para Dashboards Forecasting, Executive e Suppliers
 Conecta diretamente com admmat.parquet para fornecer dados em tempo real.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 import duckdb
 import logging
 from pathlib import Path
@@ -111,6 +111,31 @@ class Supplier(BaseModel):
     custo_medio: float
     produtos_fornecidos: int
     ultima_entrega: str
+
+
+def _build_segment_scope_clause(allowed_segments: Optional[List[str]]) -> str:
+    """Build a SQL WHERE clause for RLS segment scoping."""
+    if not allowed_segments or "*" in allowed_segments:
+        return ""
+
+    safe_segments = [segment.replace("'", "''").strip() for segment in allowed_segments if segment]
+    if not safe_segments:
+        return ""
+
+    sql_in = ",".join([f"'{segment}'" for segment in safe_segments])
+    return f"WHERE TRIM(COALESCE(NOMESEGMENTO, '')) IN ({sql_in})"
+
+
+def _merge_where_clause(base_where: str, extra_filters: List[str]) -> str:
+    """Append additional predicates to an existing WHERE clause."""
+    predicates = [item.strip() for item in extra_filters if item and item.strip()]
+    if not predicates:
+        return base_where
+
+    if base_where:
+        return f"{base_where} AND " + " AND ".join(predicates)
+
+    return "WHERE " + " AND ".join(predicates)
 
 
 # TOOLS ENDPOINTS (para Forecasting)
@@ -311,6 +336,273 @@ async def get_executive_kpis(current_user: User = Depends(get_current_active_use
             "produtos_ativos": 0,
             "produtos_variacao": 0
         }
+
+
+@router.get("/master-overview")
+async def get_master_overview(
+    segmento: Optional[str] = Query(None),
+    une: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Retorna um payload unificado para o dashboard mestre BI."""
+    con = None
+    try:
+        set_current_user_context(current_user)
+        from backend.app.core.context import get_current_user_segments
+
+        parquet_path = get_parquet_path()
+        allowed = get_current_user_segments()
+        scope_where = _build_segment_scope_clause(allowed)
+        extra_filters: List[str] = []
+        if segmento:
+            safe_segmento = segmento.replace("'", "''")
+            extra_filters.append(f"TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) = '{safe_segmento}'")
+        if une:
+            safe_une = une.replace("'", "''")
+            extra_filters.append(f"CAST(TRY_CAST(UNE AS INTEGER) AS VARCHAR) = '{safe_une}'")
+
+        effective_where = _merge_where_clause(scope_where, extra_filters)
+        con = duckdb.connect()
+
+        summary_query = f"""
+            WITH base AS (
+                SELECT
+                    COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0) AS receita_30d,
+                    CASE
+                        WHEN COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0) > 0 THEN
+                            ((COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0) - COALESCE(TRY_CAST(ULTIMA_ENTRADA_CUSTO_CD AS DOUBLE), 0))
+                            / NULLIF(COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0), 0)) * 100
+                        ELSE 0
+                    END AS margem_pct,
+                    COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) AS venda_30dd,
+                    COALESCE(TRY_CAST(ESTOQUE_UNE AS DOUBLE), 0) AS estoque_une,
+                    COALESCE(TRY_CAST(ESTOQUE_CD AS DOUBLE), 0) AS estoque_cd,
+                    COALESCE(TRY_CAST(ESTOQUE_LV AS DOUBLE), 0) AS estoque_lv,
+                    TRY_CAST(UNE AS INTEGER) AS une,
+                    TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) AS segmento,
+                    CAST(PRODUTO AS VARCHAR) AS produto
+                FROM read_parquet('{parquet_path}')
+                {effective_where}
+            )
+            SELECT
+                ROUND(COALESCE(SUM(receita_30d), 0) / 1000000.0, 2) AS receita_total_mi,
+                ROUND(COALESCE(AVG(margem_pct), 0), 1) AS margem_media,
+                COUNT(DISTINCT CASE WHEN estoque_lv > 0 AND estoque_une / NULLIF(estoque_lv, 0) <= 0.5 THEN produto END) AS cobertura_critica_skus,
+                COUNT(DISTINCT CASE WHEN venda_30dd > 0 AND estoque_une <= 0 THEN produto END) AS ruptura_vendendo_skus,
+                COUNT(DISTINCT CASE WHEN estoque_cd > 0 AND estoque_une <= 0 AND venda_30dd > 0 THEN produto END) AS transferiveis_skus,
+                ROUND(COALESCE(SUM(CASE WHEN estoque_une <= 0 THEN receita_30d ELSE 0 END), 0) / 1000000.0, 2) AS receita_em_risco_mi,
+                ROUND(COALESCE(SUM(CASE WHEN estoque_une > 0 THEN receita_30d ELSE 0 END), 0) / 1000000.0, 2) AS receita_capturada_mi,
+                ROUND(COALESCE(SUM(CASE WHEN estoque_lv > 0 AND estoque_une / NULLIF(estoque_lv, 0) <= 0.5 THEN receita_30d ELSE 0 END), 0) / 1000000.0, 2) AS receita_cobertura_critica_mi,
+                COUNT(DISTINCT une) AS total_unes,
+                COUNT(DISTINCT segmento) AS total_segmentos
+            FROM base
+        """
+        summary_result = con.execute(summary_query).fetchone()
+
+        trend_query = f"""
+            SELECT
+                ROUND(COALESCE(SUM(COALESCE(TRY_CAST(MES_03 AS DOUBLE), 0)), 0) / 1000000.0, 2) AS mes_03,
+                ROUND(COALESCE(SUM(COALESCE(TRY_CAST(MES_02 AS DOUBLE), 0)), 0) / 1000000.0, 2) AS mes_02,
+                ROUND(COALESCE(SUM(COALESCE(TRY_CAST(MES_01 AS DOUBLE), 0)), 0) / 1000000.0, 2) AS mes_01,
+                ROUND(COALESCE(SUM(COALESCE(TRY_CAST(MES_PARCIAL AS DOUBLE), 0)), 0) / 1000000.0, 2) AS mes_parcial
+            FROM read_parquet('{parquet_path}')
+            {effective_where}
+        """
+        trend_result = con.execute(trend_query).fetchone()
+
+        abc_query = f"""
+            WITH sku AS (
+                SELECT
+                    CAST(PRODUTO AS VARCHAR) AS produto,
+                    SUM(COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0)) AS receita
+                FROM read_parquet('{parquet_path}')
+                {effective_where}
+                GROUP BY 1
+            ),
+            ranked AS (
+                SELECT
+                    produto,
+                    receita,
+                    ROW_NUMBER() OVER (ORDER BY receita DESC) AS rn,
+                    SUM(receita) OVER (ORDER BY receita DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                        / NULLIF(SUM(receita) OVER (), 0) AS cumulative_share
+                FROM sku
+            )
+            SELECT
+                ROUND(MAX(CASE WHEN rn = 10 THEN cumulative_share END) * 100, 1) AS top_10_pct,
+                ROUND(MAX(CASE WHEN rn = 50 THEN cumulative_share END) * 100, 1) AS top_50_pct,
+                ROUND(MAX(CASE WHEN rn = 100 THEN cumulative_share END) * 100, 1) AS top_100_pct,
+                ROUND(MAX(CASE WHEN rn = 500 THEN cumulative_share END) * 100, 1) AS top_500_pct
+            FROM ranked
+        """
+        abc_result = con.execute(abc_query).fetchone()
+
+        segment_query = f"""
+            WITH base AS (
+                SELECT
+                    TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) AS segmento,
+                    COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0) AS receita,
+                    COALESCE(TRY_CAST(ESTOQUE_UNE AS DOUBLE), 0) AS estoque_une
+                FROM read_parquet('{parquet_path}')
+                {effective_where}
+            ),
+            agg AS (
+                SELECT
+                    segmento,
+                    SUM(receita) AS receita_total,
+                    COUNT(*) AS linhas,
+                    SUM(CASE WHEN estoque_une <= 0 THEN 1 ELSE 0 END) AS rupturas
+                FROM base
+                GROUP BY 1
+            )
+            SELECT
+                segmento,
+                ROUND((receita_total / NULLIF(SUM(receita_total) OVER (), 0)) * 100, 1) AS share_receita,
+                ROUND((rupturas * 100.0) / NULLIF(linhas, 0), 1) AS ruptura_pct
+            FROM agg
+            ORDER BY receita_total DESC
+        """
+        segment_rows = con.execute(segment_query).fetchall()
+
+        top_unes_query = f"""
+            SELECT
+                CAST(TRY_CAST(UNE AS INTEGER) AS VARCHAR) AS une,
+                SUM(COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0)) AS receita
+            FROM read_parquet('{parquet_path}')
+            {effective_where}
+            GROUP BY 1
+            ORDER BY receita DESC
+        """
+        heatmap_unes = [str(row[0]) for row in con.execute(top_unes_query).fetchall() if row[0] is not None]
+
+        top_segments_query = f"""
+            SELECT
+                TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) AS segmento,
+                SUM(COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0)) AS receita
+            FROM read_parquet('{parquet_path}')
+            {effective_where}
+            GROUP BY 1
+            ORDER BY receita DESC
+        """
+        heatmap_segments = [str(row[0]) for row in con.execute(top_segments_query).fetchall() if row[0]]
+
+        heatmap_cells: List[Dict[str, Any]] = []
+        if heatmap_unes and heatmap_segments:
+            safe_unes = [une.replace("'", "''") for une in heatmap_unes]
+            safe_heatmap_segments = [segment.replace("'", "''") for segment in heatmap_segments]
+            unes_sql = ",".join([f"'{une}'" for une in safe_unes])
+            segments_sql = ",".join([f"'{segment}'" for segment in safe_heatmap_segments])
+            heatmap_query = f"""
+                SELECT
+                    CAST(TRY_CAST(UNE AS INTEGER) AS VARCHAR) AS une,
+                    TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) AS segmento,
+                    ROUND(SUM(COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0)) / 1000000.0, 2) AS receita_mi,
+                    ROUND(
+                        100.0 * SUM(CASE WHEN COALESCE(TRY_CAST(ESTOQUE_UNE AS DOUBLE), 0) <= 0 THEN 1 ELSE 0 END)
+                        / NULLIF(COUNT(*), 0),
+                        1
+                    ) AS ruptura_pct
+                FROM read_parquet('{parquet_path}')
+                {_merge_where_clause(
+                    effective_where,
+                    [
+                        f"CAST(TRY_CAST(UNE AS INTEGER) AS VARCHAR) IN ({unes_sql})",
+                        f"TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) IN ({segments_sql})",
+                    ],
+                )}
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+            """
+            heatmap_rows = con.execute(heatmap_query).fetchall()
+            heatmap_cells = [
+                {
+                    "une": str(row[0]),
+                    "segmento": str(row[1]),
+                    "receita_mi": float(row[2] or 0),
+                    "ruptura_pct": float(row[3] or 0),
+                }
+                for row in heatmap_rows
+            ]
+
+        opportunities_query = f"""
+            WITH combos AS (
+                SELECT
+                    CAST(TRY_CAST(UNE AS INTEGER) AS VARCHAR) AS une,
+                    TRIM(COALESCE(NOMESEGMENTO, 'Sem segmento')) AS segmento,
+                    SUM(COALESCE(TRY_CAST(VENDA_30DD AS DOUBLE), 0) * COALESCE(TRY_CAST(LIQUIDO_38 AS DOUBLE), 0)) AS receita,
+                    100.0 * SUM(CASE WHEN COALESCE(TRY_CAST(ESTOQUE_UNE AS DOUBLE), 0) <= 0 THEN 1 ELSE 0 END)
+                        / NULLIF(COUNT(*), 0) AS ruptura_pct
+                FROM read_parquet('{parquet_path}')
+                {effective_where}
+                GROUP BY 1, 2
+            )
+            SELECT
+                une,
+                segmento,
+                ROUND(receita / 1000000.0, 2) AS receita_mi,
+                ROUND(ruptura_pct, 1) AS ruptura_pct
+            FROM combos
+            WHERE receita > 200000
+            ORDER BY (receita / 1000000.0) * (ruptura_pct / 100.0) DESC
+            LIMIT 6
+        """
+        opportunity_rows = con.execute(opportunities_query).fetchall()
+
+        return {
+            "summary": {
+                "revenue_30d_mi": float(summary_result[0] or 0),
+                "margin_avg_pct": float(summary_result[1] or 0),
+                "critical_coverage_skus": int(summary_result[2] or 0),
+                "selling_rupture_skus": int(summary_result[3] or 0),
+                "transferable_skus": int(summary_result[4] or 0),
+                "revenue_at_risk_mi": float(summary_result[5] or 0),
+                "captured_revenue_mi": float(summary_result[6] or 0),
+                "critical_coverage_revenue_mi": float(summary_result[7] or 0),
+                "total_unes": int(summary_result[8] or 0),
+                "total_segments": int(summary_result[9] or 0),
+                "abc_top_100_share_pct": float(abc_result[2] or 0) if abc_result else 0.0,
+            },
+            "period_trend": [
+                {"label": "Mês -3", "value_mi": float(trend_result[0] or 0), "is_partial": False},
+                {"label": "Mês -2", "value_mi": float(trend_result[1] or 0), "is_partial": False},
+                {"label": "Último mês fechado", "value_mi": float(trend_result[2] or 0), "is_partial": False},
+                {"label": "Mês atual parcial", "value_mi": float(trend_result[3] or 0), "is_partial": True},
+            ],
+            "segment_share": [
+                {
+                    "segmento": str(row[0]),
+                    "share_receita_pct": float(row[1] or 0),
+                    "ruptura_pct": float(row[2] or 0),
+                }
+                for row in segment_rows
+            ],
+            "heatmap": {
+                "unes": heatmap_unes,
+                "segments": heatmap_segments,
+                "cells": heatmap_cells,
+            },
+            "opportunities": [
+                {
+                    "une": str(row[0]),
+                    "segmento": str(row[1]),
+                    "revenue_mi": float(row[2] or 0),
+                    "ruptura_pct": float(row[3] or 0),
+                }
+                for row in opportunity_rows
+            ],
+            "abc": {
+                "top_10_pct": float(abc_result[0] or 0) if abc_result else 0.0,
+                "top_50_pct": float(abc_result[1] or 0) if abc_result else 0.0,
+                "top_100_pct": float(abc_result[2] or 0) if abc_result else 0.0,
+                "top_500_pct": float(abc_result[3] or 0) if abc_result else 0.0,
+            },
+        }
+    except Exception as e:
+        logger.error(f"Erro ao buscar visão mestre do dashboard: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao montar dashboard mestre")
+    finally:
+        if con is not None:
+            con.close()
 
 
 @router.get("/alerts/critical")

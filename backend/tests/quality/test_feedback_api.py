@@ -11,7 +11,7 @@ def client():
 @pytest.mark.asyncio
 async def test_submit_feedback_success(client):
     # Mock do pipeline factory e memory agent
-    with patch("backend.api.v1.endpoints.feedback.get_pipeline_factory") as mock_factory:
+    with patch("backend.app.api.v1.endpoints.feedback.get_pipeline_factory") as mock_factory:
         mock_memory = AsyncMock()
         mock_memory.save_feedback.return_value = True
         mock_factory.return_value.get_memory_agent.return_value = mock_memory

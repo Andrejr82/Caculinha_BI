@@ -21,7 +21,6 @@ from backend.app.infrastructure.database.models import User
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
-ADMIN_EMAIL = "user@agentbi.com"
 
 # Ephemeral stream token store (in-memory, short-lived, limited reuse)
 _STREAM_TOKENS: dict[str, tuple[str, float, int]] = {}
@@ -81,9 +80,7 @@ async def get_token_from_header_or_query(
         return header_token
 
     sse_query_allowlist = {
-        "/api/v1/code-chat/stream",
         "/api/v1/playground/stream",
-        "/api/v2/code-chat/stream",
         "/api/v2/playground/stream",
     }
     chat_stream_paths = {"/api/v1/chat/stream", "/api/v2/chat/stream"}
@@ -158,9 +155,7 @@ async def get_current_user(
         metadata_role = str(user_metadata.get("role", "")).strip().lower()
         email = payload.get("email") or user_metadata.get("email")
         username = payload.get("username") or payload.get("email", "user").split('@')[0]
-        if (email or "").lower() == ADMIN_EMAIL or (username or "").lower() == ADMIN_EMAIL:
-            role = "admin"
-        elif token_role and token_role not in {"authenticated", "anon"}:
+        if token_role and token_role not in {"authenticated", "anon"}:
             role = token_role
         elif metadata_role:
             role = metadata_role
@@ -179,16 +174,8 @@ async def get_current_user(
         )
 
     except Exception as e:
-        import traceback
-        try:
-            with open("auth_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"\n[{datetime.now()}] Auth Error: {str(e)}\n")
-                f.write(f"Token (part): {token[:10] if token else 'None'}...\n")
-                f.write(f"Traceback: {traceback.format_exc()}\n")
-        except:
-            pass # Fail silently if logging fails
-            
-        logger.error(f"Erro de Autenticação por Token: {e}")
+        token_preview = credentials.credentials[:10] if credentials.credentials else "None"
+        logger.exception("Erro de autenticacao por token. token_prefix=%s", token_preview)
         raise HTTPException(status_code=401, detail="Não autorizado")
 
 async def get_current_user_from_token(token: str) -> User:
@@ -217,17 +204,6 @@ async def get_current_user_from_token(token: str) -> User:
                 parquet_path = str(p)
                 break
 
-        # Fallback Admin Emergencial
-        if payload.get("username") == "admin":
-             return User(
-                id=uuid.UUID(str(user_id)),
-                username="admin",
-                email=payload.get("email"),
-                role="admin",
-                allowed_segments=json.dumps(["*"]),
-                is_active=True
-            )
-
         # Check parquet existence before querying
         res = None
         if Path(parquet_path).exists():
@@ -249,9 +225,7 @@ async def get_current_user_from_token(token: str) -> User:
         metadata_role = str(user_metadata.get("role", "")).strip().lower()
         email = payload.get("email") or user_metadata.get("email")
         username = payload.get("username") or payload.get("email", "user").split('@')[0]
-        if (email or "").lower() == ADMIN_EMAIL or (username or "").lower() == ADMIN_EMAIL:
-            role = "admin"
-        elif token_role and token_role not in {"authenticated", "anon"}:
+        if token_role and token_role not in {"authenticated", "anon"}:
             role = token_role
         elif metadata_role:
             role = metadata_role
@@ -297,15 +271,10 @@ async def require_admin(
     current_user: Annotated[User, Depends(get_current_active_user)]
 ) -> User:
     """
-    Require admin access: role=admin OR email=user@agentbi.com
+    Require admin access based on the authenticated role.
     Returns 403 Forbidden for non-admin users.
     """
-    is_admin = (
-        current_user.role == "admin" or 
-        current_user.username == ADMIN_EMAIL or
-        getattr(current_user, 'email', '') == ADMIN_EMAIL
-    )
-    if not is_admin:
+    if current_user.role != "admin":
         logger.warning(f"Admin access denied for user: {current_user.username}")
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
     return current_user

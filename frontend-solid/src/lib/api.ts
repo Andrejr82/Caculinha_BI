@@ -311,6 +311,8 @@ export const dashboardApi = {
   getTopSales: () => api.get('/dashboard/top-vendidos'),
   getTopMargin: () => api.get('/dashboard/top-margin'),
   getExecutiveKpis: () => api.get('/dashboard/metrics/executive-kpis'),
+  getMasterOverview: (params?: { segmento?: string; une?: string }) =>
+    api.get('/dashboard/master-overview', { params }),
   getCriticalAlerts: () => api.get('/dashboard/alerts/critical'),
 
   // Tools
@@ -336,6 +338,23 @@ export const codeChatApi = {
 export const playgroundApi = {
   getInfo: () => api.get('/playground/info'),
   getMetrics: () => api.get('/playground/metrics'),
+  guidedChat: (payload: {
+    query: string;
+    session_id?: string;
+    chat_mode?: string;
+    playbook_context?: Record<string, any>;
+    guided_action?: Record<string, any>;
+  }) => api.post('/playground/chat', {
+    // Mapeia o contrato 'guided' para o schema PlaygroundChatRequest do backend
+    message: payload.query,
+    operation_mode: payload.chat_mode,
+    playbook_context: payload.playbook_context,
+    guided_action: payload.guided_action,
+    temperature: 0.4,
+    max_tokens: 2048,
+    json_mode: false,
+    stream: false,
+  }, { timeout: 60000 }),
   chat: (payload: {
     message: string;
     system_instruction?: string;
@@ -345,7 +364,10 @@ export const playgroundApi = {
     json_mode?: boolean;
     stream?: boolean;
     model?: string;
-  }) => api.post('/playground/chat', payload),
+    operation_mode?: string;
+    playbook_context?: Record<string, any>;
+    guided_action?: Record<string, any>;
+  }) => api.post('/playground/chat', payload, { timeout: 90000 }),
   submitOpsApproval: (payload: {
     operation_mode: string;
     output_type: string;

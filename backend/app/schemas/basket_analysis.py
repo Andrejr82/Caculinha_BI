@@ -13,6 +13,7 @@ class BasketAnalysisRequest(BaseModel):
     segment: str | None = None
     category: str | None = None
     target_product: str | None = None
+    target_terms: list[str] | None = None
     min_support: float = Field(default=0.01, ge=0.0001, le=1.0)
     min_confidence: float = Field(default=0.2, ge=0.0, le=1.0)
     min_lift: float = Field(default=1.0, ge=0.0, le=100.0)

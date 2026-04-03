@@ -31,12 +31,16 @@ if sys.platform == 'win32':
 
 # Configurações
 PARQUET_FILE = Path(__file__).parent.parent / "data" / "parquet" / "admmat.parquet"
-SERVER = r"FAMILIA\SQLJR,1433"
-DATABASE = "Projeto_Caculinha"
-USERNAME = "AgenteVirtual"
-PASSWORD = "Cacula@2020"
-DRIVER = "ODBC Driver 17 for SQL Server"
+# Credenciais via variáveis de ambiente (defina DB_ALT_* antes de rodar)
+SERVER   = os.environ.get("DB_ALT_SERVER",   r"FAMILIA\SQLJR,1433")
+DATABASE = os.environ.get("DB_ALT_DATABASE", "Projeto_Caculinha")
+USERNAME = os.environ.get("DB_ALT_USER",     "AgenteVirtual")
+PASSWORD = os.environ.get("DB_ALT_PASSWORD", "")
+DRIVER   = "ODBC Driver 17 for SQL Server"
 TABLE_NAME = "[Projeto_Caculinha].[dbo].[admmatao]"
+
+if not PASSWORD:
+    raise SystemExit("Erro: defina DB_ALT_PASSWORD no ambiente antes de executar este script.")
 
 CONNECTION_STRING = (
     f"DRIVER={{{DRIVER}}};"
@@ -46,6 +50,7 @@ CONNECTION_STRING = (
     f"PWD={PASSWORD};"
     f"TrustServerCertificate=yes;"
 )
+
 
 def get_row_count(conn):
     """Obtém o número total de linhas na tabela para a barra de progresso."""

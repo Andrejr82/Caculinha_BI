@@ -85,7 +85,7 @@ class SessionManager:
 
             url = make_url(str(settings.DATABASE_URL))
             return pytds.connect(
-                server=url.host or "localhost",
+                dsn=url.host or "localhost",
                 port=int(url.port or 1433),
                 database=url.database,
                 user=url.username,

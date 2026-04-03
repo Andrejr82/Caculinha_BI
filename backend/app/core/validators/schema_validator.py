@@ -375,22 +375,3 @@ def validate_parquet_schema(parquet_path: str, catalog_path: Optional[str] = Non
     return validator.validate_parquet_file(parquet_path)
 
 
-if __name__ == "__main__":
-    # Teste básico do validador
-    logging.basicConfig(level=logging.INFO)
-
-    # Exemplo de uso
-    validator = SchemaValidator()
-
-    # Validar arquivo de exemplo
-    test_file = Path(__file__).parent.parent.parent / "data" / "parquet" / "produtos.parquet"
-    if test_file.exists():
-        is_valid, errors = validator.validate_parquet_file(str(test_file))
-        print(f"\nValidação de {test_file.name}:")
-        print(f"Válido: {is_valid}")
-        if errors:
-            print("Erros:")
-            for error in errors:
-                print(f"  - {error}")
-    else:
-        print(f"Arquivo de teste não encontrado: {test_file}")

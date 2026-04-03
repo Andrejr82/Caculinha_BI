@@ -13,6 +13,10 @@ async function openFreshChat(page: Parameters<typeof test>[0]['authenticatedPage
   return input;
 }
 
+const expectRenderedChart = async (page: Parameters<typeof test>[0]['authenticatedPage']) => {
+  await expect(page.locator('[data-testid="adaptive-chart-canvas"], svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+};
+
 test.describe('Chat Functionalities', () => {
   test('renders a table answer in browser real', async ({ authenticatedPage: page }) => {
     test.setTimeout(120000);
@@ -36,8 +40,30 @@ test.describe('Chat Functionalities', () => {
     await page.keyboard.press('Enter');
 
     await expect(page.locator('body')).toContainText('Painel de Vendas', { timeout: 60000 });
-    await expect(page.locator('svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+    await expectRenderedChart(page);
     await expect(page.locator('table').last()).toBeVisible({ timeout: 60000 });
+  });
+
+  test('renders an analytical sales report in chat without automation card', async ({ authenticatedPage: page }) => {
+    test.setTimeout(120000);
+
+    const input = await openFreshChat(page);
+
+    await input.fill('preciso de um relatório de vendas do segmento tecidos de todas as lojas');
+    await page.keyboard.press('Enter');
+
+    const latestAssistantText = page.locator('.markdown-body').last();
+    const renderedTable = page.locator('table').last();
+
+    await expect(latestAssistantText).toContainText('Resumo executivo', { timeout: 60000 });
+    await expect(latestAssistantText).toContainText('Tabela operacional', { timeout: 60000 });
+    await expect(latestAssistantText).toContainText('Próximas ações', { timeout: 60000 });
+    await expect(renderedTable).toBeVisible({ timeout: 60000 });
+    await expect(page.locator('body')).not.toContainText('Automação assistida', { timeout: 60000 });
+    await expect(page.locator('body')).not.toContainText(
+      'Posso preparar automações assistidas, mas esse recurso não está habilitado para o seu perfil no momento.',
+      { timeout: 60000 },
+    );
   });
 
   test('exports the conversation as JSON', async ({ authenticatedPage: page }) => {
@@ -48,7 +74,7 @@ test.describe('Chat Functionalities', () => {
     await input.fill('gere um grafico de vendas de todos os segmentos em todas as unes');
     await page.keyboard.press('Enter');
 
-    await expect(page.locator('svg.main-svg').first()).toBeVisible({ timeout: 60000 });
+    await expectRenderedChart(page);
 
     await page.getByRole('button', { name: /exportar/i }).click();
 

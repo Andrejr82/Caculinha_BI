@@ -12,6 +12,7 @@ Data: 2026-02-07
 """
 
 import os
+import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI):
     from backend.app.api.v1.endpoints.memory import set_memory_agent
     from backend.app.api.v1.endpoints.ingest import set_ingest_dependencies
     from backend.app.core.utils.session_manager import SessionManager
+    from backend.app.core.retrieval.embedding_backend import get_embedding_backend
     
     MetricsService()
     BillingService()
@@ -118,6 +120,18 @@ async def lifespan(app: FastAPI):
     app.state.ingest_vectorization_agent = vectorization_agent
     app.state.image_analysis_service = image_analysis_service
     app.state.vector_db_path = str(vector_db_path)
+
+    embedding_backend = get_embedding_backend()
+    embedding_ready = False
+    if settings.RAG_EMBEDDING_PRELOAD_ON_STARTUP:
+        embedding_ready = await asyncio.to_thread(embedding_backend.warm_up, allow_download=False)
+        logger.info(
+            "embedding_backend_preload",
+            model=settings.RAG_EMBEDDING_MODEL,
+            ready=embedding_ready,
+            local_files_only=settings.RAG_EMBEDDING_LOCAL_FILES_ONLY,
+        )
+    app.state.embedding_model_ready = embedding_ready
     
     logger.info(
         "services_initialized",
@@ -126,6 +140,9 @@ async def lifespan(app: FastAPI):
         vector_db_path=str(vector_db_path),
         redis_enabled=app.state.redis_enabled,
         use_sql_server=settings.USE_SQL_SERVER,
+        embedding_model=settings.RAG_EMBEDDING_MODEL,
+        embedding_local_files_only=settings.RAG_EMBEDDING_LOCAL_FILES_ONLY,
+        embedding_preloaded=bool(getattr(app.state, "embedding_model_ready", False)),
     )
     
     yield
@@ -244,6 +261,9 @@ async def health():
         "parquet_path": settings.PARQUET_DATA_PATH,
         "chat_state_backend": getattr(app.state, "chat_state_backend", settings.CHAT_STATE_BACKEND),
         "redis_enabled": bool(getattr(app.state, "redis_enabled", settings.REDIS_ENABLED)),
+        "embedding_model": settings.RAG_EMBEDDING_MODEL,
+        "embedding_local_files_only": settings.RAG_EMBEDDING_LOCAL_FILES_ONLY,
+        "embedding_preloaded": bool(getattr(app.state, "embedding_model_ready", False)),
     }
 
 

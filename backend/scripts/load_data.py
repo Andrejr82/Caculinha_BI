@@ -6,6 +6,7 @@ MIGRATED TO DUCKDB (2025-12-31)
 - SQL Server insert continua com pyodbc
 - Conversão DuckDB -> Pandas -> SQL Server
 """
+import os
 import sys
 import time
 from pathlib import Path
@@ -23,12 +24,15 @@ print("="*70 + "\n")
 
 parquet_file = Path(__file__).parent.parent / "data" / "parquet" / "admmat.parquet"
 
-# Credenciais
-server = r"FAMILIA\SQLJR,1433"
-database = "agentbi"
-username = "AgenteVirtual"
-password = "Cacula@2020"
-driver = "ODBC Driver 17 for SQL Server"
+# Credenciais via variáveis de ambiente (defina DB_ALT_* antes de rodar)
+server   = os.environ.get("DB_ALT_SERVER",   r"FAMILIA\SQLJR,1433")
+database = os.environ.get("DB_ALT_DATABASE", "agentbi")
+username = os.environ.get("DB_ALT_USER",     "AgenteVirtual")
+password = os.environ.get("DB_ALT_PASSWORD", "")
+driver   = "ODBC Driver 17 for SQL Server"
+
+if not password:
+    raise SystemExit("Erro: defina DB_ALT_PASSWORD no ambiente antes de executar este script.")
 
 connection_string = (
     f"DRIVER={{{driver}}};"

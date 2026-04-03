@@ -2,8 +2,8 @@ import { A, useLocation, useNavigate } from '@solidjs/router';
 import auth from '@/store/auth';
 import {
   LayoutDashboard, MessageSquare, PieChart, FileText, Settings, LogOut,
-  AlertTriangle, Truck, BookOpen, Terminal, Database, Lock, Shield, Lightbulb, HelpCircle, Code, Info,
-  ChevronLeft, ChevronRight, TrendingUp, BarChart3, Package, Split
+  AlertTriangle, Truck, BookOpen, Terminal, Database, Lock, Shield, HelpCircle, Info,
+  ChevronLeft, ChevronRight, TrendingUp, BarChart3, Package
 } from 'lucide-solid';
 import { For, Show, children, createSignal, createResource } from 'solid-js';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -16,20 +16,15 @@ export default function Layout(props: any) {
   const navigate = useNavigate();
   const userRole = () => auth.user()?.role || 'user';
   const routeLabels: Record<string, string> = {
-    '/dashboard': 'Monitoramento',
-    '/metrics': 'Analytics Avançado',
+    '/dashboard': 'Monitoramento BI',
     '/rupturas': 'Rupturas Críticas',
     '/forecasting': 'Previsão de Demanda',
-    '/executive': 'Executivo',
     '/suppliers': 'Fornecedores',
     '/transfers': 'Transferências',
     '/reports': 'Relatórios',
     '/chat': 'Chat BI',
-    '/code-chat': 'Code Chat',
-    '/examples': 'Exemplos',
     '/learning': 'Aprendizado',
     '/playground': 'Playground Ops',
-    '/playground-lab': 'Playground Lab',
     '/admin/dashboard': 'KPIs ChatBI',
     '/diagnostics': 'Diagnóstico DB',
     '/help': 'Ajuda',
@@ -104,11 +99,9 @@ export default function Layout(props: any) {
     {
       group: 'Dashboards',
       items: [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Monitoramento', roles: ['admin', 'user'] },
-        { href: '/metrics', icon: PieChart, label: 'Analytics Avançado', roles: ['admin'] },
+        { href: '/dashboard', icon: LayoutDashboard, label: 'Monitoramento BI', roles: ['admin', 'user'] },
         { href: '/rupturas', icon: AlertTriangle, label: 'Rupturas Críticas', roles: ['admin', 'user'] },
         { href: '/forecasting', icon: TrendingUp, label: 'Previsão de Demanda', roles: ['admin', 'user'] },
-        { href: '/executive', icon: BarChart3, label: 'Executivo', roles: ['admin'] },
         { href: '/suppliers', icon: Package, label: 'Fornecedores', roles: ['admin', 'user'] },
       ]
     },
@@ -123,11 +116,8 @@ export default function Layout(props: any) {
       group: 'Inteligência',
       items: [
         { href: '/chat', icon: MessageSquare, label: 'Chat BI', roles: ['admin', 'user'] },
-        { href: '/code-chat', icon: Code, label: 'Code Chat', roles: ['admin'] },
-        { href: '/examples', icon: Lightbulb, label: 'Exemplos', roles: ['admin'] },
         { href: '/learning', icon: BookOpen, label: 'Aprendizado', roles: ['admin'] },
         { href: '/playground', icon: Terminal, label: 'Playground', roles: ['admin', 'user'] },
-        { href: '/playground-lab', icon: Split, label: 'Playground Lab', roles: ['admin', 'user'] },
       ]
     },
     {
@@ -144,7 +134,7 @@ export default function Layout(props: any) {
   ];
 
   const isActivePath = (href: string) => location.pathname === href || location.pathname.startsWith(`${href}/`);
-  const isPlaygroundRoute = (href: string) => href === '/playground' || href === '/playground-lab';
+  const isPlaygroundRoute = (href: string) => href === '/playground';
   const pageTitle = () => {
     const matched = Object.entries(routeLabels)
       .sort((a, b) => b[0].length - a[0].length)

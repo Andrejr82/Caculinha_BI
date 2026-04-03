@@ -92,6 +92,27 @@ async def test_competitive_fast_path_falls_back_to_market_web_when_no_public_evi
 
 
 @pytest.mark.asyncio
+async def test_competitive_fast_path_falls_back_to_market_web_on_timeout(monkeypatch) -> None:
+    async def _fake_market_web(_query: str) -> str:
+        return "fallback market web timeout ok"
+
+    monkeypatch.setattr(chat_endpoint, "_run_market_research_fast_path", _fake_market_web)
+    monkeypatch.setattr(chat_endpoint, "_has_specific_competitor", lambda _q: False)
+    monkeypatch.setattr(chat_endpoint, "_market_fast_path_timeout_seconds", lambda: 0.01)
+
+    def _slow_competitive_tool(**_kwargs):
+        time.sleep(0.05)
+        return {"status": "success", "itens": []}
+
+    monkeypatch.setattr(chat_endpoint, "pesquisar_precos_concorrentes", _slow_competitive_tool)
+
+    out = await chat_endpoint._run_competitive_market_fast_path(
+        "faça uma pesquisa de mercado do produto caneta bic"
+    )
+    assert out == "fallback market web timeout ok"
+
+
+@pytest.mark.asyncio
 async def test_market_fast_path_payload_exposes_contract_fields(monkeypatch) -> None:
     def _fake_market_tool(**_kwargs):
         return {

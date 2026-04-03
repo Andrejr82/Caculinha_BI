@@ -223,8 +223,12 @@ def consultar_dados_flexivel(
                 
                 # Construir WHERE clause
                 if isinstance(val, str):
-                    clean_val = val.replace("'", "''")
-                    where_clause += f" AND {real_col} ILIKE '%{clean_val}%'"
+                    clean_val = val.replace("'", "''").strip()
+                    # ✅ FIX 2026-03-31: Filtro exato para Segmento para evitar vazamento de outros dados
+                    if real_col == "NOMESEGMENTO":
+                        where_clause += f" AND TRIM({real_col}) = '{clean_val.upper()}'"
+                    else:
+                        where_clause += f" AND {real_col} ILIKE '%{clean_val}%'"
                 elif isinstance(val, list):
                     vals_str = ",".join([f"'{str(v)}'" if isinstance(v, str) else str(v) for v in val])
                     where_clause += f" AND {real_col} IN ({vals_str})"
@@ -258,7 +262,12 @@ def consultar_dados_flexivel(
             real_cols = []
             for c in colunas_list:
                 mapped = field_mapper.map_term(c) or c
-                real_cols.append(mapped)
+                # ✅ FIX 2026-03-31: Limpeza de resíduos numéricos (notação científica como 0E-16)
+                # Trata valores menores que 0.0001 como zero e garante 2 casas decimais
+                if any(k in mapped.upper() for k in ['ESTOQUE', 'VENDA', 'LIQUIDO', 'CUSTO', 'VALOR']):
+                    real_cols.append(f"ROUND(CASE WHEN TRY_CAST({mapped} AS DOUBLE) < 0.0001 THEN 0 ELSE TRY_CAST({mapped} AS DOUBLE) END, 2) as {mapped}")
+                else:
+                    real_cols.append(mapped)
             select_clause = ", ".join(list(set(real_cols)))
             
         # 2.4 Ordenação
