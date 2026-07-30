@@ -51,6 +51,7 @@ venv.bak/
 .env.*
 *.env
 *.env.*
+!.env.example
 
 ############################
 # Logs / outputs temporários
