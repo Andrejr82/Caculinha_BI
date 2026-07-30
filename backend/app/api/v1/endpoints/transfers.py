@@ -1,5 +1,6 @@
 from typing import Annotated, List, Dict, Any, Optional
 from datetime import datetime
+import hashlib
 import json
 import os
 import logging
@@ -11,10 +12,6 @@ from pydantic import BaseModel, Field
 
 from backend.app.api.dependencies import get_current_active_user
 from backend.app.infrastructure.database.models import User
-from backend.app.core.tools.une_tools import (
-    validar_transferencia_produto,
-    sugerir_transferencias_automaticas,
-)
 from backend.app.core.utils.error_handler import APIError
 from backend.app.core.duckdb_config import get_safe_connection
 from backend.app.core.data_scope_service import data_scope_service
@@ -25,6 +22,53 @@ logger = logging.getLogger(__name__)
 # Path to store transfer requests
 TRANSFER_REQUESTS_DIR = Path("data/transferencias")
 os.makedirs(TRANSFER_REQUESTS_DIR, exist_ok=True)
+
+TRANSFER_STATUS_SOLICITADA = "SOLICITADA_POR_COMPRAS"
+
+
+def _normalize_client_request_id(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized[:120] if normalized else None
+
+
+def _build_transfer_protocol(client_request_id: Optional[str], batch_id: str) -> str:
+    seed = client_request_id or batch_id
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:10].upper()
+    return f"TRF-{datetime.now().strftime('%Y%m%d')}-{digest}"
+
+
+def _find_existing_batch_by_client_request_id(
+    client_request_id: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    if not client_request_id:
+        return None
+
+    TRANSFER_REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
+    for file_path in TRANSFER_REQUESTS_DIR.glob("*.json"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                transfer_data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Erro ao ler arquivo de transferencia", exc_info=e)
+            continue
+
+        if transfer_data.get("client_request_id") == client_request_id:
+            return transfer_data
+
+    return None
+
+
+def _write_transfer_batch(batch_id: str, batch_data: Dict[str, Any]) -> None:
+    TRANSFER_REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
+    file_path = TRANSFER_REQUESTS_DIR / f"{batch_id}.json"
+    tmp_path = TRANSFER_REQUESTS_DIR / f"{batch_id}.json.tmp"
+
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(batch_data, f, ensure_ascii=False, indent=4)
+
+    os.replace(tmp_path, file_path)
 
 
 class TransferRequestPayload(BaseModel):
@@ -52,6 +96,10 @@ class BulkTransferRequestPayload(BaseModel):
     """Payload para transferências múltiplas (1→N ou N→N)"""
     items: List[TransferRequestPayload]
     modo: str = Field(description="Modo: '1→1', '1→N', ou 'N→N'")
+    client_request_id: Optional[str] = Field(
+        default=None,
+        description="Identificador enviado pelo ADMAT para evitar duplicidade",
+    )
 
 
 @router.post("/validate")
@@ -64,6 +112,7 @@ async def validate_transfer(
     Integrates with `validar_transferencia_produto` tool.
     Includes priority score (0-100) and urgency level.
     """
+    from backend.app.core.tools.une_tools import validar_transferencia_produto
     from backend.app.core.data_scope_service import data_scope_service
 
     try:
@@ -163,6 +212,8 @@ async def get_transfer_suggestions(
     Endpoint to get automatic transfer suggestions.
     Integrates with `sugerir_transferencias_automaticas` tool.
     """
+    from backend.app.core.tools.une_tools import sugerir_transferencias_automaticas
+
     try:
         # Fix: Use .invoke() for LangChain StructuredTool
         suggestions = sugerir_transferencias_automaticas.invoke({
@@ -418,12 +469,29 @@ async def create_bulk_transfer_request(
     Saves all transfers in a single batch file.
     """
     try:
-        batch_id = f"batch_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        client_request_id = _normalize_client_request_id(payload.client_request_id)
+        existing_batch = _find_existing_batch_by_client_request_id(client_request_id)
+        if existing_batch:
+            return {
+                "message": "Batch transfer request already created",
+                "batch_id": existing_batch["batch_id"],
+                "protocol": existing_batch["protocol"],
+                "status": existing_batch.get("status", TRANSFER_STATUS_SOLICITADA),
+                "modo": existing_batch["modo"],
+                "idempotent_replay": True,
+            }
+
+        created_at = datetime.now()
+        batch_id = f"batch_{created_at.strftime('%Y%m%d%H%M%S%f')}"
+        protocol = _build_transfer_protocol(client_request_id, batch_id)
         batch_data = {
             "batch_id": batch_id,
+            "protocol": protocol,
+            "client_request_id": client_request_id,
             "modo": payload.modo,
             "solicitante_id": current_user.username,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": created_at.isoformat(),
+            "status": TRANSFER_STATUS_SOLICITADA,
             "total_transferencias": len(payload.items),
             "transferencias": []
         }
@@ -431,16 +499,18 @@ async def create_bulk_transfer_request(
         for item in payload.items:
             transfer = item.model_dump()
             transfer["solicitante_id"] = current_user.username
+            transfer["status"] = TRANSFER_STATUS_SOLICITADA
             batch_data["transferencias"].append(transfer)
 
-        file_path = TRANSFER_REQUESTS_DIR / f"{batch_id}.json"
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(batch_data, f, ensure_ascii=False, indent=4)
+        _write_transfer_batch(batch_id, batch_data)
 
         return {
             "message": f"Batch transfer request created successfully ({len(payload.items)} items)",
             "batch_id": batch_id,
-            "modo": payload.modo
+            "protocol": protocol,
+            "status": TRANSFER_STATUS_SOLICITADA,
+            "modo": payload.modo,
+            "idempotent_replay": False,
         }
 
     except Exception as e:

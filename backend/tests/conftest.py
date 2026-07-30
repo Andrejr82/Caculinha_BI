@@ -5,7 +5,6 @@ from pathlib import Path
 import uuid
 
 import pytest
-from fastapi.testclient import TestClient
 
 # Testes não devem depender de provedor LLM externo.
 os.environ.setdefault("LLM_PROVIDER", "mock")
@@ -24,16 +23,18 @@ PROJECT_ROOT = BACKEND_ROOT.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from backend.main import app
-from backend.app.config.security import create_access_token
-
-
 @pytest.fixture(scope="session")
 def client():
+    # Keep unit tests lightweight; load the application only for API tests.
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
     return TestClient(app)
 
 
 def _build_token(role: str) -> str:
+    from backend.app.config.security import create_access_token
+
     user_id = str(uuid.uuid4())
     payload = {
         "sub": user_id,
