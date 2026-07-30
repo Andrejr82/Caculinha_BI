@@ -12,10 +12,6 @@ from pydantic import BaseModel, Field
 
 from backend.app.api.dependencies import get_current_active_user
 from backend.app.infrastructure.database.models import User
-from backend.app.core.tools.une_tools import (
-    validar_transferencia_produto,
-    sugerir_transferencias_automaticas,
-)
 from backend.app.core.utils.error_handler import APIError
 from backend.app.core.duckdb_config import get_safe_connection
 from backend.app.core.data_scope_service import data_scope_service
@@ -116,6 +112,7 @@ async def validate_transfer(
     Integrates with `validar_transferencia_produto` tool.
     Includes priority score (0-100) and urgency level.
     """
+    from backend.app.core.tools.une_tools import validar_transferencia_produto
     from backend.app.core.data_scope_service import data_scope_service
 
     try:
@@ -215,6 +212,8 @@ async def get_transfer_suggestions(
     Endpoint to get automatic transfer suggestions.
     Integrates with `sugerir_transferencias_automaticas` tool.
     """
+    from backend.app.core.tools.une_tools import sugerir_transferencias_automaticas
+
     try:
         # Fix: Use .invoke() for LangChain StructuredTool
         suggestions = sugerir_transferencias_automaticas.invoke({
