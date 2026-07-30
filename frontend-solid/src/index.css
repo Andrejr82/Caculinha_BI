@@ -1,6 +1,4 @@
 /* src/index.css */
-/* Import migrated globals from React frontend */
-@import "./migrated-components/globals.css";
 
 :root {
   /* ===== LOJAS CAÇULA - LIGHT MODE ===== */
