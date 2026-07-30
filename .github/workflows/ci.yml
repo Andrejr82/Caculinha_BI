@@ -10,6 +10,12 @@ jobs:
   test:
     name: Test Backend
     runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-only-test-secret-key-change-me-32-chars
+      LLM_PROVIDER: mock
+      LLM_FALLBACK_PROVIDERS: mock
+      GROQ_API_KEY: ""
+      GEMINI_API_KEY: ""
     
     steps:
     - name: Checkout code
